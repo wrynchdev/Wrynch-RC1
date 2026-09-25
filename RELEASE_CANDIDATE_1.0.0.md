@@ -6,7 +6,7 @@ This commit identifies the WRYNCH RC1 artifact produced on 2026-09-25.
 
 `WRYNCH-Release-Candidate-1.0.0-Admin-Configuration.zip`
 
-SHA-256: `REPLACE_WITH_ARTIFACT_SHA256`
+SHA-256: `091200453f84ecffcf0edc1f8971ff74446bc5b8087a72ee216a42712dc652f3`
 
 ## Scope
 
