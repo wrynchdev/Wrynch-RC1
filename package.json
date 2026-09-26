@@ -1,0 +1,28 @@
+{
+  "name": "wrynch",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Wrynch: digital vehicle inspections recorded down to the canonical component.",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "node scripts/build.mjs --serve",
+    "build": "node scripts/build.mjs",
+    "test": "node --import tsx --test src/domain/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "ontology": "python3 ontology/build/export_json.py",
+    "workbook": "python3 ontology/build/writer.py ontology/Vehicle_Component_Classes_Metadata_Ontology_v1.2.xlsx"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
