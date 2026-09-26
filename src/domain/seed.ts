@@ -11,12 +11,16 @@ const RUNNER_CONFIG: VehicleConfig = {
   powertrain: 'gasoline', drivetrain: '4wd', transmission: 'automatic', rearBrakes: 'disc', steering: 'rack',
   hydraulicSteering: true, frontSuspension: 'strut', rearSuspension: 'shock', rearSprings: 'coil', frontCvAxles: true,
   independentRearDrive: false, frontDiff: true, rearDiff: true, transferCase: true, twoPieceDriveshaft: false,
-  solidAxle: true, timing: 'chain', fogLamps: true, rearWiper: true, cabinFilter: true, fuelFilter: false,
+  solidAxle: true, timing: 'chain', fogLamps: true, rearWiper: true, cabinFilter: true, fuelFilter: false, chargePort: null,
 };
 const CRV_CONFIG: VehicleConfig = {
   ...RUNNER_CONFIG, drivetrain: 'awd', steering: 'rack', hydraulicSteering: false, rearSuspension: 'shock',
   frontDiff: false, transferCase: false, rearDiff: true, solidAxle: false, independentRearDrive: true,
   timing: 'chain', fogLamps: false,
+};
+const TESLA_CONFIG: VehicleConfig = {
+  ...CRV_CONFIG, powertrain: 'ev', drivetrain: 'rwd', transmission: 'automatic', rearSuspension: 'shock',
+  frontCvAxles: false, independentRearDrive: true, rearDiff: false, timing: 'none', chargePort: 'left_rear', rearWiper: false,
 };
 
 export const VEHICLES: Vehicle[] = [
@@ -24,6 +28,8 @@ export const VEHICLES: Vehicle[] = [
     engine: '4.0L V6 · 5-speed automatic · part-time 4WD', customer: 'Dana Reyes', config: RUNNER_CONFIG },
   { id: 'v-crv', vin: '7FARW2H85KE000000', year: 2019, make: 'Honda', model: 'CR-V', trim: 'EX',
     engine: '1.5L turbo · CVT · AWD', customer: 'Sam Ortiz', config: CRV_CONFIG },
+  { id: 'v-model3', vin: '5YJ3E1EA1MF000000', year: 2021, make: 'Tesla', model: 'Model 3', trim: 'Standard Range Plus',
+    engine: 'Single motor · RWD', customer: 'Priya Natarajan', config: TESLA_CONFIG },
 ];
 
 let n = 0;
@@ -32,7 +38,7 @@ const id = (p: string) => `${p}-${++n}`;
 function blank(o: Partial<Inspection> & Pick<Inspection, 'id' | 'ro' | 'vehicleId' | 'odometer' | 'date'>): Inspection {
   return {
     technician: 'Marcus T.', status: 'in_progress', concerns: [], dtcs: [], results: [], findings: [], media: [],
-    statuses: [], notes: [], extraComponents: [], customerApprovals: [], ...o,
+    statuses: [], notes: [], extraComponents: [], customerApprovals: [], estimate: [], ...o,
   };
 }
 
@@ -159,6 +165,7 @@ export function seedInspections(): Inspection[] {
     pastVisit(2, '2026-03-14', 160292, '46350', 'Marcus T.'),
     currentRunner(),
     blank({ id: 'i-crv-now', ro: '48219', vehicleId: 'v-crv', odometer: 61230, date: '2026-09-26', status: 'not_started', concerns: ['Oil change + MPI'] }),
+    blank({ id: 'i-m3-now', ro: '48222', vehicleId: 'v-model3', odometer: 38410, date: '2026-09-26', status: 'not_started', concerns: ['Tires + MPI'] }),
   ];
 }
 
