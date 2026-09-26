@@ -11,7 +11,6 @@
 --  * AI proposals can only be written by the server (service_role), never by a browser.
 --  * The component catalog (classes, checks, findings) is loaded by the next migration.
 
-create extension if not exists pgcrypto;
 
 -- ------------------------------------------------------------------ catalog
 create table public.component_class (
@@ -75,7 +74,7 @@ create table public.shop_invite (
   shop_id     uuid not null references public.shop(id) on delete cascade,
   email       text not null,
   role        text not null check (role in ('owner','advisor','technician')),
-  token       text not null unique default encode(gen_random_bytes(18), 'hex'),
+  token       text not null unique default replace(gen_random_uuid()::text, '-', ''),
   created_by  uuid not null,
   created_at  timestamptz not null default now(),
   accepted_by uuid,
@@ -163,7 +162,7 @@ create table public.inspection (
   concerns         text[] not null default '{}',
   extra_components uuid[] not null default '{}',  -- on-demand parts added by the tech (component_instance ids)
   summary          jsonb,                          -- counts at submit time, for lists
-  report_token     text not null unique default encode(gen_random_bytes(24), 'hex'),
+  report_token     text not null unique default replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''),  -- 244 random bits
   created_at       timestamptz not null default now(),
   submitted_at     timestamptz,
   sent_at          timestamptz

@@ -70,7 +70,7 @@ afterEach(() => { globalThis.fetch = realFetch; });
 
 function bundle(mut?: (i: ReturnType<typeof seedInspections>[number]) => void) {
   const insp = structuredClone(seedInspections().find((i) => i.id === 'i-4r-now')!);
-  insp.reportToken = 'a'.repeat(48);
+  insp.reportToken = 'a'.repeat(64);
   mut?.(insp);
   return { inspection: insp, vehicle: runner, template: DEFAULT_TEMPLATE };
 }
@@ -135,7 +135,7 @@ test('customer report signs only the photos the database returned', async () => 
     return null;
   };
   assert.equal((await report(new Request('https://app.test/api/report?token=nope'))).status, 404);
-  const r = await report(new Request(`https://app.test/api/report?token=${'a'.repeat(48)}`));
+  const r = await report(new Request(`https://app.test/api/report?token=${'a'.repeat(64)}`));
   const doc = await r.json();
   assert.equal(doc.inspection.media[0].url, 'https://db.test/storage/v1/object/sign/inspection-media/s/i/m1.jpg?token=x');
   assert.equal(calls.find((c) => c.url.endsWith('/customer_report'))!.auth, 'Bearer service');
@@ -146,7 +146,7 @@ test('send-report: without a text provider it records the link and says texting 
   const r = await sendReport(post('send-report', { inspectionId: 'i-4r-now', channel: 'sms', to: '555-0100' }));
   const out = await r.json();
   assert.equal(out.status, 'skipped');
-  assert.match(out.link, /#\/r\/a{48}$/);
+  assert.match(out.link, /#\/r\/a{64}$/);
   const mark = calls.find((c) => c.url.endsWith('/mark_sent'))!;
   assert.equal(mark.auth, 'Bearer user-jwt', 'sending is recorded as the user so the role check applies');
 });

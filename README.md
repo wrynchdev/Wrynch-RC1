@@ -1,68 +1,53 @@
 # Wrynch
 
-Digital vehicle inspections recorded down to the **canonical component**: every inspection point maps to
-parts (class + position, e.g. `brake_pad @ left_front`), every part is rated OK / Monitor / Immediate
-Attention by rules the shop controls, and every part keeps its own history across visits.
+Digital vehicle inspections recorded down to the **canonical component**: every inspection point maps to parts
+(class + position, e.g. `brake_pad @ left_front`), every part is rated OK / Monitor / Immediate Attention by rules
+the shop controls, and every part keeps its own history across visits.
 
-This repo is the MVP: a working web app (technician, advisor and customer views), the component ontology it
-runs on, and the production database schema.
+**To put it online, follow [SETUP.md](SETUP.md).** Without Supabase settings the app runs as a self-contained demo.
 
-## Run it
+## What it does
 
-```bash
-npm install
-npm run dev        # http://localhost:5173
-npm test           # rating-rule tests
-npm run build      # static build in dist/
-```
-
-The demo runs entirely in the browser with seeded data (a 2011 Toyota 4Runner taken from a real shop MPI,
-plus three earlier visits so part history has something to show). "Reset demo" in the header restores it.
-
-### Try the flow
-
-1. **Tech → Today → 2011 4Runner.** Road test and under hood are already done, matching the real example.
-2. **Under car → Capture → "Use 12 sample photos"** (or pick real photos). The stubbed AI places each photo
-   on a part and suggests a few findings. Unsure photos land in *Needs you*.
-3. **Review photos:** move any photo, then *Confirm placements*.
-4. Open a point (e.g. *Visual brake system condition*): each pad, rotor, caliper and hose has its own row.
-   Confirm, edit or reject AI findings; type measurements (pads in mm, tread in 32nds) and the rating is
-   computed from the shop's thresholds.
-5. Use *Demo: enter the shop's real under-car results* to fill the rest quickly.
-6. **Finish:** the button stays locked while any AI finding, photo placement, wording suggestion or required
-   part is unresolved. Send to advisor.
-7. **Advisor:** results by rating with last-visit values; *Send to customer*.
-8. **Customer:** plain-language report with only technician-confirmed content, and approve checkboxes.
+- **Technicians** (phone): start an inspection from a VIN, confirm what the vehicle has (drivetrain, brakes,
+  powertrain…) so only real parts are checked, shoot each stage in one burst, and let AI place photos on parts and
+  suggest findings. They confirm, move or reject every suggestion, type measurements (rated automatically), and
+  record why a part couldn't be checked. Finishing is locked until nothing AI-generated is unreviewed.
+- **Advisors**: results by rating with last visit's readings, part-by-part history, estimates (parts + labor),
+  send the report by text, email or link, reopen for the tech.
+- **Customers**: a plain-language phone report with photos and prices showing only technician-confirmed content;
+  they approve work from it, no account needed.
+- **Owners**: invite the team and set roles, edit the inspection template (stages, points, the parts behind each
+  point and when they apply) and the rating rules. Both are versioned; past results keep the rules they used.
+- **EV / hybrid** stage (high-voltage battery, cables, charge port, drive units) appears only on electrified vehicles.
 
 ## How it's built
 
 | Path | What |
 |---|---|
-| `ontology/` | The component ontology workbook (v1.2), its v1.0 source, and the Python that builds both the workbook and `src/data/ontology.json`. **The workbook is the source of truth.** |
-| `src/data/ontology.json` | Generated: 282 classes, 378 checks, finding applicability and ratings, the shop's 34-point template. Regenerate with `npm run ontology`. |
-| `src/domain/` | Pure TypeScript: types, template expansion by vehicle configuration, rating rules, AI stub, seed data, tests. No UI imports. |
-| `src/state/store.ts` | In-browser store and all actions (demo persistence in `localStorage`). Replace with API calls. |
-| `src/ui/` | React screens: `tech.tsx`, `advisor.tsx` (advisor, vehicle history, rules, customer report). |
-| `db/schema.sql` | PostgreSQL schema for the real backend, including views and a trigger that enforce the confirmation rules in the database. |
+| `ontology/` | Component ontology workbook (v1.3) and the Python that builds it, `src/data/ontology.json` and the catalog migration. **The workbook is the source of truth.** |
+| `src/domain/` | Pure TypeScript: types, template expansion by vehicle, rating rules, AI stand-in, seed data, tests. |
+| `src/state/` | `store.ts` (every action; demo or live), `remote.ts` (Supabase auth, database functions, storage over fetch). |
+| `src/ui/` | Screens: `tech.tsx`, `advisor.tsx` (advisor, history, rules, customer report), `account.tsx` (sign-in, shop, team, new inspection, template editor). |
+| `server/` | `/api` functions (Vercel): `ai-sort`, `ai-wording`, `vin`, `report`, `send-report`. |
+| `supabase/migrations/` | Schema, row-level security, and the database functions every write goes through. |
+| `supabase/tests/` | Database rule tests, a Supabase stand-in for local testing, and its shim. |
+| `tests/e2e/` | Browser test of the connected app from sign-up to customer approval. |
 
-### Rules the code enforces (ontology "Rating Scale" sheet)
+### Rules, and where they're enforced
 
-- **R1** A part's rating is the worst of its check results and counted findings.
-- **R3** Typed measurements are rated by thresholds; AI never produces a measurement.
-- **R4 / R10** AI findings are *pending* until a technician confirms or edits them; pending findings affect nothing.
-- **R11** The customer sees only technician-confirmed findings, confirmed photos the tech marked visible, and approved wording.
-- **R12** An inspection can't be submitted while anything AI is pending or a required part is unrated.
-- Red (**Immediate**) means the part no longer meets the minimum legal or manufacturer standard. Worn but above the minimum is Monitor.
+| Rule | App | Database |
+|---|---|---|
+| R1 a part's rating is the worst of its checks and counted findings | `rating.ts` | — |
+| R3 typed measurements rated by the shop's thresholds; AI never measures | `rating.ts` | `set_check` rates on the server |
+| R4/R10 AI findings are pending and count for nothing until a tech reviews them | `rating.ts` | only `ai_record_sort` (server key) writes AI output; only `review_finding` confirms it |
+| R11 customers see only confirmed findings, confirmed photos marked visible, approved wording | `customerView` | `customer_report` builds the customer's copy |
+| R12 no submit while AI findings, photo placements or wording are unreviewed | Finish screen | `submit_inspection` refuses |
+| Shop isolation | — | row-level security on every table; no direct table writes |
 
-### The AI stub
-
-`src/domain/aiStub.ts` is deterministic so demos and tests repeat. It exposes the two calls a real vision
-model will replace: `sortPhotos` (photo → part/position + optional finding, with confidence) and
-`suggestWording` (customer rewrite that must keep every number and add none, checked by `wordingKeepsFacts`).
-Findings the stub may suggest are limited to those allowed for the class in the ontology.
+AI output is validated before it's stored: the part must be one the template lists for that stage on that vehicle,
+the finding must be allowed for that part class, and a reworded note is rejected if any number changes.
 
 ## Not built yet
 
-Sign-in and shops/users, a real API and photo storage (schema is ready), real vision model, editing templates
-and thresholds in the UI (read-only views exist), estimates/pricing, SMS/email delivery, shop-management
-integrations, EV stage.
+Shop-management-system integrations, payments, appointment scheduling, push notifications, offline capture,
+multi-location reporting, and editing an inspection's template after it has started (it keeps the version it began with).

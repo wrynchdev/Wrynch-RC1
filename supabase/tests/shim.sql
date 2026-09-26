@@ -28,4 +28,3 @@ grant execute on function storage.foldername(text) to authenticated;
 grant usage on schema public to anon, authenticated, service_role;
 alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
 alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
-create extension if not exists pgcrypto;

@@ -94,7 +94,7 @@ export const vin: Handler = route({
 export const report: Handler = route({
   GET: async (req) => {
     const token = new URL(req.url).searchParams.get('token') ?? '';
-    if (!/^[a-f0-9]{48}$/.test(token)) throw new HttpError(404, "This report link isn't valid");
+    if (!/^[a-f0-9]{64}$/.test(token)) throw new HttpError(404, "This report link isn't valid");
     const doc = await rpc<InspectionBundle & { shop: { name: string; phone: string | null } }>('customer_report', { p_token: token }, 'service');
     const urls = await signUrls(doc.inspection.media.map((m) => m.url));
     for (const m of doc.inspection.media) m.url = urls[m.url] ?? '';
@@ -102,7 +102,7 @@ export const report: Handler = route({
   },
   POST: async (req) => {
     const { token, key, approved } = await readJson<{ token: string; key: string; approved: boolean }>(req);
-    if (!/^[a-f0-9]{48}$/.test(token ?? '')) throw new HttpError(404, "This report link isn't valid");
+    if (!/^[a-f0-9]{64}$/.test(token ?? '')) throw new HttpError(404, "This report link isn't valid");
     await rpc('customer_set_approval', { p_token: token, p_key: key, p_approved: !!approved }, 'service');
     return json({ ok: true });
   },
