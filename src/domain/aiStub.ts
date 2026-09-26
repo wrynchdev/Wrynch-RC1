@@ -2,7 +2,7 @@
 // Swap `sortPhotos` / `suggestWording` for real model calls later; the rest of the app only
 // ever sees AI output as *pending* proposals that a technician must confirm (rules R4, R10–R12).
 import { cls, compKey, parseKey, pointComponents, sections } from './ontology';
-import type { Finding, Media, Severity, VehicleConfig, CompKey, PointNote } from './types';
+import type { Finding, Media, Severity, VehicleConfig, CompKey, PointNote, Template } from './types';
 
 function hash(s: string): number {
   let h = 2166136261;
@@ -27,9 +27,9 @@ export interface SortResult { media: Media[]; findings: Finding[] }
 
 /** Place each photo on a component in the section and maybe propose a finding. */
 export function sortPhotos(
-  sectionId: string, files: { id: string; url: string; name: string }[], config: VehicleConfig, now: string,
+  sectionId: string, files: { id: string; url: string; name: string }[], config: VehicleConfig, now: string, template?: Template,
 ): SortResult {
-  const section = sections().find((s) => s.id === sectionId);
+  const section = (template ? template.sections : sections()).find((s) => s.id === sectionId);
   if (!section) throw new Error(`Unknown section ${sectionId}`);
   const targets: { pointId: string; key: CompKey }[] = [];
   for (const p of section.points) {

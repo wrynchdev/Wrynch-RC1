@@ -92,6 +92,8 @@ export interface Vehicle {
   trim: string;
   engine: string;
   customer: string;
+  customerPhone?: string | null;
+  customerEmail?: string | null;
   config: VehicleConfig;
 }
 
