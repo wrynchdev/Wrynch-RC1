@@ -337,7 +337,7 @@ begin
 end $$;
 
 -- Returns the inspection row after checking the caller may edit it.
-create function public.editable_inspection(p_id uuid, p_roles text[] default array['owner','advisor','technician'], p_statuses text[] default array['not_started','in_progress'])
+create function public.editable_inspection(p_id uuid, p_roles text[] default array['owner','advisor','technician'], p_statuses text[] default array['not_started','in_progress'], p_start boolean default true)
   returns public.inspection language plpgsql security definer set search_path = public as
 $$
 declare r inspection;
@@ -348,7 +348,7 @@ begin
   if not (r.status = any (p_statuses)) then
     raise exception 'This inspection is % and can''t be changed', replace(r.status, '_', ' ') using errcode = '55000';
   end if;
-  if r.status = 'not_started' and 'in_progress' = any (p_statuses) then
+  if p_start and r.status = 'not_started' and 'in_progress' = any (p_statuses) then
     update inspection set status = 'in_progress', technician_id = coalesce(technician_id, auth.uid()),
       technician_name = coalesce(technician_name, (select display_name from shop_member where shop_id = r.shop_id and user_id = auth.uid()))
       where id = p_id returning * into r;
@@ -539,13 +539,13 @@ create function public.set_vehicle_config(p_inspection uuid, p_config jsonb) ret
 $$
 declare r inspection;
 begin
-  r := editable_inspection(p_inspection, p_statuses => array['not_started','in_progress']);
+  r := editable_inspection(p_inspection, p_start => false);
   update vehicle set config = p_config where id = r.vehicle_id;
 end $$;
 
 create function public.set_odometer(p_inspection uuid, p_odometer int) returns void
   language plpgsql security definer set search_path = public as
-$$ begin perform editable_inspection(p_inspection); update inspection set odometer = p_odometer where id = p_inspection; end $$;
+$$ begin perform editable_inspection(p_inspection, p_start => false); update inspection set odometer = p_odometer where id = p_inspection; end $$;
 
 create function public.start_inspection(p_inspection uuid) returns void
   language plpgsql security definer set search_path = public as

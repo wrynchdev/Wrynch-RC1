@@ -108,16 +108,6 @@ export const report: Handler = route({
   },
 });
 
-// POST /api/photos { inspectionId, paths } -> signed URLs for the signed-in user's shop photos
-export const photos: Handler = route({
-  POST: async (req) => {
-    const jwt = bearer(req);
-    const { inspectionId } = await readJson<{ inspectionId: string }>(req);
-    const { inspection } = await loadAsUser(jwt, inspectionId);
-    return json(await signUrls(inspection.media.map((m) => m.url)));
-  },
-});
-
 // POST /api/send-report { inspectionId, channel: 'sms' | 'email' | 'link', to? }
 export const sendReport: Handler = route({
   POST: async (req) => {
@@ -169,5 +159,5 @@ async function sendEmail(to: string, subject: string, text: string): Promise<{ s
 }
 
 export const ROUTES: Record<string, Handler> = {
-  'ai-sort': aiSort, 'ai-wording': aiWording, vin, report, photos, 'send-report': sendReport,
+  'ai-sort': aiSort, 'ai-wording': aiWording, vin, report, 'send-report': sendReport,
 };

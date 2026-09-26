@@ -14,7 +14,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "ontology": "python3 ontology/build/export_json.py && python3 ontology/build/export_sql.py",
     "workbook": "python3 ontology/build/writer.py ontology/Vehicle_Component_Classes_Metadata_Ontology_v1.2.xlsx",
-    "test:db": "bash scripts/test-db.sh"
+    "test:db": "bash scripts/test-db.sh",
+    "e2e": "bash scripts/e2e.sh"
   },
   "dependencies": {
     "react": "^19.0.0",
@@ -26,6 +27,7 @@
     "@types/react-dom": "^19.0.0",
     "esbuild": "^0.25.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "playwright": "^1.48.0"
   }
 }

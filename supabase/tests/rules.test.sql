@@ -43,6 +43,8 @@ select t.expect_error($$ select public.accept_invite((select v from t.ids where 
 -- 3. Technician starts an inspection for a new vehicle.
 insert into t.ids select 'insp', public.create_inspection((select v::uuid from t.ids where k = 'shop'), 'JTEBU5JR4B5012345', 2011, 'Toyota', '4Runner', 'SR5', '4.0L V6',
   '{"rearBrakes":"disc"}', 'Dana Reyes', '555-0100', 'dana@example.test', '48213', 164210, array['Check engine light on']);
+select public.set_vehicle_config((select v::uuid from t.ids where k = 'insp'), '{"rearBrakes":"disc","drivetrain":"4wd"}');
+select t.eq((select status from public.inspection), 'not_started', 'vehicle setup does not start the inspection');
 select t.eq(public.set_check((select v::uuid from t.ids where k = 'insp'), '73@left_front', 'brake_pad.lining_thickness', 1.5, null), 'immediate', 'pad 1.5 mm');
 select t.eq(public.set_check((select v::uuid from t.ids where k = 'insp'), '73@left_front', 'brake_pad.lining_thickness', 4, 'ok'), 'monitor', 'pad 4 mm ignores picked rating');
 select t.eq((select status from public.inspection), 'in_progress', 'first edit starts the inspection');
