@@ -58,7 +58,7 @@ export interface Ontology {
 // ---------------------------------------------------------------- vehicle & inspection
 
 export interface VehicleConfig {
-  powertrain: 'gasoline' | 'diesel' | 'hybrid' | 'ev';
+  powertrain: 'gasoline' | 'diesel' | 'hybrid' | 'plug_in_hybrid' | 'ev';
   drivetrain: 'fwd' | 'rwd' | 'awd' | '4wd';
   transmission: 'automatic' | 'manual';
   rearBrakes: 'disc' | 'drum';
@@ -79,6 +79,8 @@ export interface VehicleConfig {
   rearWiper: boolean;
   cabinFilter: boolean;
   fuelFilter: boolean;
+  /** Where the charge port is (plug-in vehicles only). */
+  chargePort: 'left_front' | 'right_front' | 'left_rear' | 'right_rear' | 'front' | 'rear' | null;
 }
 
 export interface Vehicle {
@@ -90,6 +92,8 @@ export interface Vehicle {
   trim: string;
   engine: string;
   customer: string;
+  customerPhone?: string | null;
+  customerEmail?: string | null;
   config: VehicleConfig;
 }
 
@@ -154,6 +158,14 @@ export interface PointNote {
   customerText: string | null; // what the customer sees once approved
 }
 
+export interface EstimateLine {
+  id: string;
+  compKey: CompKey | null;   // null = general line (shop supplies, diagnosis)
+  description: string;
+  parts: number;             // dollars
+  labor: number;             // dollars
+}
+
 export interface Dtc { code: string; description: string; compKey: CompKey | null }
 
 export interface Inspection {
@@ -173,4 +185,7 @@ export interface Inspection {
   notes: PointNote[];
   extraComponents: CompKey[]; // on-demand components added by the tech (e.g. a warning lamp)
   customerApprovals: CompKey[];
+  estimate: EstimateLine[];
+  /** Secret token for the customer's report link (server-issued). */
+  reportToken?: string | null;
 }

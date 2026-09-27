@@ -76,6 +76,13 @@ SHOP = [
     ("Under Car", "REAR DIFFERENTIAL", [("differential_fluid", ["rear"], "Yes", "rear differential"), ("differential_housing", ["rear"], "No", "rear differential")], None),
     ("Under Car", "LR TIRE", [("tire", ["left_rear"], "Yes", A), ("wheel", ["left_rear"], "No", A), ("tire_valve_stem", ["left_rear"], "No", A)], None),
     ("Under Car", "RR TIRE", [("tire", ["right_rear"], "Yes", A), ("wheel", ["right_rear"], "No", A), ("tire_valve_stem", ["right_rear"], "No", A)], None),
+    # Added by Wrynch (not on the shop's paper MPI): applies only to electrified vehicles, so it never shows on a gas car.
+    ("EV / Hybrid", "HIGH-VOLTAGE BATTERY", [("high_voltage_battery_pack", N, "Yes", "EV/PHEV/HEV")],
+     "Visual from a safe distance plus scan-tool state of health. Never open or probe high-voltage parts during an MPI."),
+    ("EV / Hybrid", "HIGH-VOLTAGE CABLES", [("high_voltage_cable", N, "Yes", "EV/PHEV/HEV")], "Orange cabling: visual only."),
+    ("EV / Hybrid", "CHARGE PORT", [("charge_port_inlet", [p], "Yes", "charge port " + p.replace("_", " ")) for p in ("left_front", "right_front", "left_rear", "right_rear", "front", "rear")]
+     + [("charge_port_door", N, "No", "BEV/PHEV")], "The vehicle setup records where the charge port is; only that position applies."),
+    ("EV / Hybrid", "ELECTRIC DRIVE UNITS", [("electric_drive_unit", ["front"], "Yes", "BEV front motor"), ("electric_drive_unit", ["rear"], "Yes", "BEV rear motor")], None),
 ]
 
 SHOP_POINTS, SHOP_MAP = [], []

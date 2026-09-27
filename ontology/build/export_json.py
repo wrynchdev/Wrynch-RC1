@@ -63,6 +63,8 @@ COND = {
     "engine has timing chain": "timingChain", "fog lamps when equipped": "fogLamps",
     "rear wiper equipped": "rearWiper", "cabin filter equipped": "cabinFilter",
     "serviceable fuel filter": "fuelFilter",
+    "EV/PHEV/HEV": "electrified", "BEV/PHEV": "plugIn", "BEV front motor": "evFrontMotor", "BEV rear motor": "evRearMotor",
+    **{"charge port " + p.replace("_", " "): "chargePort:" + p for p in ("left_front", "right_front", "left_rear", "right_rear", "front", "rear")},
     "one instance per lit lamp": "onDemand", "when a thermostat code/symptom is present": "onDemand",
 }
 
@@ -129,7 +131,7 @@ for pid, sec, name, n, note in SHOP_POINTS:
     seen[sec]["points"].append({"id": pid, "name": nice(name),
                                 "note": note, "components": comps})
 
-data = {"version": "1.2.0", "classes": classes, "checks": checks, "findings": findings,
+data = {"version": "1.3.0", "classes": classes, "checks": checks, "findings": findings,
         "template": {"id": "shop-mpi", "name": "Shop MPI", "sections": sections}}
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 with open(OUT, "w") as f:

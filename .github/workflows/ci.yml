@@ -14,15 +14,17 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install openpyxl
-      - name: Ontology JSON is in sync with the source
+      - name: Generated catalog files match the ontology source
         run: |
-          python3 ontology/build/export_json.py
-          git diff --exit-code src/data/ontology.json
+          npm run ontology
+          git diff --exit-code src/data/ontology.json supabase/migrations/
       - run: npm install
       - run: npm run typecheck
       - run: npm test
+      - name: Database rules
+        run: npm run test:db
       - run: npm run build
-      - name: Database schema loads
+      - name: Browser test of the connected app
         run: |
-          sudo systemctl start postgresql
-          sudo -u postgres psql -v ON_ERROR_STOP=1 -q -f db/schema.sql
+          npx playwright install --with-deps chromium
+          npm run e2e

@@ -6,52 +6,68 @@ import {
 import { completionGate, componentState, findingRating, isPendingAi, summarize } from '../domain/rating';
 import type { CompKey, Finding, Inspection, Media, NotInspectedReason, Rating, Severity, Vehicle, VehicleConfig } from '../domain/types';
 import { SEVERITIES } from '../domain/types';
-import { actions, useStore } from '../state/store';
+import { actions, isLive, jobList, photoSrc, useStore } from '../state/store';
 import { AiChip, fmtDate, fmtMi, Icon, Sheet, StateChip, Tile, TopBar } from './kit';
-import { enc, go, pointStatus, useInspection } from './hooks';
+import { enc, go, pointStatus, useInspection, useVehicleHistory } from './hooks';
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const vname = (v: Vehicle) => `${v.year} ${v.make} ${v.model} ${v.trim}`;
 const compHref = (inspId: string, key: CompKey, pointId?: string) => `#/insp/${inspId}/c/${enc(key)}${pointId ? `/${pointId}` : ''}`;
 
 export function Missing() {
-  return <div className="phone"><TopBar title="Not found" back="#/" /><div className="body"><p>That page doesn't exist in this demo.</p></div></div>;
+  const loading = useStore((x) => x.loading > 0);
+  if (loading) return <div className="phone"><div className="body"><p className="muted" role="status">Loading…</p></div></div>;
+  return <div className="phone"><TopBar title="Not found" back="#/" /><div className="body"><p>That page doesn't exist, or you don't have access to it.</p></div></div>;
+}
+
+/** Stages with something to do on this vehicle (the EV stage disappears on a gas car). */
+export function visibleSections(vehicle: Vehicle) {
+  return sections().filter((s) => s.points.some((p) => p.components.length === 0 || pointComponents(p, vehicle.config).some((c) => c.applies)));
 }
 
 // ------------------------------------------------------------------ Jobs
+const STATUS_LABEL = { not_started: 'Ready to inspect', in_progress: 'In progress', submitted: 'With advisor', sent: 'Sent to customer' } as const;
 export function Jobs() {
   const s = useStore((x) => x);
-  const today = s.inspections.filter((i) => i.date === '2026-09-26');
+  const today = new Date().toISOString().slice(0, 10);
+  const all = jobList(s);
+  const jobs = s.mode === 'demo'
+    ? all.filter((j) => j.date === '2026-09-26' || j.date === today)
+    : all.filter((j) => j.status !== 'sent' || j.date === today);
+  const name = s.workspace?.me?.name ?? 'Marcus T.';
   return (
     <div className="phone">
       <div className="body">
         <div className="row between" style={{ alignItems: 'baseline' }}>
           <h1 className="display" style={{ margin: 0, fontSize: 36 }}>Today</h1>
-          <span className="muted">Marcus T.</span>
+          <span className="muted">{name}</span>
         </div>
-        {today.map((i) => {
-          const v = s.vehicles.find((x) => x.id === i.vehicleId)!;
-          const sum = summarize(i, v);
-          const pending = completionGate(i, v).filter((g) => g.kind !== 'required').length;
-          const rated = sum.total - sum.unrated;
-          const href = i.status === 'not_started' ? `#/setup/${i.id}` : i.status === 'in_progress' ? `#/insp/${i.id}` : `#/advisor/${i.id}`;
+        <a className="btn primary" href="#/new"><Icon name="plus" />New inspection</a>
+        {jobs.length === 0 && <div className="card pad muted">No open inspections. Start one with the button above.</div>}
+        {jobs.map((j) => {
+          const v = j.vehicle;
+          const href = j.status === 'not_started' ? `#/setup/${j.id}` : j.status === 'in_progress' ? `#/insp/${j.id}` : `#/advisor/${j.id}`;
           return (
-            <a key={i.id} className="card pad stack" href={href} style={{ color: 'inherit' }}>
+            <a key={j.id} className="card pad stack" href={href} style={{ color: 'inherit' }}>
               <div className="row between">
-                <span className="mono small muted">RO {i.ro}</span>
-                <span className={`chip ${i.status === 'in_progress' ? 'na' : 'ok'}`} style={i.status === 'not_started' ? { background: 'var(--blue-tint)', color: 'var(--blue)' } : undefined}>
-                  {i.status === 'not_started' ? 'Ready to inspect' : i.status === 'in_progress' ? 'In progress' : i.status === 'submitted' ? 'With advisor' : 'Sent to customer'}
+                <span className="mono small muted">{j.ro ? `RO ${j.ro}` : fmtDate(j.date)}</span>
+                <span className={`chip ${j.status === 'in_progress' ? 'na' : 'ok'}`} style={j.status === 'not_started' ? { background: 'var(--blue-tint)', color: 'var(--blue)' } : undefined}>
+                  {STATUS_LABEL[j.status]}
                 </span>
               </div>
               <div>
                 <div style={{ fontSize: 20, fontWeight: 700 }}>{vname(v)}</div>
-                <div className="small muted">{fmtMi(i.odometer)} · {v.customer}</div>
+                <div className="small muted">{fmtMi(j.odometer)}{v.customer ? ` · ${v.customer}` : ''}{j.technician ? ` · ${j.technician}` : ''}</div>
               </div>
-              {i.concerns.length > 0 && <div className="small">Concern: {i.concerns.join(', ')}</div>}
-              {i.status === 'in_progress' && (
-                <div className="row"><div className="bar grow"><div style={{ width: `${Math.round((rated / sum.total) * 100)}%` }} /></div><span className="small muted">{rated} of {sum.total} parts</span></div>
+              {j.concerns.length > 0 && <div className="small">Concern: {j.concerns.join(', ')}</div>}
+              {j.summary && j.status !== 'not_started' && (
+                <div className="row small" style={{ gap: 12 }}>
+                  <span style={{ color: 'var(--imm)', fontWeight: 700 }}>{j.summary.immediate} immediate</span>
+                  <span style={{ color: 'var(--mon)', fontWeight: 700 }}>{j.summary.monitor} monitor</span>
+                  {s.mode === 'demo' && j.status === 'in_progress' && <span className="muted">{j.summary.total - j.summary.unrated} of {j.summary.total} parts rated</span>}
+                </div>
               )}
-              {pending > 0 && <AiChip>{pending} AI items to review</AiChip>}
+              {j.pendingAi > 0 && <AiChip>{j.pendingAi} AI items to review</AiChip>}
             </a>
           );
         })}
@@ -62,25 +78,38 @@ export function Jobs() {
 }
 
 // ------------------------------------------------------------------ Setup
-const CONFIG_ROWS: { key: keyof VehicleConfig; label: string; options: [string, string][] }[] = [
+const CONFIG_ROWS: { key: keyof VehicleConfig; label: string; options: [string, string][]; show?: (c: VehicleConfig) => boolean }[] = [
+  { key: 'powertrain', label: 'Powertrain', options: [['gasoline', 'Gas'], ['diesel', 'Diesel'], ['hybrid', 'Hybrid'], ['plug_in_hybrid', 'Plug-in'], ['ev', 'EV']] },
+  { key: 'chargePort', label: 'Charge port', options: [['left_front', 'LF'], ['right_front', 'RF'], ['left_rear', 'LR'], ['right_rear', 'RR'], ['front', 'Front'], ['rear', 'Rear']],
+    show: (c) => c.powertrain === 'ev' || c.powertrain === 'plug_in_hybrid' },
   { key: 'drivetrain', label: 'Drivetrain', options: [['fwd', 'FWD'], ['rwd', 'RWD'], ['awd', 'AWD'], ['4wd', '4WD']] },
+  { key: 'transmission', label: 'Transmission', options: [['automatic', 'Auto'], ['manual', 'Manual']], show: (c) => c.powertrain !== 'ev' },
   { key: 'rearBrakes', label: 'Rear brakes', options: [['disc', 'Disc'], ['drum', 'Drum']] },
   { key: 'steering', label: 'Steering', options: [['rack', 'Rack'], ['recirc', 'Gearbox'], ['parallelogram', 'Linkage']] },
   { key: 'frontSuspension', label: 'Front suspension', options: [['strut', 'Struts'], ['shock', 'Shocks']] },
+  { key: 'rearSuspension', label: 'Rear suspension', options: [['shock', 'Shocks'], ['strut', 'Struts']] },
   { key: 'rearSprings', label: 'Rear springs', options: [['coil', 'Coil'], ['leaf', 'Leaf']] },
-  { key: 'transmission', label: 'Transmission', options: [['automatic', 'Auto'], ['manual', 'Manual']] },
-  { key: 'timing', label: 'Timing', options: [['belt', 'Belt'], ['chain', 'Chain']] },
+  { key: 'timing', label: 'Timing', options: [['belt', 'Belt'], ['chain', 'Chain'], ['none', 'None']], show: (c) => c.powertrain !== 'ev' },
+];
+const CONFIG_FLAGS: [keyof VehicleConfig, string][] = [
+  ['frontCvAxles', 'Front CV axles'], ['independentRearDrive', 'Rear CV axles'], ['frontDiff', 'Front differential'], ['rearDiff', 'Rear differential'],
+  ['transferCase', 'Transfer case'], ['twoPieceDriveshaft', 'Two-piece driveshaft'], ['solidAxle', 'Solid rear axle'],
+  ['hydraulicSteering', 'Hydraulic power steering'], ['fogLamps', 'Fog lamps'], ['rearWiper', 'Rear wiper'], ['cabinFilter', 'Cabin air filter'],
+  ['fuelFilter', 'Serviceable fuel filter'],
 ];
 
 export function Setup({ id }: { id: string }) {
   const data = useInspection(id);
-  const [odo, setOdo] = useState<string>(data ? String(data.insp.odometer) : '');
+  const [odo, setOdo] = useState<string | null>(null);
   if (!data) return <Missing />;
   const { insp, vehicle } = data;
   const vc = vehicleComponents(vehicle.config, insp.extraComponents);
+  const locked = insp.status === 'submitted' || insp.status === 'sent';
+  const setCfg = (patch: Partial<VehicleConfig>) => actions.setConfig(id, vehicle.id, patch);
+  const pointCount = sections().reduce((a, x) => a + x.points.length, 0);
   return (
     <div className="phone">
-      <TopBar title="Set up vehicle" sub="Before the first photo" back="#/" right={<span className="mono small muted">RO {insp.ro}</span>} />
+      <TopBar title="Set up vehicle" sub="Before the first photo" back="#/" right={insp.ro ? <span className="mono small muted">RO {insp.ro}</span> : undefined} />
       <div className="body">
         <div className="card pad stack">
           <span className="small muted">VIN</span>
@@ -91,34 +120,46 @@ export function Setup({ id }: { id: string }) {
         <div className="card pad field">
           <label htmlFor="odo">Odometer (mi)</label>
           <div className="row">
-            <input id="odo" className="input mono" inputMode="numeric" value={odo} onChange={(e) => setOdo(e.target.value.replace(/[^\d]/g, ''))} />
-            <button className="btn sm secondary" onClick={() => actions.setOdometer(id, Number(odo) || insp.odometer)}>Save</button>
+            <input id="odo" className="input mono" inputMode="numeric" value={odo ?? String(insp.odometer || '')} disabled={locked}
+              onChange={(e) => setOdo(e.target.value.replace(/[^\d]/g, ''))} />
+            <button className="btn sm secondary" disabled={locked || odo === null} onClick={() => { actions.setOdometer(id, Number(odo) || 0); setOdo(null); }}>Save</button>
           </div>
         </div>
         <div>
           <h2 className="h2">What this vehicle has</h2>
-          <p className="small muted" style={{ margin: '2px 0 0' }}>Decides which parts each point checks. Parts that aren't on this car become N/A, never "missed".</p>
+          <p className="small muted" style={{ margin: '2px 0 0' }}>Decides which parts each point checks. Parts that aren't on this car become N/A, never "missed". Check anything the VIN couldn't tell us.</p>
         </div>
         <div className="card list">
-          {CONFIG_ROWS.map((r) => (
+          {CONFIG_ROWS.filter((r) => !r.show || r.show(vehicle.config)).map((r) => (
             <div key={r.key} className="item" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
               <span className="t">{r.label}</span>
               <div className="seg" role="group" aria-label={r.label}>
                 {r.options.map(([val, lab]) => (
-                  <button key={val} aria-pressed={vehicle.config[r.key] === val} onClick={() => actions.setConfig(vehicle.id, { [r.key]: val } as Partial<VehicleConfig>)}>{lab}</button>
+                  <button key={val} aria-pressed={(vehicle.config[r.key] ?? 'left_front') === val} disabled={locked} onClick={() => setCfg({ [r.key]: val } as Partial<VehicleConfig>)}>{lab}</button>
                 ))}
               </div>
             </div>
           ))}
         </div>
+        <fieldset className="card pad" style={{ margin: 0 }}>
+          <legend className="h2" style={{ fontSize: 15, padding: '0 4px' }}>Also on this vehicle</legend>
+          <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 4 }}>
+            {CONFIG_FLAGS.map(([k, label]) => (
+              <label key={k} className="row" style={{ minHeight: 44, cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!vehicle.config[k]} disabled={locked} onChange={(e) => setCfg({ [k]: e.target.checked } as Partial<VehicleConfig>)} style={{ width: 20, height: 20 }} />
+                {label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
         <div className="dark stack" style={{ gap: 4 }}>
-          <span className="small" style={{ color: '#B9BDC3' }}>{ONTOLOGY.template.name} · 34 points</span>
-          <span className="display" style={{ fontSize: 28 }}>{vc.applies.length} parts to rate on this {vehicle.model}</span>
+          <span className="small" style={{ color: '#B9BDC3' }}>{ONTOLOGY.template.name} · {pointCount} points</span>
+          <span className="display" style={{ fontSize: 28 }}>{vc.applies.length} parts to rate on this {vehicle.model || 'vehicle'}</span>
           <span className="small" style={{ color: '#D6D9DD' }}>{vc.na.length} don't apply to this configuration</span>
         </div>
       </div>
       <div className="footer">
-        <a className="btn primary block" href={`#/insp/${id}`} onClick={() => actions.start(id)}>Start inspection</a>
+        <a className="btn primary block" href={`#/insp/${id}`} onClick={() => { if (insp.status === 'not_started') actions.start(id); }}>{insp.status === 'not_started' ? 'Start inspection' : 'Back to inspection'}</a>
       </div>
     </div>
   );
@@ -132,12 +173,14 @@ export function Overview({ id }: { id: string }) {
   const sum = summarize(insp, vehicle);
   const gate = completionGate(insp, vehicle);
   const aiItems = gate.filter((g) => g.kind !== 'required').length;
-  const allPoints = sections().flatMap((s) => s.points);
+  const visible = visibleSections(vehicle);
+  const allPoints = visible.flatMap((s) => s.points);
   const pointsDone = allPoints.filter((p) => pointStatus(insp, vehicle, p.id).done).length;
   const locked = insp.status !== 'in_progress';
+  const isDemo = !isLive();
   return (
     <div className="phone">
-      <TopBar title={`${vehicle.year} ${vehicle.model} ${vehicle.trim}`} sub={`RO ${insp.ro} · ${fmtMi(insp.odometer)}`} back="#/"
+      <TopBar title={`${vehicle.year} ${vehicle.model} ${vehicle.trim}`.trim()} sub={`${insp.ro ? `RO ${insp.ro} · ` : ''}${fmtMi(insp.odometer)}`} back="#/"
         right={<a className="linkbtn" href={`#/setup/${id}`}>Vehicle</a>} />
       <div className="body">
         {locked && <div className="card pad row"><Icon name="lock" /><span className="grow">Submitted. Changes are locked.</span><a href={`#/advisor/${id}`}>Advisor view</a></div>}
@@ -153,7 +196,7 @@ export function Overview({ id }: { id: string }) {
           {insp.dtcs.length > 0 && <div className="small muted">Codes read: <span className="mono" style={{ color: 'var(--ink)' }}>{insp.dtcs.map((d) => d.code).join(' · ')}</span></div>}
         </div>
 
-        {sections().map((s) => {
+        {visible.map((s) => {
           const st = s.points.map((p) => ({ p, st: pointStatus(insp, vehicle, p.id) }));
           const done = st.filter((x) => x.st.done).length;
           const pend = st.reduce((a, x) => a + x.st.pendingFindings + x.st.pendingPhotos, 0)
@@ -181,7 +224,7 @@ export function Overview({ id }: { id: string }) {
                   <a className="btn primary grow" href={`#/insp/${id}/sort/${s.id}`}>Review photos</a>
                 </div>
               )}
-              {!locked && s.id === 'under_car' && !complete && (
+              {!locked && isDemo && s.id === 'under_car' && !complete && vehicle.id === 'v-4runner' && (
                 <div style={{ padding: '0 12px 12px' }}>
                   <button className="btn quiet block sm" onClick={() => actions.demoFillUnderCar(id)}>Demo: enter the shop's real under-car results</button>
                 </div>
@@ -207,10 +250,10 @@ export function Capture({ id, sectionId }: { id: string; sectionId: string }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const section = sections().find((s) => s.id === sectionId);
   if (!data || !section) return <Missing />;
-  const add = (files: { url: string; name: string }[]) => {
+  const add = (files: { url: string; name: string; file?: File }[]) => {
     if (!files.length) return;
-    actions.addPhotos(id, sectionId, files);
     go(`/insp/${id}/sort/${sectionId}`);
+    void actions.addPhotos(id, sectionId, files);
   };
   return (
     <div className="phone" style={{ background: '#0E0F11', color: 'var(--paper)' }}>
@@ -222,11 +265,11 @@ export function Capture({ id, sectionId }: { id: string; sectionId: string }) {
         <div className="dropzone" style={{ background: '#1A1C1F', borderColor: '#4A4E55', color: 'var(--paper)', minHeight: 300, justifyContent: 'center' }}>
           <Icon name="camera" size={40} />
           <strong style={{ fontSize: 18 }}>Shoot or pick every photo for this stage</strong>
-          <span className="small" style={{ color: '#B9BDC3', maxWidth: 320 }}>Wrynch sorts them onto parts for you. Nothing it suggests counts until you confirm.</span>
-          <input ref={fileRef} className="sr" id="files" type="file" accept="image/*" multiple capture="environment"
-            onChange={(e) => add([...(e.target.files ?? [])].map((f) => ({ url: URL.createObjectURL(f), name: f.name })))} />
+          <span className="small" style={{ color: '#B9BDC3', maxWidth: 320 }}>Shoot with your camera app, then pick them all here at once. Wrynch sorts them onto parts; nothing it suggests counts until you confirm.</span>
+          <input ref={fileRef} className="sr" id="files" type="file" accept="image/*" multiple
+            onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ''; void add(fs.map((f) => ({ url: URL.createObjectURL(f), name: f.name, file: f }))); }} />
           <label htmlFor="files" className="btn primary" style={{ cursor: 'pointer' }}>Take or choose photos</label>
-          <button className="btn sm" style={{ background: '#26292E', color: 'var(--paper)' }} onClick={() => add(actions.samplePhotos(sectionId, 12))}>No photos handy? Use 12 sample photos</button>
+          {!isLive() && <button className="btn sm" style={{ background: '#26292E', color: 'var(--paper)' }} onClick={() => add(actions.samplePhotos(sectionId, 12))}>No photos handy? Use 12 sample photos</button>}
         </div>
         <div className="small" style={{ color: '#B9BDC3' }}>What to capture in {section.name.toLowerCase()}:</div>
         <ul className="small" style={{ color: '#D6D9DD', margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
@@ -270,7 +313,7 @@ export function Sort({ id, sectionId }: { id: string; sectionId: string }) {
             <h2 className="h2">Needs you · {needs.length}</h2>
             {needs.map((m) => (
               <div key={m.id} className="card row" style={{ padding: 10 }}>
-                <img src={m.url} alt="" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8 }} />
+                <img src={photoSrc(m.url)} alt="" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8 }} />
                 <div className="grow"><div className="t" style={{ fontWeight: 600 }}>AI unsure</div><div className="small muted">{m.aiGuess ? `Best guess: ${compLabel(m.aiGuess.compKey, true)} (${Math.round((m.confidence ?? 0) * 100)}%)` : 'No part found'}</div></div>
                 <button className="btn sm secondary" onClick={() => setPlacing(m.id)}>Place</button>
                 <button className="btn sm quiet" onClick={() => actions.excludePhoto(id, m.id)}>Exclude</button>
@@ -284,7 +327,7 @@ export function Sort({ id, sectionId }: { id: string; sectionId: string }) {
             <div className="thumbs">
               {items.map((m) => (
                 <button key={m.id} className={`thumb${m.status === 'ai_proposed' ? ' pending' : ''}`} onClick={() => setPlacing(m.id)} aria-label={`Photo on ${m.compKey ? compLabel(m.compKey) : 'no part'}. Tap to move.`}>
-                  <img src={m.url} alt="" />
+                  <img src={photoSrc(m.url)} alt="" />
                   <span className="t">{m.compKey ? compLabel(m.compKey, true) : '—'}</span>
                   <span className="c" style={m.status === 'ai_proposed' ? undefined : { color: 'var(--ok)' }}>
                     {m.status === 'ai_proposed' ? `${Math.round((m.confidence ?? 0) * 100)}% sure` : m.status === 'reassigned' ? 'Moved by you' : 'Confirmed'}
@@ -316,7 +359,7 @@ function PlaceSheet({ insp, vehicle, media, sectionId, onClose }: { insp: Inspec
   const keyInPoint = key && comps.some((c) => c.key === key) ? key : null;
   return (
     <Sheet title="Place photo" onClose={onClose}>
-      <img src={media.url} alt="" style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 12 }} />
+      <img src={photoSrc(media.url)} alt="" style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 12 }} />
       {media.aiGuess && <AiChip>AI guessed: {compLabel(media.aiGuess.compKey, true)} · {Math.round((media.confidence ?? 0) * 100)}%</AiChip>}
       <div className="field">
         <label htmlFor="pt">Point</label>
@@ -424,7 +467,7 @@ export function PointView({ id, pointId }: { id: string; pointId: string }) {
             <div className="thumbs">
               {photos.map((m) => (
                 <a key={m.id} className={`thumb${m.status === 'ai_proposed' ? ' pending' : ''}`} href={m.compKey ? compHref(id, m.compKey, pointId) : `#/insp/${id}/sort/${section.id}`}>
-                  <img src={m.url} alt={m.compKey ? compLabel(m.compKey) : 'Unplaced photo'} />
+                  <img src={photoSrc(m.url)} alt={m.compKey ? compLabel(m.compKey) : 'Unplaced photo'} />
                   <span className="t">{m.compKey ? compLabel(m.compKey, true) : '—'}</span>
                 </a>
               ))}
@@ -433,6 +476,7 @@ export function PointView({ id, pointId }: { id: string; pointId: string }) {
         )}
         <section className="card pad stack">
           <label className="label" htmlFor="note">Your note</label>
+          <span className="small muted" style={{ marginTop: -6 }}>The customer sees this note as written, unless you approve a reworded version.</span>
           <textarea id="note" className="input" rows={2} value={noteText} disabled={locked}
             onChange={(e) => setNote(e.target.value)} onBlur={() => note !== null && actions.setNote(id, pointId, note)} />
           {!locked && noteText.trim() && (
@@ -490,7 +534,7 @@ export function ComponentView({ id, compKeyEnc, pointId }: { id: string; compKey
         {photos.length > 0 && (
           <div className="thumbs">{photos.map((m) => (
             <figure key={m.id} className={`thumb${m.status === 'ai_proposed' ? ' pending' : ''}`} style={{ margin: 0 }}>
-              <img src={m.url} alt={`Photo of ${compLabel(key)}`} />
+              <img src={photoSrc(m.url)} alt={`Photo of ${compLabel(key)}`} />
               <label className="small row" style={{ gap: 6 }}>
                 <input type="checkbox" checked={m.customerVisible} disabled={locked} onChange={(e) => actions.setPhotoCustomerVisible(id, m.id, e.target.checked)} />Customer sees
               </label>
@@ -572,7 +616,7 @@ function AiFindingCard({ insp, f, locked }: { insp: Inspection; f: Finding; lock
   return (
     <div className="ai-card stack">
       <div className="row between"><span className="row" style={{ gap: 6, fontWeight: 700, color: 'var(--ai)' }}><Icon name="ai" />AI suggests</span>{f.confidence !== null && <span className="small muted">{Math.round(f.confidence * 100)}% sure</span>}</div>
-      {media && <img src={media.url} alt="Photo the suggestion came from" style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 10 }} />}
+      {media && <img src={photoSrc(media.url)} alt="Photo the suggestion came from" style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 10 }} />}
       <div className="grid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
         <div><div className="small muted">Finding</div><strong>{findingLabel(edit ? key : f.key)}</strong></div>
         <div><div className="small muted">Severity</div><strong>{cap(edit ? sev : f.severity)}</strong></div>
@@ -753,7 +797,7 @@ export function Finish({ id }: { id: string }) {
       </div>
       <div className="footer">
         {insp.status === 'in_progress' ? (
-          <button className="btn primary block" disabled={gate.length > 0} onClick={() => { if (actions.submit(id)) go(`/advisor/${id}`); }}>
+          <button className="btn primary block" disabled={gate.length > 0} onClick={async () => { if (await actions.submit(id)) go(`/advisor/${id}`); }}>
             {gate.length ? <><Icon name="lock" />Send to advisor</> : 'Send to advisor'}
           </button>
         ) : <a className="btn primary block" href={`#/advisor/${id}`}>Open advisor view</a>}
@@ -765,6 +809,7 @@ export function Finish({ id }: { id: string }) {
 // ------------------------------------------------------------------ Part history
 export function History({ vehicleId, compKeyEnc }: { vehicleId: string; compKeyEnc: string }) {
   const s = useStore((x) => x);
+  useVehicleHistory(vehicleId);
   const key = decodeURIComponent(compKeyEnc);
   const v = s.vehicles.find((x) => x.id === vehicleId);
   if (!v) return <Missing />;

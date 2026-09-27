@@ -1,9 +1,24 @@
 import raw from '../data/ontology.json';
 import type {
-  CompKey, Condition, Ontology, OntologyClass, TemplatePoint, TemplateSection, VehicleConfig,
+  Check, CompKey, Condition, Ontology, OntologyClass, Op, Template, TemplatePoint, TemplateSection, VehicleConfig,
 } from './types';
 
 export const ONTOLOGY = raw as unknown as Ontology;
+/** The catalog default, before any shop edits. */
+export const DEFAULT_TEMPLATE: Template = structuredClone(ONTOLOGY.template);
+const DEFAULT_AUTO = Object.fromEntries(Object.values(ONTOLOGY.checks).map((c) => [c.key, c.auto]));
+
+/** Install the signed-in shop's template (the demo keeps the default). */
+export function setTemplate(t: Template) { ONTOLOGY.template = t; }
+export function currentTemplate(): Template { return ONTOLOGY.template; }
+
+export interface Threshold { checkKey: string; ok: [Op, number]; immediate: [Op, number] | null }
+/** Install the shop's rating-rule overrides on top of the catalog defaults. */
+export function setThresholds(list: Threshold[]) {
+  for (const [k, auto] of Object.entries(DEFAULT_AUTO)) ONTOLOGY.checks[k].auto = auto;
+  for (const t of list) { const c: Check | undefined = ONTOLOGY.checks[t.checkKey]; if (c) c.auto = { ok: t.ok, immediate: t.immediate }; }
+}
+export function defaultThreshold(checkKey: string) { return DEFAULT_AUTO[checkKey] ?? null; }
 
 const byId = new Map<number, OntologyClass>(ONTOLOGY.classes.map((c) => [c.id, c]));
 const byName = new Map<string, OntologyClass>(ONTOLOGY.classes.map((c) => [c.name, c]));
@@ -47,7 +62,11 @@ export const CONDITIONS: Record<Condition, (c: VehicleConfig) => boolean> = {
   always: () => true,
   onDemand: () => false,
   combustion: (c) => c.powertrain !== 'ev',
-  gasoline: (c) => c.powertrain === 'gasoline' || c.powertrain === 'hybrid',
+  gasoline: (c) => c.powertrain === 'gasoline' || c.powertrain === 'hybrid' || c.powertrain === 'plug_in_hybrid',
+  electrified: (c) => c.powertrain === 'hybrid' || c.powertrain === 'plug_in_hybrid' || c.powertrain === 'ev',
+  plugIn: (c) => c.powertrain === 'plug_in_hybrid' || c.powertrain === 'ev',
+  evFrontMotor: (c) => c.powertrain === 'ev' && c.drivetrain !== 'rwd',
+  evRearMotor: (c) => c.powertrain === 'ev' && c.drivetrain !== 'fwd',
   rearDisc: (c) => c.rearBrakes === 'disc',
   rearDrum: (c) => c.rearBrakes === 'drum',
   rack: (c) => c.steering === 'rack',
@@ -79,6 +98,9 @@ export const CONDITIONS: Record<Condition, (c: VehicleConfig) => boolean> = {
 };
 
 export function applies(when: Condition, config: VehicleConfig): boolean {
+  if (when.startsWith('chargePort:')) {
+    return (config.powertrain === 'ev' || config.powertrain === 'plug_in_hybrid') && (config.chargePort ?? 'left_front') === when.slice(11);
+  }
   const p = CONDITIONS[when];
   if (!p) throw new Error(`Unknown condition ${when}`);
   return p(config);
