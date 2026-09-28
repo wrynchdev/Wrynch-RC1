@@ -37,7 +37,7 @@ const id = (p: string) => `${p}-${++n}`;
 
 function blank(o: Partial<Inspection> & Pick<Inspection, 'id' | 'ro' | 'vehicleId' | 'odometer' | 'date'>): Inspection {
   return {
-    technician: 'Marcus T.', status: 'in_progress', concerns: [], dtcs: [], results: [], findings: [], media: [],
+    technician: 'Marcus T.', status: 'in_progress', concerns: [], dtcs: [], results: [], findings: [], media: [], observations: [],
     statuses: [], notes: [], extraComponents: [], customerApprovals: [], estimate: [], ...o,
   };
 }

@@ -1,8 +1,8 @@
 // Stand-in for the vision model. Deterministic so demos and tests are repeatable.
-// Swap `sortPhotos` / `suggestWording` for real model calls later; the rest of the app only
+// Swap `analyzePhotos` / `suggestWording` for real model calls later; the rest of the app only
 // ever sees AI output as *pending* proposals that a technician must confirm (rules R4, R10–R12).
 import { cls, compKey, parseKey, pointComponents, sections } from './ontology';
-import type { Finding, Media, Severity, VehicleConfig, CompKey, PointNote, Template } from './types';
+import type { AiObservation, Finding, Media, Severity, VehicleConfig, CompKey, PointNote, Template } from './types';
 
 function hash(s: string): number {
   let h = 2166136261;
@@ -23,50 +23,81 @@ const FAVOURITES: Record<string, [string, Severity][]> = {
   coil_spring: [['rust', 'minor']],
 };
 
-export interface SortResult { media: Media[]; findings: Finding[] }
+/** What the AI reports for one photo: every part it can see and the condition of each. Same shape from Claude or the stand-in. */
+export interface PartReading {
+  key: CompKey;
+  confidence: number;
+  condition: 'looks_ok' | 'concern' | 'unclear';
+  note: string;
+  findings: { key: string; severity: Severity; confidence: number; rationale: string }[];
+}
+export interface PhotoAnalysis { mediaId: string; parts: PartReading[] }
 
-/** Place each photo on a component in the section and maybe propose a finding. */
-export function sortPhotos(
-  sectionId: string, files: { id: string; url: string; name: string }[], config: VehicleConfig, now: string, template?: Template,
-): SortResult {
+/** Parts a photo from this stage could show on this vehicle (photo-capable parts only). */
+export function stageTargets(sectionId: string, config: VehicleConfig, template?: Template): CompKey[] {
   const section = (template ? template.sections : sections()).find((s) => s.id === sectionId);
   if (!section) throw new Error(`Unknown section ${sectionId}`);
-  const targets: { pointId: string; key: CompKey }[] = [];
+  const out: CompKey[] = [];
   for (const p of section.points) {
     for (const c of pointComponents(p, config)) {
-      if (c.applies && cls(parseKey(c.key).classId).aiPhoto !== 'no') targets.push({ pointId: p.id, key: c.key });
+      if (c.applies && !out.includes(c.key) && cls(parseKey(c.key).classId).aiPhoto !== 'no') out.push(c.key);
     }
   }
-  const media: Media[] = [];
-  const findings: Finding[] = [];
-  files.forEach((f, i) => {
+  return out;
+}
+
+/**
+ * Deterministic stand-in for the vision model: each photo "shows" one to three neighbouring parts at the same
+ * position, most look OK, some get a typical finding, and about one in six can't be identified.
+ */
+export function analyzePhotos(sectionId: string, files: { id: string; name: string }[], config: VehicleConfig, template?: Template): PhotoAnalysis[] {
+  const targets = stageTargets(sectionId, config, template);
+  return files.map((f, i) => {
     const h = hash(`${f.name}:${i}`);
-    const t = targets[(i * 7 + (h % 3)) % Math.max(1, targets.length)];
     const confidence = 0.5 + ((h >>> 3) % 50) / 100; // 0.50–0.99
-    const unsure = !t || confidence < 0.58; // roughly 1 in 6 photos waits for the tech
-    media.push({
-      id: f.id, sectionId, url: f.url, label: f.name,
-      pointId: unsure ? null : t.pointId, compKey: unsure ? null : t.key,
-      status: unsure ? 'unassigned' : 'ai_proposed', confidence: Math.round(confidence * 100) / 100,
-      aiGuess: t ? { pointId: t.pointId, compKey: t.key } : null,
-      history: [{ at: now, status: unsure ? 'unassigned' : 'ai_proposed', compKey: unsure ? null : t.key }],
-      customerVisible: true,
+    if (!targets.length || confidence < 0.58) return { mediaId: f.id, parts: [] };
+    const first = targets[(i * 7 + (h % 3)) % targets.length];
+    const pos = parseKey(first).position;
+    const nearby = targets.filter((k) => k !== first && parseKey(k).position === pos).slice(0, h % 3);
+    const parts = [first, ...nearby].map((key, j): PartReading => {
+      const favs = FAVOURITES[cls(parseKey(key).classId).name];
+      const concern = !!favs && (h >> j) % 3 === 0;
+      const fav = favs?.[(h >> j) % favs.length];
+      const allowed = fav && cls(parseKey(key).classId).findings[fav[0]];
+      return {
+        key, confidence: Math.round((confidence - j * 0.05) * 100) / 100,
+        condition: concern && allowed ? 'concern' : 'looks_ok',
+        note: concern && allowed ? 'Stand-in model: confirm against the part itself.' : 'No visible damage, leaks or wear in the photo (stand-in model).',
+        findings: concern && allowed ? [{ key: fav![0], severity: fav![1], confidence: Math.round((0.7 + (h % 25) / 100) * 100) / 100,
+          rationale: `Suggested from photo "${f.name}". Stand-in model: confirm against the part itself.` }] : [],
+      };
     });
-    if (unsure) return;
-    const favs = FAVOURITES[cls(parseKey(t.key).classId).name];
-    if (favs && h % 3 === 0 && !findings.some((x) => x.compKey === t.key)) {
-      const [key, severity] = favs[h % favs.length];
-      if (cls(parseKey(t.key).classId).findings[key]) {
-        findings.push({
-          id: `ai-${f.id}`, compKey: t.key, key, severity, source: 'ai', status: 'pending',
-          confidence: Math.round((0.7 + (h % 25) / 100) * 100) / 100,
-          rationale: `Suggested from photo "${f.name}". Stub model: confirm against the part itself.`,
-          mediaId: f.id, reviewedAt: null, aiOriginal: { key, severity },
-        });
+    return { mediaId: f.id, parts };
+  });
+}
+
+/**
+ * Store an analysis as pending suggestions (demo mode; the server does the same in ai_record_sort).
+ * Links start ai_proposed, "looks OK" becomes a pending observation, problems become pending findings.
+ */
+export function applyAnalysis(insp: { media: Media[]; findings: Finding[]; observations: AiObservation[] }, analyses: PhotoAnalysis[]) {
+  for (const a of analyses) {
+    const m = insp.media.find((x) => x.id === a.mediaId);
+    if (!m || m.excluded || m.analyzed || m.links.length) continue;
+    m.analyzed = true;
+    for (const p of a.parts) {
+      if (m.links.some((l) => l.compKey === p.key)) continue;
+      m.links.push({ compKey: p.key, status: 'ai_proposed', confidence: p.confidence });
+      if (p.condition === 'looks_ok') {
+        insp.observations.push({ id: `obs-${a.mediaId}-${p.key}`, mediaId: a.mediaId, compKey: p.key, verdict: 'looks_ok', note: p.note, confidence: p.confidence, status: 'pending' });
+      }
+      for (const f of p.findings) {
+        if (!cls(parseKey(p.key).classId).findings[f.key]) continue;
+        insp.findings.push({ id: `ai-${a.mediaId}-${p.key}-${f.key}`, compKey: p.key, key: f.key, severity: f.severity, source: 'ai', status: 'pending',
+          confidence: f.confidence, rationale: f.rationale, mediaId: a.mediaId, reviewedAt: null, aiOriginal: { key: f.key, severity: f.severity } });
       }
     }
-  });
-  return { media, findings };
+  }
 }
 
 const ABBR: [RegExp, string][] = [

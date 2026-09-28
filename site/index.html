@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wrynch · Every inspection, down to the part</title>
+  <meta name="description" content="Digital vehicle inspection for independent shops. Wrynch rates every part behind your multi-point inspection, keeps its history, and lets AI read your photos while your tech makes the call.">
+  <meta name="theme-color" content="#15171A">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2l12 7v14l-12 7-12-7V9z' fill='%2315171A'/%3E%3Ccircle cx='16' cy='16' r='5.5' fill='none' stroke='%23F4F2ED' stroke-width='3'/%3E%3C/svg%3E">
+  <script>
+    // Links into the app used to live at the root (#/r/…, #/join/…, email sign-in links). Send them to /app.
+    (function () {
+      function forward() {
+        var h = location.hash;
+        if (h && (h.indexOf('#/') === 0 || /access_token=|error_description=|type=recovery/.test(h))) location.replace('/app/' + h);
+      }
+      forward();
+      window.addEventListener('hashchange', forward);
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --paper: #F4F2ED; --paper2: #EAE7DF; --card: #FFFFFF; --ink: #15171A; --text2: #474B52; --muted: #6E727A; --line: #D9D5CB;
+      --blue: #1D44C4; --blue-soft: #E5EAFA; --ok: #1E7A45; --ok-soft: #E1F1E7; --mon: #A86200; --mon-soft: #FBEFD9; --imm: #B42318; --imm-soft: #FBE3E0;
+      --ai: #6B3FD4; --ai-soft: #EFE9FC;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 17px/1.55 Barlow, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: inherit; }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+    .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+    .eyebrow { font: 500 13px/1 'IBM Plex Mono', monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--blue); margin: 0 0 14px; }
+    h1, h2, h3 { font-family: 'Barlow Condensed', Barlow, sans-serif; font-weight: 700; letter-spacing: -.01em; margin: 0; line-height: 1.02; }
+    h1 { font-size: clamp(44px, 7vw, 84px); }
+    h2 { font-size: clamp(34px, 4.6vw, 56px); }
+    h3 { font-size: 26px; line-height: 1.1; }
+    p { margin: 0; }
+    .lead { font-size: clamp(18px, 1.6vw, 21px); color: var(--text2); max-width: 40em; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 22px; border-radius: 10px; font: 600 17px Barlow, sans-serif; text-decoration: none; border: 2px solid transparent; cursor: pointer; }
+    .btn.primary { background: var(--blue); color: #fff; }
+    .btn.primary:hover { background: #1738A3; }
+    .btn.ghost { border-color: var(--ink); }
+    .btn.ghost:hover { background: var(--ink); color: var(--paper); }
+    .btn:focus-visible, a:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+
+    header.top { position: sticky; top: 0; z-index: 10; background: rgba(244,242,237,.92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+    header.top .wrap { display: flex; align-items: center; gap: 28px; height: 68px; }
+    .logo { display: flex; align-items: center; gap: 10px; font: 700 22px 'Barlow Condensed', sans-serif; letter-spacing: .08em; text-decoration: none; }
+    nav.links { display: flex; gap: 24px; margin-left: auto; font-weight: 500; }
+    nav.links a { text-decoration: none; color: var(--text2); }
+    nav.links a:hover { color: var(--ink); }
+    header.top .actions { display: flex; gap: 10px; }
+    header.top .btn { min-height: 40px; padding: 0 16px; font-size: 16px; }
+
+    section { padding: 96px 0; }
+    section.tight { padding: 72px 0; }
+    .hero { padding: 72px 0 88px; }
+    .hero .grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: 56px; align-items: center; }
+    .hero .lead { margin: 24px 0 32px; }
+    .hero .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+    .hero .fine { margin-top: 16px; color: var(--muted); font-size: 15px; }
+
+    /* phone mock */
+    .phone { background: var(--card); border: 1px solid var(--line); border-radius: 28px; padding: 18px; box-shadow: 0 30px 60px -30px rgba(21,23,26,.35); max-width: 380px; margin-left: auto; }
+    .phone .bar { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+    .phone .bar strong { font: 700 20px 'Barlow Condensed', sans-serif; }
+    .phone .grp { font: 500 12px 'IBM Plex Mono', monospace; letter-spacing: .08em; color: var(--muted); margin: 14px 0 6px; }
+    .row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--paper); margin-bottom: 6px; font-size: 15px; }
+    .row .g { flex: 1; }
+    .row.ai { background: var(--ai-soft); border: 1.5px dashed var(--ai); }
+    .chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 99px; font: 600 13px Barlow, sans-serif; white-space: nowrap; }
+    .chip.ok { background: var(--ok-soft); color: var(--ok); }
+    .chip.mon { background: var(--mon-soft); color: var(--mon); }
+    .chip.imm { background: var(--imm-soft); color: var(--imm); }
+    .chip.ai { background: var(--ai); color: #fff; }
+    .spark { margin-top: 12px; padding: 12px; border-radius: 12px; background: var(--ink); color: var(--paper); font-size: 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+
+    .band { background: var(--card); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .dark { background: var(--ink); color: var(--paper); }
+    .dark .lead, .dark .muted { color: #B9BCC2; }
+    .dark .eyebrow { color: #8FA6F2; }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: start; }
+    .head { max-width: 760px; margin-bottom: 48px; }
+    .head .lead { margin-top: 18px; }
+
+    .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .panel { border: 1px solid var(--line); border-radius: 16px; padding: 24px; background: var(--paper); }
+    .panel .label { font: 500 12px 'IBM Plex Mono', monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+    .panel .old { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: 10px; background: var(--mon-soft); }
+    .panel .old .dot { width: 26px; height: 26px; border-radius: 50%; background: var(--mon); color: #fff; display: grid; place-items: center; font-weight: 700; flex: none; }
+    .panel .cap { margin-top: 14px; color: var(--text2); font-size: 15px; }
+
+    .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; counter-reset: s; }
+    .step { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 24px; }
+    .step .n { font: 500 14px 'IBM Plex Mono', monospace; color: var(--blue); }
+    .step h3 { margin: 10px 0 10px; }
+    .step p { color: var(--text2); font-size: 16px; }
+
+    .rules { list-style: none; margin: 28px 0 0; padding: 0; display: grid; gap: 14px; }
+    .rules li { display: flex; gap: 12px; }
+    .rules li::before { content: ''; flex: none; width: 10px; height: 10px; margin-top: 9px; background: #8FA6F2; transform: rotate(45deg); }
+    .gatecard { background: #22252A; border: 1px solid #353941; border-radius: 16px; padding: 22px; }
+    .gatecard .t { font: 700 22px 'Barlow Condensed', sans-serif; margin-bottom: 14px; }
+    .gatecard .r { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #353941; font-size: 15px; }
+    .gatecard .r small { color: #B9BCC2; display: block; }
+    .gatecard .lock { margin-top: 14px; padding: 12px; text-align: center; border-radius: 10px; background: #353941; color: #8A8E96; font-weight: 600; }
+
+    .tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
+    table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 16px; }
+    th, td { text-align: left; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+    th { font: 600 15px Barlow, sans-serif; background: var(--paper2); }
+    tr:last-child td { border-bottom: 0; }
+    td.mono { font-size: 14px; }
+    .note { margin-top: 14px; color: var(--muted); font-size: 14px; }
+
+    .chart { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 24px; }
+    .chart svg { width: 100%; height: auto; display: block; }
+    .bullets { list-style: none; padding: 0; margin: 24px 0 0; display: grid; gap: 12px; }
+    .bullets li { padding-left: 22px; position: relative; color: var(--text2); }
+    .bullets li::before { content: ''; position: absolute; left: 0; top: 10px; width: 8px; height: 8px; border-radius: 2px; background: var(--blue); }
+
+    .map { display: grid; grid-template-columns: 1fr auto 1fr; gap: 18px; align-items: center; }
+    .map .pt { padding: 14px 16px; border-radius: 10px; background: var(--paper); border: 1px solid var(--line); font: 500 14px 'IBM Plex Mono', monospace; margin-bottom: 8px; }
+    .map .pt.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .map .arrow { font-size: 28px; color: var(--muted); }
+    .map .parts { display: flex; flex-wrap: wrap; gap: 8px; }
+    .map .parts span { padding: 6px 10px; border-radius: 8px; background: var(--blue-soft); color: var(--blue); font-weight: 600; font-size: 14px; }
+
+    .faq { max-width: 820px; }
+    details { border-top: 1px solid var(--line); padding: 20px 0; }
+    details:last-child { border-bottom: 1px solid var(--line); }
+    summary { cursor: pointer; font-weight: 600; font-size: 19px; list-style: none; display: flex; justify-content: space-between; gap: 16px; }
+    summary::after { content: '+'; font: 500 22px 'IBM Plex Mono', monospace; color: var(--blue); }
+    details[open] summary::after { content: '–'; }
+    details p { margin-top: 12px; color: var(--text2); }
+
+    .final { text-align: center; }
+    .final .lead { margin: 18px auto 32px; }
+    .final .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .final .btn.ghost { border-color: var(--paper); color: var(--paper); }
+    .final .btn.ghost:hover { background: var(--paper); color: var(--ink); }
+    footer { padding: 32px 0; color: var(--muted); font-size: 14px; }
+    footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+
+    @media (max-width: 980px) {
+      nav.links { display: none; }
+      header.top .actions { margin-left: auto; }
+      .hero .grid, .two, .compare { grid-template-columns: 1fr; gap: 40px; }
+      .phone { margin: 0 auto; }
+      .steps { grid-template-columns: 1fr 1fr; }
+      section { padding: 72px 0; }
+    }
+    @media (max-width: 600px) {
+      body { font-size: 16px; }
+      .wrap { padding: 0 16px; }
+      header.top .btn.ghost { border: 0; padding: 0 8px; }
+      header.top .btn { padding: 0 12px; }
+      .logo { font-size: 19px; }
+      .steps { grid-template-columns: 1fr; }
+      .map { grid-template-columns: 1fr; }
+      .map .arrow { transform: rotate(90deg); justify-self: center; }
+      .hero { padding: 48px 0 64px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <a class="logo" href="/" aria-label="Wrynch home">
+        <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2l12 7v14l-12 7-12-7V9z" fill="#15171A"/><circle cx="16" cy="16" r="5.5" fill="none" stroke="#F4F2ED" stroke-width="3"/></svg>
+        WRYNCH
+      </a>
+      <nav class="links" aria-label="Page sections">
+        <a href="#how">How it works</a>
+        <a href="#ai">AI you control</a>
+        <a href="#history">Part history</a>
+        <a href="#faq">Questions</a>
+      </nav>
+      <div class="actions">
+        <a class="btn ghost" href="/app/">Sign in</a>
+        <a class="btn primary" href="/app/#/signup">Get started</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="wrap grid">
+        <div>
+          <p class="eyebrow">Digital vehicle inspection for independent shops</p>
+          <h1>Every inspection, down to the part.</h1>
+          <p class="lead">Wrynch turns your multi-point inspection into a history for every part on the car: the left front pad, the right rear shock, the battery. Techs shoot faster, advisors explain better, and customers see what changed since last time.</p>
+          <div class="cta">
+            <a class="btn primary" href="/app/#/signup">Create your shop</a>
+            <a class="btn ghost" href="#how">See how it works</a>
+          </div>
+          <p class="fine">Works with the inspection template you already use.</p>
+        </div>
+        <div class="phone" role="img" aria-label="Example: the brake inspection point broken into rated parts, with one AI suggestion waiting for the technician">
+          <div class="bar"><strong>Visual brake system condition</strong><span class="mono" style="font-size:12px;color:var(--muted)">UNDER CAR</span></div>
+          <div class="grp">LEFT FRONT</div>
+          <div class="row"><span class="g">Brake pad · 5.0 mm</span><span class="chip ok">● OK</span></div>
+          <div class="row"><span class="g">Brake rotor · grooved</span><span class="chip mon">▲ Monitor</span></div>
+          <div class="grp">RIGHT FRONT</div>
+          <div class="row"><span class="g">Brake pad · 5.0 mm</span><span class="chip ok">● OK</span></div>
+          <div class="row ai"><span class="g">Caliper · AI: looks OK</span><span class="chip ai">Confirm</span></div>
+          <div class="row ai"><span class="g">Rotor · AI: grooved?</span><span class="chip ai">Review</span></div>
+          <div class="spark"><span>Brake pad · left front<br><span class="mono" style="font-size:12px;color:#B9BCC2">9.5 → 5.0 mm over 4 visits</span></span>
+            <svg width="92" height="34" viewBox="0 0 92 34" aria-hidden="true"><polyline points="2,4 32,12 62,20 90,30" fill="none" stroke="#8FA6F2" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="band">
+      <div class="wrap">
+        <div class="head">
+          <h2>Your MPI says “brakes: yellow.” Which brake?</h2>
+          <p class="lead">A point-by-point checklist rolls four pads, four rotors and the lines into one color and one note. Wrynch keeps your checklist and rates every part behind it.</p>
+        </div>
+        <div class="compare">
+          <div class="panel">
+            <div class="label">A typical inspection today</div>
+            <div class="old"><span class="dot">!</span><div><strong>Visual brake system condition</strong><div class="mono" style="font-size:14px;margin-top:4px">fronts 5mm/rotors major grooving. rears 6mm</div></div></div>
+            <p class="cap">One color. Which rotor? Worse than last time? Nobody can tell.</p>
+          </div>
+          <div class="panel">
+            <div class="label">The same note in Wrynch</div>
+            <div class="row" style="background:var(--card)"><span class="g">Brake rotor · left front · grooved</span><span class="chip mon">▲ Monitor</span></div>
+            <div class="row" style="background:var(--card)"><span class="g">Brake rotor · right front · grooved</span><span class="chip mon">▲ Monitor</span></div>
+            <div class="row" style="background:var(--card)"><span class="g">Brake pads · front · 5.0 mm each</span><span class="chip ok">● OK</span></div>
+            <div class="row" style="background:var(--card)"><span class="g">Brake pads · rear · 6.0 mm each</span><span class="chip ok">● OK</span></div>
+            <p class="cap">Six records, each with a photo and a number. Next visit, each is compared with itself.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="how">
+      <div class="wrap">
+        <div class="head">
+          <p class="eyebrow">How it works</p>
+          <h2>Shoot the stage. Confirm. Send.</h2>
+        </div>
+        <div class="steps">
+          <div class="step"><span class="n">01</span><h3>Shoot the whole stage</h3><p>One burst for under the hood, one for under the car. Any order. No tapping into each point first.</p></div>
+          <div class="step"><span class="n">02</span><h3>AI reads every photo</h3><p>It finds each part in the shot and notes its condition: looks OK, or what's wrong. One photo of a wheel can cover the tire, pad, rotor and caliper at once.</p></div>
+          <div class="step"><span class="n">03</span><h3>The tech confirms</h3><p>Accept, change or reject each suggestion and enter the measurements. Nothing counts until the tech confirms it.</p></div>
+          <div class="step"><span class="n">04</span><h3>The customer gets it</h3><p>A phone report in plain words the tech approved, with photos and last visit's numbers. Customers approve work right from the report.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="ai" class="dark">
+      <div class="wrap two">
+        <div>
+          <p class="eyebrow">AI you control</p>
+          <h2>AI suggests. Your tech decides.</h2>
+          <ul class="rules">
+            <li>Every AI suggestion stays pending until a tech confirms or changes it, including “looks OK.”</li>
+            <li>Nothing unconfirmed reaches the customer: not a finding, a photo or a sentence. There's no setting to turn that off.</li>
+            <li>AI can reword a note for the customer, but can't add a finding, a measurement or a repair.</li>
+            <li>Measurements come from the tech's gauge, never from a photo guess.</li>
+          </ul>
+        </div>
+        <div class="gatecard" role="img" aria-label="Example: the inspection can't be sent until three AI items are reviewed">
+          <div class="t">3 things need you first</div>
+          <div class="r"><span>AI finding<small>Rotor · right front · grooved</small></span><span class="chip ai">Review</span></div>
+          <div class="r"><span>Photo parts<small>AI matched 1 photo to 4 parts</small></span><span class="chip ai">Confirm</span></div>
+          <div class="r"><span>Customer wording<small>Engine coolant</small></span><span class="chip ai">Review</span></div>
+          <div class="lock">Send to advisor (locked)</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="head">
+          <h2>Red means it fails the minimum.</h2>
+          <p class="lead">You decide what OK, Monitor and Immediate mean. The defaults follow federal inspection minimums and industry guidelines, in the units your techs already use. Change a limit and past results keep the rules they were rated with, so history stays honest.</p>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th scope="col">Check</th><th scope="col"><span class="chip ok">● OK</span></th><th scope="col"><span class="chip mon">▲ Monitor</span></th><th scope="col"><span class="chip imm">■ Immediate</span></th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Brake pad</th><td class="mono">5 mm or more</td><td class="mono">over 2, under 5 mm</td><td class="mono">2 mm or less</td></tr>
+              <tr><th scope="row">Tire tread</th><td class="mono">6/32 in or more</td><td class="mono">3 to 5/32 in</td><td class="mono">2/32 in or less</td></tr>
+              <tr><th scope="row">Brake fluid</th><td class="mono">under 100 ppm Cu</td><td class="mono">100 to 199 ppm</td><td class="mono">200 ppm or more</td></tr>
+              <tr><th scope="row">Rotor</th><td class="mono">above MIN</td><td class="mono">grooved, scored</td><td class="mono">at or below stamped MIN</td></tr>
+              <tr><th scope="row">Tie rod play</th><td class="mono">none</td><td class="mono">under 1/4 in</td><td class="mono">1/4 in or more</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">Defaults include 49 CFR 570 in-use inspection minimums. Manufacturer specs override them.</p>
+      </div>
+    </section>
+
+    <section id="history" class="band">
+      <div class="wrap two">
+        <div>
+          <h2>Every part keeps its own history.</h2>
+          <p class="lead" style="margin-top:18px">Because each pad, shock and tire is its own record, the next inspection shows how it changed, not just how it looks today.</p>
+          <ul class="bullets">
+            <li>Advisors show “5/32 today, 6/32 in March” instead of “getting low.”</li>
+            <li>Declined work stays on the part it belongs to.</li>
+            <li>Service records and trouble codes link to the parts they touch.</li>
+          </ul>
+        </div>
+        <div class="chart">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:12px">
+            <strong>Brake fluid · copper by visit</strong><span class="chip imm">■ Immediate</span>
+          </div>
+          <svg viewBox="0 0 420 220" role="img" aria-label="Example chart: brake fluid copper rising from 60 to 210 parts per million over four visits, crossing the 200 ppm Immediate line">
+            <rect x="40" y="10" width="370" height="60" fill="#FBE3E0"/>
+            <rect x="40" y="70" width="370" height="60" fill="#FBEFD9"/>
+            <line x1="40" y1="70" x2="410" y2="70" stroke="#B42318" stroke-dasharray="4 4"/>
+            <line x1="40" y1="130" x2="410" y2="130" stroke="#A86200" stroke-dasharray="4 4"/>
+            <text x="34" y="74" text-anchor="end" font-family="IBM Plex Mono" font-size="11" fill="#6E727A">200</text>
+            <text x="34" y="134" text-anchor="end" font-family="IBM Plex Mono" font-size="11" fill="#6E727A">100</text>
+            <polyline points="70,154 180,118 290,88 400,64" fill="none" stroke="#15171A" stroke-width="3" stroke-linejoin="round"/>
+            <g font-family="IBM Plex Mono" font-size="11" fill="#15171A">
+              <circle cx="70" cy="154" r="5"/><text x="70" y="146" text-anchor="middle">60</text>
+              <circle cx="180" cy="118" r="5"/><text x="180" y="110" text-anchor="middle">120</text>
+              <circle cx="290" cy="88" r="5"/><text x="290" y="80" text-anchor="middle">170</text>
+              <circle cx="400" cy="64" r="5" fill="#B42318"/><text x="392" y="56" text-anchor="end">210</text>
+            </g>
+            <g font-family="IBM Plex Mono" font-size="11" fill="#6E727A" text-anchor="middle">
+              <text x="70" y="200">Visit 1</text><text x="180" y="200">Visit 2</text><text x="290" y="200">Visit 3</text><text x="400" y="200" text-anchor="end">Today</text>
+            </g>
+          </svg>
+          <p class="note">Recommended twice, declined twice. Now it fails the minimum. Example data.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap two">
+        <div>
+          <h2>Keep the inspection you already do.</h2>
+          <p class="lead" style="margin-top:18px">Bring your current MPI. Wrynch maps each point to the parts behind it and shows you what it mapped. Your techs keep the point names they know.</p>
+          <p class="note" style="font-size:16px">One shop's 34-point template became 166 parts.</p>
+        </div>
+        <div class="map">
+          <div>
+            <div class="pt">LF TIRE</div>
+            <div class="pt on">SUSPENSION COMPONENTS</div>
+            <div class="pt">HORN AND EXTERIOR LIGHTS</div>
+          </div>
+          <div class="arrow" aria-hidden="true">→</div>
+          <div class="parts" aria-label="Parts behind the suspension point">
+            <span>Strut · LF</span><span>Strut · RF</span><span>Shock · LR</span><span>Shock · RR</span><span>Ball joint · LF</span><span>Ball joint · RF</span><span>Control arm × 4</span><span>Coil spring × 4</span><span>Sway bar link × 4</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="faq" class="band">
+      <div class="wrap faq">
+        <h2 style="margin-bottom:32px">Questions shops ask</h2>
+        <details><summary>Do my techs have to change how they inspect?</summary><p>No. They keep your points and shoot each stage in one go. The part-level detail comes from how photos and findings are sorted, not from extra taps.</p></details>
+        <details><summary>Can one photo count for several parts?</summary><p>Yes. A shot of a front wheel can show the tire, pad, rotor and caliper. The AI notes the condition of each part it can see, and the photo appears under every inspection point it covers. The tech can add or remove parts from any photo.</p></details>
+        <details><summary>What if the AI gets it wrong?</summary><p>The tech changes the parts on the photo or rejects the finding. Until they confirm, nothing counts and the customer can't see it.</p></details>
+        <details><summary>Can I use my own limits?</summary><p>Yes. Every threshold is yours to set, in mm or 32nds. Past results keep the rules they were rated with.</p></details>
+      </div>
+    </section>
+
+    <section class="dark final">
+      <div class="wrap">
+        <h2>See your own template, part by part.</h2>
+        <p class="lead">Create your shop, invite your techs and run your first inspection today.</p>
+        <div class="cta">
+          <a class="btn primary" href="/app/#/signup">Create your shop</a>
+          <a class="btn ghost" href="/app/">Sign in</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>© <span id="yr">2026</span> Wrynch</span>
+      <a href="/app/">Sign in</a>
+    </div>
+  </footer>
+  <script>document.getElementById('yr').textContent = new Date().getFullYear();</script>
+</body>
+</html>

@@ -12,11 +12,11 @@ Nothing secret ever goes in the code or in chat: keys go only into Supabase's an
    npx supabase link --project-ref YOUR-PROJECT-REF     # the id in your project's URL
    npx supabase db push                                 # runs everything in supabase/migrations
    ```
-   No command line? Open **SQL Editor** in Supabase and run the two files in `supabase/migrations/` in name order
-   (the catalog file is large; paste it in one go).
+   No command line? Open **SQL Editor** in Supabase and run every file in `supabase/migrations/` in name order
+   (the catalog file is large; paste it in one go). When an update adds a new migration file, run just that file.
 3. **Authentication → URL Configuration:** set **Site URL** to your app's address (from step 2 below, e.g.
    `https://wrynch-rc1.vercel.app`) and add the same address under **Redirect URLs**. Email confirmation and
-   password-reset links land there.
+   password-reset links land there; the marketing page at `/` forwards them into the app at `/app/`.
 4. **Project Settings → API Keys**, tab **Publishable and secret API keys**: copy the **publishable** key
    (`sb_publishable_…`) and the **secret** key (`sb_secret_…`, click the eye to reveal it). The Project URL is under
    **Project Settings → Data API** (`https://<id>.supabase.co`). The secret key can read everything: it goes only
@@ -61,7 +61,7 @@ photo analyzed. Check each provider's pricing page for current numbers.
 ```bash
 cp .env.example .env.local     # fill in your Supabase project (or leave empty for demo mode)
 npm install
-npm run dev                    # http://localhost:5173, with the /api functions
+npm run dev                    # http://localhost:5173 (marketing page), /app/ (the app), with the /api functions
 npm test                       # rules, AI guardrails, server functions
 npm run test:db                # database permissions and rules (needs PostgreSQL 15+)
 npm run e2e                    # full browser run against a local database (needs PostgreSQL + Playwright)

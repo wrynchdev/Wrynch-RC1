@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { ONTOLOGY, clsByName, compKey, vehicleComponents, pointComponents, point } from './ontology';
 import { componentState, completionGate, customerView, findingRating, rateValue, summarize } from './rating';
 import { applyUnderCarExample, seedInspections, vehicle } from './seed';
-import { sortPhotos, suggestWording, wordingKeepsFacts } from './aiStub';
+import { analyzePhotos, applyAnalysis, suggestWording, wordingKeepsFacts } from './aiStub';
 import type { Inspection } from './types';
 
 const check = (k: string) => ONTOLOGY.checks[k];
@@ -74,8 +74,8 @@ test('completion gate blocks pending AI, unplaced photos, AI wording and unrated
   assert.ok(before.some((g) => g.kind === 'required'), 'under car is still unrated');
   applyUnderCarExample(insp, v);
   assert.deepEqual(completionGate(insp, v), []);
-  const sorted = sortPhotos('under_car', [{ id: 'm1', url: '', name: 'IMG_1.jpg' }, { id: 'm2', url: '', name: 'IMG_2.jpg' }], v.config, '2026-09-26');
-  insp.media.push(...sorted.media);
+  for (const id of ['m1', 'm2']) insp.media.push({ id, sectionId: 'under_car', url: '', label: `${id}.jpg`, excluded: false, customerVisible: true, analyzed: false, links: [] });
+  applyAnalysis(insp, analyzePhotos('under_car', [{ id: 'm1', name: 'IMG_1.jpg' }, { id: 'm2', name: 'IMG_2.jpg' }], v.config));
   assert.ok(completionGate(insp, v).some((g) => g.kind === 'photo'));
 });
 
@@ -119,4 +119,21 @@ test('every template component and check resolves', () => {
   const { applies, na } = vehicleComponents(v.config, []);
   assert.ok(applies.length > 100);
   assert.ok(na.length > 0);
+});
+
+test('one photo can show several parts; looks-OK suggestions count for nothing until confirmed', () => {
+  const v = runner();
+  const insp = current();
+  insp.media.push({ id: 'p1', sectionId: 'under_car', url: '', label: 'wheel.jpg', excluded: false, customerVisible: true, analyzed: false, links: [] });
+  const rotor = compKey(clsByName('brake_rotor').id, 'left_front');
+  const caliper = compKey(clsByName('brake_caliper').id, 'left_front');
+  applyAnalysis(insp, [{ mediaId: 'p1', parts: [
+    { key: rotor, confidence: 0.9, condition: 'concern', note: '', findings: [{ key: 'grooved', severity: 'moderate', confidence: 0.8, rationale: '' }] },
+    { key: caliper, confidence: 0.9, condition: 'looks_ok', note: 'dry', findings: [] }] }]);
+  assert.equal(insp.media[insp.media.length - 1].links.length, 2);
+  assert.equal(insp.observations.length, 1);
+  assert.equal(componentState(insp, caliper), 'unrated', 'looks-OK alone rates nothing');
+  assert.ok(completionGate(insp, v).some((g) => g.kind === 'photo' && g.id === 'p1'), 'unconfirmed AI links block finishing');
+  applyAnalysis(insp, [{ mediaId: 'p1', parts: [{ key: rotor, confidence: 0.9, condition: 'looks_ok', note: '', findings: [] }] }]);
+  assert.equal(insp.observations.length, 1, 'a photo is analysed once');
 });
