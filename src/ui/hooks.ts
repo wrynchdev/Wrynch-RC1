@@ -47,9 +47,13 @@ export function pointStatus(insp: Inspection, vehicle: Vehicle, pointId: string)
   const requiredUnrated = comps.filter((c) => c.required && componentState(insp, c.key) === 'unrated').length;
   const anyRated = states.some((s) => s !== 'unrated');
   const pendingFindings = insp.findings.filter((f) => isPendingAi(f) && keys.includes(f.compKey)).length;
-  const pendingPhotos = insp.media.filter((m) => m.pointId === pointId && m.status === 'ai_proposed').length;
-  const photos = insp.media.filter((m) => m.pointId === pointId && m.status !== 'excluded').length;
+  // A photo belongs to every point whose parts it shows.
+  const shown = insp.media.filter((m) => !m.excluded && m.links.some((l) => keys.includes(l.compKey)));
+  const pendingPhotos = shown.filter((m) => m.links.some((l) => l.status === 'ai_proposed' && keys.includes(l.compKey))).length;
+  const photos = shown.length;
+  const pendingOk = insp.observations.filter((o) => o.status === 'pending' && keys.includes(o.compKey)
+    && componentState(insp, o.compKey) === 'unrated').length;
   // A point with no parts (e.g. "Noise, vibration or pulling") is a symptom check and never blocks.
   const done = comps.length === 0 || (requiredUnrated === 0 && (comps.some((c) => c.required) || anyRated));
-  return { keys, state: pointState(insp, keys), done, pendingFindings, pendingPhotos, photos, count: keys.length };
+  return { keys, state: pointState(insp, keys), done, pendingFindings, pendingPhotos, pendingOk, photos, count: keys.length };
 }

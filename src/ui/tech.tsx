@@ -3,7 +3,7 @@ import {
   cls, compLabel, findingLabel, ONTOLOGY, parseKey, point as getPoint, pointComponents, positionLabel, sections,
   sectionOfPoint, vehicleComponents,
 } from '../domain/ontology';
-import { completionGate, componentState, findingRating, isPendingAi, summarize } from '../domain/rating';
+import { completionGate, componentState, findingRating, isPendingAi, mediaPending, photosOf, summarize } from '../domain/rating';
 import type { CompKey, Finding, Inspection, Media, NotInspectedReason, Rating, Severity, Vehicle, VehicleConfig } from '../domain/types';
 import { SEVERITIES } from '../domain/types';
 import { actions, isLive, jobList, photoSrc, useStore } from '../state/store';
@@ -185,7 +185,7 @@ export function Overview({ id }: { id: string }) {
       <div className="body">
         {locked && <div className="card pad row"><Icon name="lock" /><span className="grow">Submitted. Changes are locked.</span><a href={`#/advisor/${id}`}>Advisor view</a></div>}
         <div className="card pad stack">
-          <div className="row between"><strong>{pointsDone} of {allPoints.length} points done</strong><span className="small muted">{insp.media.filter((m) => m.status !== 'excluded').length} photos</span></div>
+          <div className="row between"><strong>{pointsDone} of {allPoints.length} points done</strong><span className="small muted">{insp.media.filter((m) => !m.excluded).length} photos</span></div>
           <div className="bar"><div style={{ width: `${(pointsDone / allPoints.length) * 100}%` }} /></div>
           <div className="tiles">
             <Tile kind="immediate" n={sum.immediate} label="Immediate" />
@@ -199,9 +199,11 @@ export function Overview({ id }: { id: string }) {
         {visible.map((s) => {
           const st = s.points.map((p) => ({ p, st: pointStatus(insp, vehicle, p.id) }));
           const done = st.filter((x) => x.st.done).length;
-          const pend = st.reduce((a, x) => a + x.st.pendingFindings + x.st.pendingPhotos, 0)
-            + insp.media.filter((m) => m.sectionId === s.id && m.status === 'unassigned').length;
-          const photos = insp.media.filter((m) => m.sectionId === s.id && m.status !== 'excluded').length;
+          const sectionKeys = new Set(st.flatMap((x) => x.st.keys));
+          const pend = insp.media.filter((m) => m.sectionId === s.id && mediaPending(m)).length
+            + insp.findings.filter((f) => isPendingAi(f) && sectionKeys.has(f.compKey)).length
+            + insp.observations.filter((o) => o.status === 'pending' && sectionKeys.has(o.compKey) && componentState(insp, o.compKey) === 'unrated').length;
+          const photos = insp.media.filter((m) => m.sectionId === s.id && !m.excluded).length;
           const complete = done === s.points.length && pend === 0;
           return (
             <section key={s.id} className="card" style={complete ? undefined : { borderColor: 'var(--ink)' }}>
@@ -214,7 +216,7 @@ export function Overview({ id }: { id: string }) {
                 {st.map(({ p, st: ps }) => (
                   <a key={p.id} className="item" href={`#/insp/${id}/point/${p.id}`}>
                     <div className="grow"><div className="t">{p.name}</div><div className="d">{ps.count} parts{ps.photos ? ` · ${ps.photos} photos` : ''}</div></div>
-                    {ps.count === 0 ? <span className="chip na">Symptom check</span> : ps.pendingFindings > 0 ? <AiChip>{ps.pendingFindings}</AiChip> : <StateChip state={ps.state} />}
+                    {ps.count === 0 ? <span className="chip na">Symptom check</span> : ps.pendingFindings > 0 ? <AiChip>{ps.pendingFindings} to review</AiChip> : ps.pendingOk > 0 && ps.state === 'unrated' ? <AiChip>{ps.pendingOk} look OK</AiChip> : <StateChip state={ps.state} />}
                   </a>
                 ))}
               </div>
@@ -282,30 +284,44 @@ export function Capture({ id, sectionId }: { id: string; sectionId: string }) {
 }
 
 // ------------------------------------------------------------------ Sort photos
+const pct = (n: number | null) => `${Math.round((n ?? 0) * 100)}%`;
+function linkSummary(m: Media): string {
+  if (!m.links.length) return m.analyzed ? 'AI couldn’t identify a part' : 'Not placed yet';
+  const names = m.links.map((l) => compLabel(l.compKey, true));
+  return names.length <= 2 ? names.join(' + ') : `${names[0]} + ${names.length - 1} more`;
+}
+
 export function Sort({ id, sectionId }: { id: string; sectionId: string }) {
   const data = useInspection(id);
+  const busy = useStore((x) => x.busy);
   const [placing, setPlacing] = useState<string | null>(null);
   const section = sections().find((s) => s.id === sectionId);
   if (!data || !section) return <Missing />;
   const { insp, vehicle } = data;
-  const media = insp.media.filter((m) => m.sectionId === sectionId && m.status !== 'excluded');
-  const needs = media.filter((m) => m.status === 'unassigned');
-  const proposed = media.filter((m) => m.status === 'ai_proposed');
-  const byPoint = section.points.map((p) => ({ p, items: media.filter((m) => m.pointId === p.id && m.status !== 'unassigned') })).filter((x) => x.items.length);
-  const placingMedia = media.find((m) => m.id === placing) ?? null;
+  const media = insp.media.filter((m) => m.sectionId === sectionId && !m.excluded);
+  const needs = media.filter((m) => m.links.length === 0);
+  const proposedLinks = media.reduce((n, m) => n + m.links.filter((l) => l.status === 'ai_proposed').length, 0);
+  const partsSeen = media.reduce((n, m) => n + m.links.length, 0);
+  // A photo appears under every point whose parts it shows, including points in other stages.
+  const byPoint = visibleSections(vehicle).flatMap((s) => s.points).map((p) => {
+    const keys = pointComponents(p, vehicle.config).filter((c) => c.applies).map((c) => c.key);
+    return { p, items: media.filter((m) => m.links.some((l) => keys.includes(l.compKey))) };
+  }).filter((x) => x.items.length);
+  const placingMedia = insp.media.find((m) => m.id === placing) ?? null;
   return (
     <div className="phone">
       <TopBar title="Sort photos" sub={`${section.name} · ${media.length} photos`} back={`#/insp/${id}`} />
       <div className="body">
         {media.length === 0 ? (
           <div className="card pad stack">
-            <strong>No photos yet</strong>
-            <a className="btn primary" href={`#/insp/${id}/capture/${sectionId}`}><Icon name="camera" />Capture this stage</a>
+            <strong>{busy ? 'Working on your photos…' : 'No photos yet'}</strong>
+            {!busy && <a className="btn primary" href={`#/insp/${id}/capture/${sectionId}`}><Icon name="camera" />Capture this stage</a>}
           </div>
         ) : (
           <div className="ai-box row" style={{ alignItems: 'flex-start' }}>
             <Icon name="ai" />
-            <span className="small"><strong>AI placed {media.length - needs.length} of {media.length} photos</strong> on a part. Dashed = not confirmed yet. Tap any photo to move it.</span>
+            <span className="small"><strong>AI found {partsSeen} parts in {media.length - needs.length} of {media.length} photos</strong> and noted the condition of each.
+              A photo can show several parts and counts for each of their points. Dashed = not confirmed yet. Tap a photo to change its parts.</span>
           </div>
         )}
         {needs.length > 0 && (
@@ -314,7 +330,7 @@ export function Sort({ id, sectionId }: { id: string; sectionId: string }) {
             {needs.map((m) => (
               <div key={m.id} className="card row" style={{ padding: 10 }}>
                 <img src={photoSrc(m.url)} alt="" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8 }} />
-                <div className="grow"><div className="t" style={{ fontWeight: 600 }}>AI unsure</div><div className="small muted">{m.aiGuess ? `Best guess: ${compLabel(m.aiGuess.compKey, true)} (${Math.round((m.confidence ?? 0) * 100)}%)` : 'No part found'}</div></div>
+                <div className="grow"><div className="t" style={{ fontWeight: 600 }}>{m.analyzed ? 'AI couldn’t tell' : 'Not sorted yet'}</div><div className="small muted">Pick the parts it shows</div></div>
                 <button className="btn sm secondary" onClick={() => setPlacing(m.id)}>Place</button>
                 <button className="btn sm quiet" onClick={() => actions.excludePhoto(id, m.id)}>Exclude</button>
               </div>
@@ -325,62 +341,90 @@ export function Sort({ id, sectionId }: { id: string; sectionId: string }) {
           <section key={p.id} className="stack">
             <div className="row between"><h2 className="h2">{p.name} · {items.length}</h2><a className="small" style={{ fontWeight: 700 }} href={`#/insp/${id}/point/${p.id}`}>Open point</a></div>
             <div className="thumbs">
-              {items.map((m) => (
-                <button key={m.id} className={`thumb${m.status === 'ai_proposed' ? ' pending' : ''}`} onClick={() => setPlacing(m.id)} aria-label={`Photo on ${m.compKey ? compLabel(m.compKey) : 'no part'}. Tap to move.`}>
-                  <img src={photoSrc(m.url)} alt="" />
-                  <span className="t">{m.compKey ? compLabel(m.compKey, true) : '—'}</span>
-                  <span className="c" style={m.status === 'ai_proposed' ? undefined : { color: 'var(--ok)' }}>
-                    {m.status === 'ai_proposed' ? `${Math.round((m.confidence ?? 0) * 100)}% sure` : m.status === 'reassigned' ? 'Moved by you' : 'Confirmed'}
-                  </span>
-                </button>
-              ))}
+              {items.map((m) => {
+                const pending = m.links.some((l) => l.status === 'ai_proposed');
+                return (
+                  <button key={m.id} className={`thumb${pending ? ' pending' : ''}`} onClick={() => setPlacing(m.id)} aria-label={`Photo showing ${linkSummary(m)}. Tap to change.`}>
+                    <img src={photoSrc(m.url)} alt="" />
+                    <span className="t">{linkSummary(m)}</span>
+                    <span className="c" style={pending ? undefined : { color: 'var(--ok)' }}>{pending ? `AI · ${pct(Math.max(...m.links.map((l) => l.confidence ?? 0)))} sure` : 'Confirmed'}</span>
+                  </button>
+                );
+              })}
             </div>
           </section>
         ))}
       </div>
       {media.length > 0 && (
         <div className="footer">
-          <a className="btn quiet" href={`#/insp/${id}/capture/${sectionId}`}><Icon name="camera" /></a>
-          <button className="btn primary grow" disabled={proposed.length === 0} onClick={() => actions.confirmPlacements(id, sectionId)}>
-            {proposed.length ? `Confirm ${proposed.length} placements` : 'All placements confirmed'}
+          <a className="btn quiet" href={`#/insp/${id}/capture/${sectionId}`} aria-label="Add photos"><Icon name="camera" /></a>
+          <button className="btn primary grow" disabled={proposedLinks === 0} onClick={() => actions.confirmPlacements(id, sectionId)}>
+            {proposedLinks ? `Confirm ${proposedLinks} AI part matches` : 'All matches confirmed'}
           </button>
         </div>
       )}
-      {placingMedia && <PlaceSheet insp={insp} vehicle={vehicle} media={placingMedia} sectionId={sectionId} onClose={() => setPlacing(null)} />}
+      {placingMedia && <PlaceSheet insp={insp} vehicle={vehicle} media={placingMedia} onClose={() => setPlacing(null)} />}
     </div>
   );
 }
 
-function PlaceSheet({ insp, vehicle, media, sectionId, onClose }: { insp: Inspection; vehicle: Vehicle; media: Media; sectionId: string; onClose: () => void }) {
-  const section = sections().find((s) => s.id === sectionId)!;
-  const [pointId, setPointId] = useState(media.pointId ?? media.aiGuess?.pointId ?? section.points[0].id);
-  const [key, setKey] = useState<CompKey | null>(media.compKey ?? media.aiGuess?.compKey ?? null);
-  const comps = pointComponents(getPoint(pointId), vehicle.config).filter((c) => c.applies);
-  const keyInPoint = key && comps.some((c) => c.key === key) ? key : null;
+/** Choose every part a photo shows. Parts are grouped by inspection point; a part can sit in several points. */
+function PlaceSheet({ insp, vehicle, media, onClose }: { insp: Inspection; vehicle: Vehicle; media: Media; onClose: () => void }) {
+  const [picked, setPicked] = useState<CompKey[]>(media.links.map((l) => l.compKey));
+  const [q, setQ] = useState('');
+  const [showAll, setShowAll] = useState(false);
+  const aiKeys = media.links.filter((l) => l.status === 'ai_proposed').map((l) => l.compKey);
+  const stages = visibleSections(vehicle);
+  const ordered = [...stages].sort((a, b) => (a.id === media.sectionId ? -1 : b.id === media.sectionId ? 1 : 0));
+  const groups = ordered.flatMap((s) => s.points.map((p) => ({
+    stage: s.name, p, keys: pointComponents(p, vehicle.config).filter((c) => c.applies).map((c) => c.key),
+  }))).filter((g) => g.keys.length);
+  const match = (k: CompKey) => !q.trim() || compLabel(k).toLowerCase().includes(q.trim().toLowerCase());
+  const visible = groups.map((g) => ({ ...g, keys: g.keys.filter(match) }))
+    .filter((g) => g.keys.length && (showAll || q.trim() || g.stage === ordered[0].name || g.keys.some((k) => picked.includes(k))));
+  const toggle = (k: CompKey) => setPicked((x) => (x.includes(k) ? x.filter((y) => y !== k) : [...x, k]));
+  const obsFor = (k: CompKey) => insp.observations.find((o) => o.mediaId === media.id && o.compKey === k && o.status === 'pending');
+  const findFor = (k: CompKey) => insp.findings.filter((f) => f.mediaId === media.id && f.compKey === k && isPendingAi(f));
   return (
-    <Sheet title="Place photo" onClose={onClose}>
+    <Sheet title="Parts in this photo" onClose={onClose}>
       <img src={photoSrc(media.url)} alt="" style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 12 }} />
-      {media.aiGuess && <AiChip>AI guessed: {compLabel(media.aiGuess.compKey, true)} · {Math.round((media.confidence ?? 0) * 100)}%</AiChip>}
-      <div className="field">
-        <label htmlFor="pt">Point</label>
-        <select id="pt" className="input" value={pointId} onChange={(e) => { setPointId(e.target.value); setKey(null); }}>
-          {section.points.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-      </div>
-      <div className="field">
-        <span className="label">Part and position</span>
-        <div className="pills">
-          {comps.map((c) => (
-            <button key={c.key} className="pill" aria-pressed={keyInPoint === c.key} onClick={() => setKey(c.key)}>{compLabel(c.key, true)}</button>
-          ))}
-          {comps.length === 0 && <span className="small muted">This point has no parts on this vehicle.</span>}
+      {media.links.length > 0 && (
+        <div className="stack" style={{ gap: 6 }}>
+          <span className="label">What the AI saw</span>
+          {media.links.map((l) => {
+            const o = obsFor(l.compKey);
+            const fs = findFor(l.compKey);
+            return (
+              <div key={l.compKey} className="small row" style={{ alignItems: 'flex-start' }}>
+                <Icon name="ai" size={14} />
+                <span><strong>{compLabel(l.compKey, true)}</strong> · {fs.length ? fs.map((f) => `${findingLabel(f.key).toLowerCase()} (${f.severity})`).join(', ') : o ? 'looks OK' : 'condition unclear'}
+                  {l.status === 'ai_proposed' && l.confidence !== null ? ` · ${pct(l.confidence)} sure it’s this part` : ''}</span>
+              </div>
+            );
+          })}
         </div>
+      )}
+      <label className="sr" htmlFor="partq">Search parts</label>
+      <input id="partq" className="input" placeholder="Search parts (e.g. strut, LF tire)" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="stack" style={{ gap: 12, maxHeight: '40vh', overflowY: 'auto' }}>
+        {visible.map((g) => (
+          <div key={g.p.id} className="stack" style={{ gap: 6 }}>
+            <span className="label">{g.p.name}{g.stage !== ordered[0].name ? ` · ${g.stage}` : ''}</span>
+            <div className="pills">
+              {g.keys.map((k) => (
+                <button key={k} className="pill" aria-pressed={picked.includes(k)} style={aiKeys.includes(k) && picked.includes(k) ? { outline: '2px dashed var(--ai-line)', outlineOffset: 2 } : undefined}
+                  onClick={() => toggle(k)}>{compLabel(k, true)}</button>
+              ))}
+            </div>
+          </div>
+        ))}
+        {!showAll && !q.trim() && <button className="linkbtn" style={{ textAlign: 'left' }} onClick={() => setShowAll(true)}>Show parts from other stages</button>}
       </div>
-      <p className="small muted" style={{ margin: 0 }}>The AI guess and your change are both kept in the photo's history.</p>
+      <p className="small muted" style={{ margin: 0 }}>Removing a part also drops what the AI suggested about it from this photo.</p>
       <div className="row">
-        <button className="btn quiet" onClick={() => { actions.excludePhoto(insp.id, media.id); onClose(); }}>Exclude</button>
-        <button className="btn primary grow" disabled={!keyInPoint} onClick={() => { actions.placePhoto(insp.id, media.id, pointId, keyInPoint!); onClose(); }}>
-          {keyInPoint ? `Place on ${compLabel(keyInPoint, true)}` : 'Pick a part'}
+        <button className="btn quiet" onClick={() => { actions.excludePhoto(insp.id, media.id); onClose(); }}>Exclude photo</button>
+        <button className="btn primary grow" disabled={picked.length === 0} onClick={() => { actions.setPhotoParts(insp.id, media.id, picked); onClose(); }}>
+          {picked.length ? `Save ${picked.length} ${picked.length === 1 ? 'part' : 'parts'}` : 'Pick at least one part'}
         </button>
       </div>
     </Sheet>
@@ -406,7 +450,8 @@ export function PointView({ id, pointId }: { id: string; pointId: string }) {
     const g = pos && ['left_front', 'right_front', 'left_rear', 'right_rear'].includes(pos) ? positionLabel(pos) : 'Whole vehicle';
     groups.set(g, [...(groups.get(g) ?? []), c]);
   }
-  const photos = insp.media.filter((m) => m.pointId === pointId && m.status !== 'excluded');
+  const photos = insp.media.filter((m) => !m.excluded && m.links.some((l) => st.keys.includes(l.compKey)));
+  const okPending = insp.observations.filter((o) => o.status === 'pending' && st.keys.includes(o.compKey) && componentState(insp, o.compKey) === 'unrated');
   const n = insp.notes.find((x) => x.pointId === pointId);
   const noteText = note ?? n?.techText ?? '';
   const idx = section.points.findIndex((x) => x.id === pointId);
@@ -435,14 +480,16 @@ export function PointView({ id, pointId }: { id: string; pointId: string }) {
                 const state = componentState(insp, c.key);
                 const res = insp.results.filter((r) => r.compKey === c.key && r.value !== null);
                 const counted = insp.findings.filter((f) => f.compKey === c.key && !isPendingAi(f) && f.status !== 'denied');
+                const okAi = state === 'unrated' && okPending.some((o) => o.compKey === c.key);
                 const detail = pend.length ? `AI suggests: ${findingLabel(pend[0].key).toLowerCase()}, ${pend[0].severity}`
+                  : okAi ? 'AI: looks OK in photo · confirm'
                   : [...res.map((r) => `${r.value} ${ONTOLOGY.checks[r.checkKey].unit ?? ''}`.trim()), ...counted.map((f) => `${findingLabel(f.key)}, ${f.severity}`)].join(' · ')
                   || (state === 'unrated' ? (c.required ? 'Required' : 'Optional') : 'No findings');
                 const name = parseKey(c.key).position && g !== 'Whole vehicle' ? cls(parseKey(c.key).classId).label : compLabel(c.key);
                 return (
-                  <a key={c.key} className={`item${pend.length ? ' pending' : ''}`} href={compHref(id, c.key, pointId)}>
-                    <div className="grow"><div className="t">{name}</div><div className="d" style={pend.length ? { color: 'var(--ai)' } : undefined}>{detail}</div></div>
-                    {pend.length ? <AiChip>Review</AiChip> : <StateChip state={state} />}
+                  <a key={c.key} className={`item${pend.length || okAi ? ' pending' : ''}`} href={compHref(id, c.key, pointId)}>
+                    <div className="grow"><div className="t">{name}</div><div className="d" style={pend.length || okAi ? { color: 'var(--ai)' } : undefined}>{detail}</div></div>
+                    {pend.length ? <AiChip>Review</AiChip> : okAi ? <AiChip>Looks OK?</AiChip> : <StateChip state={state} />}
                     <Icon name="next" />
                   </a>
                 );
@@ -456,6 +503,16 @@ export function PointView({ id, pointId }: { id: string; pointId: string }) {
             <span className="chip na"><Icon name="na" size={14} />N/A</span>
           </div>
         )}
+        {!locked && okPending.length > 0 && (
+          <div className="ai-box stack" style={{ gap: 8 }}>
+            <span className="small"><Icon name="ai" size={14} /> <strong>AI thinks {okPending.length} {okPending.length === 1 ? 'part looks' : 'parts look'} OK</strong> in the photos:{' '}
+              {[...new Set(okPending.map((o) => compLabel(o.compKey, true)))].join(', ')}. Nothing counts until you confirm.</span>
+            <div className="row">
+              <button className="btn sm primary grow" onClick={() => actions.reviewObservations(id, 'confirm', okPending.map((o) => o.id))}>Confirm looks OK</button>
+              <button className="btn sm quiet" onClick={() => actions.reviewObservations(id, 'reject', okPending.map((o) => o.id))}>Dismiss</button>
+            </div>
+          </div>
+        )}
         {!locked && unrated > 0 && (
           <button className="btn quiet" onClick={() => actions.markPointOk(id, pointId)}>
             <Icon name="check" />Nothing found on the other {unrated} {unrated === 1 ? 'part' : 'parts'}
@@ -465,12 +522,17 @@ export function PointView({ id, pointId }: { id: string; pointId: string }) {
           <section className="stack">
             <h2 className="h2">Photos · {photos.length}</h2>
             <div className="thumbs">
-              {photos.map((m) => (
-                <a key={m.id} className={`thumb${m.status === 'ai_proposed' ? ' pending' : ''}`} href={m.compKey ? compHref(id, m.compKey, pointId) : `#/insp/${id}/sort/${section.id}`}>
-                  <img src={photoSrc(m.url)} alt={m.compKey ? compLabel(m.compKey) : 'Unplaced photo'} />
-                  <span className="t">{m.compKey ? compLabel(m.compKey, true) : '—'}</span>
-                </a>
-              ))}
+              {photos.map((m) => {
+                const here = m.links.filter((l) => st.keys.includes(l.compKey));
+                const names = here.map((l) => compLabel(l.compKey, true));
+                return (
+                  <a key={m.id} className={`thumb${here.some((l) => l.status === 'ai_proposed') ? ' pending' : ''}`} href={compHref(id, here[0].compKey, pointId)}>
+                    <img src={photoSrc(m.url)} alt={`Photo of ${names.join(', ')}`} />
+                    <span className="t">{names.length <= 2 ? names.join(' + ') : `${names[0]} + ${names.length - 1} more`}</span>
+                    {m.links.length > here.length && <span className="c">Also used in {m.links.length - here.length} other {m.links.length - here.length === 1 ? 'part' : 'parts'}</span>}
+                  </a>
+                );
+              })}
             </div>
           </section>
         )}
@@ -515,7 +577,8 @@ export function ComponentView({ id, compKeyEnc, pointId }: { id: string; compKey
   const state = componentState(insp, key);
   const pending = insp.findings.filter((f) => f.compKey === key && isPendingAi(f));
   const counted = insp.findings.filter((f) => f.compKey === key && !isPendingAi(f) && f.status !== 'denied');
-  const photos = insp.media.filter((m) => m.compKey === key && m.status !== 'excluded');
+  const photos = photosOf(insp, key);
+  const okObs = state === 'unrated' ? insp.observations.filter((o) => o.compKey === key && o.status === 'pending') : [];
   const status = insp.statuses.find((s) => s.compKey === key)?.notInspected;
   const locked = insp.status !== 'in_progress';
   const back = pointId ? `#/insp/${id}/point/${pointId}` : `#/insp/${id}`;
@@ -531,9 +594,22 @@ export function ComponentView({ id, compKeyEnc, pointId }: { id: string; compKey
 
         {pending.map((f) => <AiFindingCard key={f.id} insp={insp} f={f} locked={locked} />)}
 
+        {okObs.length > 0 && (
+          <div className="ai-box stack" style={{ gap: 8 }}>
+            <span className="small"><Icon name="ai" size={14} /> <strong>AI: looks OK in {okObs.length === 1 ? 'the photo' : `${okObs.length} photos`}</strong>
+              {okObs[0].note ? ` · ${okObs[0].note}` : ''}{okObs[0].confidence !== null ? ` · ${Math.round(okObs[0].confidence * 100)}% sure` : ''}</span>
+            {!locked && (
+              <div className="row">
+                <button className="btn sm primary grow" onClick={() => actions.reviewObservations(id, 'confirm', okObs.map((o) => o.id))}>Confirm OK</button>
+                <button className="btn sm quiet" onClick={() => actions.reviewObservations(id, 'reject', okObs.map((o) => o.id))}>Not right</button>
+              </div>
+            )}
+          </div>
+        )}
+
         {photos.length > 0 && (
           <div className="thumbs">{photos.map((m) => (
-            <figure key={m.id} className={`thumb${m.status === 'ai_proposed' ? ' pending' : ''}`} style={{ margin: 0 }}>
+            <figure key={m.id} className={`thumb${m.links.some((l) => l.compKey === key && l.status === 'ai_proposed') ? ' pending' : ''}`} style={{ margin: 0 }}>
               <img src={photoSrc(m.url)} alt={`Photo of ${compLabel(key)}`} />
               <label className="small row" style={{ gap: 6 }}>
                 <input type="checkbox" checked={m.customerVisible} disabled={locked} onChange={(e) => actions.setPhotoCustomerVisible(id, m.id, e.target.checked)} />Customer sees

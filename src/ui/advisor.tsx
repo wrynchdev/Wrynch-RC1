@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   allPoints, cls, compLabel, defaultThreshold, findingLabel, ONTOLOGY, pointComponents, setTemplate, vehicleComponents, type Threshold,
 } from '../domain/ontology';
-import { completionGate, componentState, countsFinding, mediaConfirmed, summarize } from '../domain/rating';
+import { completionGate, componentState, countsFinding, linkConfirmed, mediaConfirmed, summarize } from '../domain/rating';
 import type { CompKey, EstimateLine, Inspection, Op, Rating, Template, Vehicle } from '../domain/types';
 import { actions, isLive, jobList, photoSrc, toast, useStore } from '../state/store';
 import { fn } from '../state/remote';
@@ -184,7 +184,7 @@ export function AdvisorResults({ id }: { id: string }) {
                         <td><a href={`#/history/${vehicle.id}/${enc(k)}`} style={{ color: 'var(--ink)', fontWeight: 600 }}>{compLabel(k)}</a></td>
                         <td>{describe(insp, k)}</td>
                         <td className="muted">{lastVisitText(prev, k)}</td>
-                        <td>{insp.media.filter((m) => m.compKey === k && mediaConfirmed(m)).length}</td>
+                        <td>{insp.media.filter((m) => !m.excluded && linkConfirmed(m, k)).length}</td>
                         <td>
                           {lines.map((l) => (
                             <button key={l.id} className="linkbtn" style={{ display: 'block', padding: 0, minHeight: 28, textAlign: 'left' }} disabled={!estimateOpen}
@@ -447,7 +447,7 @@ export function LiveReport({ token }: { token: string }) {
   const [approved, setApproved] = useState<CompKey[]>([]);
   useEffect(() => {
     fn<ReportDoc>(`report?token=${encodeURIComponent(token)}`, undefined, 'GET', false)
-      .then((d) => { d.inspection.estimate ??= []; setTemplate(d.template); setDoc(d); setApproved(d.inspection.customerApprovals); })
+      .then((d) => { d.inspection.estimate ??= []; d.inspection.observations ??= []; d.inspection.media = (d.inspection.media ?? []).map((m) => ({ ...m, links: m.links ?? [] })); setTemplate(d.template); setDoc(d); setApproved(d.inspection.customerApprovals); })
       .catch((e) => setErr(e instanceof Error ? e.message : 'This report link isn’t valid'));
   }, [token]);
   if (err) return <div className="phone"><div className="body"><div className="card pad stack"><strong>Report unavailable</strong><span className="muted">{err}</span></div></div></div>;
@@ -488,13 +488,13 @@ function Report({ insp, vehicle, shopName, shopPhone, approved, onToggle }: Repo
   };
   const approvedTotal = priceOf(approved);
   const Group = ({ g, strong }: { g: ReturnType<typeof groups>[number]; strong?: boolean }) => {
-    const photos = insp.media.filter((m) => m.compKey && g.keys.includes(m.compKey) && mediaConfirmed(m) && m.customerVisible);
+    const photos = insp.media.filter((m) => !m.excluded && m.customerVisible && g.keys.some((k) => linkConfirmed(m, k)));
     const isOn = g.keys.every((k) => approved.includes(k));
     const price = priceOf(g.keys);
     return (
       <div className="card pad stack" style={strong ? { border: '2px solid var(--imm-bar)' } : undefined}>
         <div className="row between" style={{ alignItems: 'flex-start' }}><strong style={{ fontSize: 17 }}>{g.title}</strong><StateChip state={strong ? 'immediate' : 'monitor'} customer /></div>
-        {photos.length > 0 && <div className="thumbs">{photos.slice(0, 3).map((m) => <img key={m.id} src={photoSrc(m.url) || m.url} alt={`Photo of ${m.compKey ? compLabel(m.compKey) : 'part'}`} className="ph" />)}</div>}
+        {photos.length > 0 && <div className="thumbs">{photos.slice(0, 3).map((m) => <img key={m.id} src={photoSrc(m.url) || m.url} alt={`Photo of ${m.links.filter((l) => g.keys.includes(l.compKey)).map((l) => compLabel(l.compKey)).join(', ') || 'part'}`} className="ph" />)}</div>}
         {g.note && <p style={{ margin: 0, lineHeight: 1.45 }}>{g.note}</p>}
         <ul className="small" style={{ margin: 0, paddingLeft: 18, color: 'var(--text2)', lineHeight: 1.5 }}>
           {g.keys.map((k) => <li key={k}><strong>{compLabel(k)}</strong>{plain(insp, k) ? `: ${plain(insp, k)}` : ''}</li>)}

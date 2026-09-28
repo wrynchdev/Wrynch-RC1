@@ -12,7 +12,8 @@ const PHOTOS = JSON.parse(fs.readFileSync(path.join(__dirname, 'photos.json'), '
   const f = path.join(photoDir, `IMG_${i + 1}.jpg`); fs.writeFileSync(f, Buffer.from(b64, 'base64')); return f;
 });
 const S = SHOTS + '/';
-const B = `http://localhost:${process.env.PORT ?? 5173}/`;
+const ROOT = `http://localhost:${process.env.PORT ?? 5173}`;
+const B = `${ROOT}/app/`;
 (async () => {
   const b = await chromium.launch();
   const ctx = await b.newContext({ viewport: { width: 400, height: 860 } });
@@ -23,6 +24,11 @@ const B = `http://localhost:${process.env.PORT ?? 5173}/`;
   const step = async (name, fn) => { try { await fn(); } catch (e) { errs.push(`STEP ${name}: ${e.message.split('\n')[0]}`); await p.screenshot({ path: S + 'fail-' + name + '.png', fullPage: true }); throw e; } };
   const shot = (n) => p.screenshot({ path: S + n + '.png', fullPage: true });
     try {
+    await step('landing', async () => {
+      await p.goto(ROOT + '/'); await p.waitForSelector('text=Every inspection, down to the part.');
+      await shot('L00-landing');
+      await p.goto(ROOT + '/#/join/abc'); await p.waitForFunction(() => location.pathname === '/app/' && location.hash.startsWith('#/join'));
+    });
     await step('signup', async () => {
       await p.goto(B); await p.waitForSelector('text=Sign in');
       await shot('L01-signin');
@@ -67,11 +73,22 @@ const B = `http://localhost:${process.env.PORT ?? 5173}/`;
     await step('place-and-confirm', async () => {
       const place = p.locator('button:text-is("Place")');
       for (let k = 0; k < 5 && await place.count(); k++) {
-        await place.first().click(); await p.locator('.sheet .pill').first().click(); await p.locator('.sheet button.primary').click(); await p.waitForTimeout(700);
+        // One photo, two parts: it should show up under both parts' points.
+        await place.first().click(); await p.locator('.sheet .pill').nth(0).click(); await p.locator('.sheet .pill').nth(1).click();
+        await p.locator('.sheet button:has-text("Save 2 parts")').click(); await p.waitForTimeout(700);
       }
-      const confirm = p.locator('button:has-text("placements")');
+      const confirm = p.locator('button:has-text("AI part matches")');
       if (await confirm.isEnabled()) { await confirm.click(); await p.waitForTimeout(800); }
       await shot('L08-confirmed');
+    });
+    await step('looks-ok', async () => {
+      // The stub AI marks some parts "looks OK"; confirming records OK for them.
+      for (const pid of ['S24', 'S25', 'S26', 'S27', 'S28', 'S29', 'S30', 'S31', 'S32', 'S33', 'S34']) {
+        await p.goto(B + `#/insp/${inspId}/point/${pid}`); await p.waitForTimeout(300);
+        const ok = p.locator('button:has-text("Confirm looks OK")');
+        if (await ok.count()) { await shot('L08b-looks-ok'); await ok.click(); await p.waitForTimeout(700); return; }
+      }
+      errs.push('no AI "looks OK" suggestion found on under-car points');
     });
     await step('measure', async () => {
       await p.goto(B + `#/insp/${inspId}/c/` + encodeURIComponent('73@left_front') + '/S24');

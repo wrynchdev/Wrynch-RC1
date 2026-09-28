@@ -68,8 +68,12 @@ export function pointState(insp: Inspection, keys: CompKey[]): ComponentState {
   return anyNotChecked ? 'not_inspected' : 'unrated';
 }
 
-export const mediaConfirmed = (m: Media) =>
-  m.status === 'confirmed' || m.status === 'reassigned' || m.status === 'technician_assigned';
+/** A photo counts for a part once a technician has confirmed or added that link. */
+export const linkConfirmed = (m: Media, key: CompKey) => !m.excluded && m.links.some((l) => l.compKey === key && l.status !== 'ai_proposed');
+export const mediaConfirmed = (m: Media) => !m.excluded && m.links.length > 0 && m.links.every((l) => l.status !== 'ai_proposed');
+/** Needs the technician: an unconfirmed AI link, or no parts at all. */
+export const mediaPending = (m: Media) => !m.excluded && (m.links.length === 0 || m.links.some((l) => l.status === 'ai_proposed'));
+export const photosOf = (insp: Inspection, key: CompKey) => insp.media.filter((m) => !m.excluded && m.links.some((l) => l.compKey === key));
 
 export interface GateItem { kind: 'ai_finding' | 'photo' | 'wording' | 'required'; id: string; label: string }
 
@@ -77,7 +81,7 @@ export interface GateItem { kind: 'ai_finding' | 'photo' | 'wording' | 'required
 export function completionGate(insp: Inspection, vehicle: Vehicle): GateItem[] {
   const items: GateItem[] = [];
   for (const f of insp.findings) if (isPendingAi(f)) items.push({ kind: 'ai_finding', id: f.id, label: f.compKey });
-  for (const m of insp.media) if (m.status === 'ai_proposed' || m.status === 'unassigned') items.push({ kind: 'photo', id: m.id, label: m.label });
+  for (const m of insp.media) if (mediaPending(m)) items.push({ kind: 'photo', id: m.id, label: m.label });
   for (const n of insp.notes) if (n.status === 'ai_suggested') items.push({ kind: 'wording', id: n.pointId, label: n.pointId });
   const { required } = vehicleComponents(vehicle.config, insp.extraComponents);
   for (const k of required) if (componentState(insp, k) === 'unrated') items.push({ kind: 'required', id: k, label: k });
@@ -111,7 +115,7 @@ export function customerView(insp: Inspection, vehicle: Vehicle) {
     state: componentState(insp, key),
     findings: insp.findings.filter((f) => f.compKey === key && countsFinding(f)),
     results: insp.results.filter((r) => r.compKey === key),
-    photos: insp.media.filter((m) => m.compKey === key && mediaConfirmed(m) && m.customerVisible),
+    photos: insp.media.filter((m) => linkConfirmed(m, key) && m.customerVisible),
     reason: insp.statuses.find((s) => s.compKey === key)?.notInspected ?? null,
   }));
   const notes = insp.notes.filter((n) => n.customerText && n.status !== 'ai_suggested');

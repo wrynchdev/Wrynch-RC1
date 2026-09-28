@@ -1,60 +1,68 @@
 // Claude vision for photo sorting, and customer wording. Every AI answer is validated against the ontology
 // and the shop template before it is stored, and everything stored is a pending proposal (rules R4, R10).
 import { cls, compLabel, findingLabel, parseKey, pointComponents } from '../src/domain/ontology';
-import { suggestWording, wordingKeepsFacts } from '../src/domain/aiStub';
+import { suggestWording, wordingKeepsFacts, type PartReading, type PhotoAnalysis } from '../src/domain/aiStub';
 import type { CompKey, PointNote, Severity, Template, VehicleConfig } from '../src/domain/types';
 import { env, HttpError } from './lib';
 
-export interface Candidate { key: CompKey; pointId: string; label: string; findings: string[] }
+export interface Candidate { key: CompKey; stage: string; label: string; findings: string[] }
 
-/** Parts a photo from this stage could show, on this vehicle. */
+/**
+ * Parts a photo could show on this vehicle: every photo-capable part in the template, not just the stage it was
+ * taken in, so one photo can count for several inspection points. The photo's own stage is listed first.
+ */
 export function candidatesFor(template: Template, sectionId: string, config: VehicleConfig): Candidate[] {
-  const section = template.sections.find((s) => s.id === sectionId);
-  if (!section) throw new HttpError(400, `Unknown stage ${sectionId}`);
+  if (!template.sections.some((s) => s.id === sectionId)) throw new HttpError(400, `Unknown stage ${sectionId}`);
+  const ordered = [...template.sections].sort((a, b) => (a.id === sectionId ? -1 : b.id === sectionId ? 1 : 0));
   const out = new Map<CompKey, Candidate>();
-  for (const p of section.points) {
-    for (const c of pointComponents(p, config)) {
-      if (!c.applies || out.has(c.key)) continue;
-      const k = cls(parseKey(c.key).classId);
-      if (k.aiPhoto === 'no') continue;
-      out.set(c.key, { key: c.key, pointId: p.id, label: compLabel(c.key), findings: Object.keys(k.findings) });
+  for (const s of ordered) {
+    for (const p of s.points) {
+      for (const c of pointComponents(p, config)) {
+        if (!c.applies || out.has(c.key)) continue;
+        const k = cls(parseKey(c.key).classId);
+        if (k.aiPhoto === 'no') continue;
+        out.set(c.key, { key: c.key, stage: s.name, label: compLabel(c.key), findings: Object.keys(k.findings) });
+      }
     }
   }
   return [...out.values()];
 }
 
-export interface Proposal {
-  mediaId: string;
-  pointId: string | null;
-  key: CompKey | null;
-  confidence: number;
-  finding: { key: string; severity: Severity; confidence: number; rationale: string } | null;
-}
-
 const SEVERITIES = ['minor', 'moderate', 'severe', 'critical'];
+const CONDITIONS = ['looks_ok', 'concern', 'unclear'];
 const clamp01 = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0);
 
 /**
- * Turn raw model output into a safe proposal. Anything not on the candidate list, or a finding the ontology
- * doesn't allow for that part, is dropped. Low confidence leaves the photo for the technician to place.
+ * Turn raw model output into safe suggestions. A part not on the candidate list, a finding the ontology doesn't
+ * allow for that part, or a low-confidence identification is dropped. "Looks OK" is kept only when there are no
+ * findings; a concern with no valid finding becomes "unclear" (the photo is linked, nothing is claimed).
  */
-export function validateProposal(mediaId: string, raw: unknown, candidates: Candidate[], minConfidence = 0.55): Proposal {
-  const empty: Proposal = { mediaId, pointId: null, key: null, confidence: 0, finding: null };
-  if (!raw || typeof raw !== 'object') return empty;
-  const r = raw as Record<string, unknown>;
-  const cand = candidates.find((c) => c.key === r.part);
-  const confidence = clamp01(r.confidence);
-  if (!cand || confidence < minConfidence) return { ...empty, confidence };
-  let finding: Proposal['finding'] = null;
-  const f = r.finding as Record<string, unknown> | null | undefined;
-  if (f && typeof f === 'object' && typeof f.key === 'string' && cand.findings.includes(f.key)
-      && typeof f.severity === 'string' && SEVERITIES.includes(f.severity)) {
-    finding = {
-      key: f.key, severity: f.severity as Severity, confidence: clamp01(f.confidence),
-      rationale: typeof f.rationale === 'string' ? f.rationale.slice(0, 400) : '',
-    };
+export function validateAnalysis(mediaId: string, raw: unknown, candidates: Candidate[], minConfidence = 0.55): PhotoAnalysis {
+  const out: PhotoAnalysis = { mediaId, parts: [] };
+  const list = (raw as { parts?: unknown } | null)?.parts;
+  if (!Array.isArray(list)) return out;
+  for (const item of list.slice(0, 12)) {
+    if (!item || typeof item !== 'object') continue;
+    const r = item as Record<string, unknown>;
+    const cand = candidates.find((c) => c.key === r.part);
+    const confidence = clamp01(r.confidence);
+    if (!cand || confidence < minConfidence || out.parts.some((p) => p.key === cand.key)) continue;
+    const findings: PartReading['findings'] = [];
+    for (const f of Array.isArray(r.findings) ? r.findings : []) {
+      const x = f as Record<string, unknown>;
+      if (typeof x?.key === 'string' && cand.findings.includes(x.key) && typeof x.severity === 'string' && SEVERITIES.includes(x.severity)
+          && !findings.some((y) => y.key === x.key)) {
+        findings.push({ key: x.key, severity: x.severity as Severity, confidence: clamp01(x.confidence),
+          rationale: typeof x.rationale === 'string' ? x.rationale.slice(0, 400) : '' });
+      }
+    }
+    let condition = (typeof r.condition === 'string' && CONDITIONS.includes(r.condition) ? r.condition : 'unclear') as PartReading['condition'];
+    if (findings.length) condition = 'concern';
+    else if (condition === 'concern') condition = 'unclear';
+    out.parts.push({ key: cand.key, confidence, condition, note: typeof r.note === 'string' ? r.note.slice(0, 300) : '', findings });
+    if (out.parts.length >= 8) break;
   }
-  return { mediaId, pointId: cand.pointId, key: cand.key, confidence, finding };
+  return out;
 }
 
 const model = () => env('ANTHROPIC_MODEL') ?? 'claude-sonnet-5';
@@ -82,35 +90,56 @@ function toolInput(res: Record<string, unknown>): unknown {
 
 const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64');
 
-/** Ask Claude which part one photo shows and whether it sees a problem. */
-export async function classifyPhoto(image: { bytes: Uint8Array; type: string }, candidates: Candidate[], stageName: string): Promise<unknown> {
+/** Ask Claude which parts one photo shows and the visible condition of each. */
+export async function analyzePhoto(image: { bytes: Uint8Array; type: string }, candidates: Candidate[], stageName: string): Promise<unknown> {
   const findingKeys = [...new Set(candidates.flatMap((c) => c.findings))];
-  const list = candidates.map((c) => `- ${c.key}: ${c.label} (allowed findings: ${c.findings.map((k) => findingLabel(k).toLowerCase()).join(', ')})`).join('\n');
+  const byStage = new Map<string, Candidate[]>();
+  for (const c of candidates) byStage.set(c.stage, [...(byStage.get(c.stage) ?? []), c]);
+  const list = [...byStage.entries()].map(([stage, cs]) => `${stage}:\n` + cs.map((c) =>
+    `- ${c.key}: ${c.label} (findings: ${c.findings.map((k) => findingLabel(k).toLowerCase()).join(', ')})`).join('\n')).join('\n\n');
   const res = await claude({
-    max_tokens: 600,
-    system: 'You help automotive technicians sort inspection photos. You only suggest; a technician confirms everything. '
-      + 'Be conservative: if the part or position is not clearly identifiable, give low confidence. Never estimate measurements. '
-      + 'Only report a finding you can actually see in the photo.',
+    max_tokens: 1500,
+    system: 'You help automotive technicians inspect vehicles from photos. You only suggest; a technician confirms everything. '
+      + 'Identify every listed part that is clearly visible in the photo (a photo often shows several) and judge the visible condition of each. '
+      + 'Say "looks_ok" only when enough of the part is visible to see it is free of damage, leaks, corrosion and abnormal wear; '
+      + 'say "concern" with at least one finding when you can see a problem; otherwise "unclear". '
+      + 'Be conservative with positions (left = driver side in the US) and give low confidence when unsure. '
+      + 'Never estimate measurements such as tread depth or pad thickness. Only report findings you can actually see.',
     tools: [{
       name: 'record_photo',
-      description: 'Record which part the photo shows and any visible problem.',
+      description: 'Record each visible part and its condition.',
       input_schema: {
         type: 'object',
         properties: {
-          part: { type: ['string', 'null'], enum: [...candidates.map((c) => c.key), null], description: 'Part key from the list, or null if none fits' },
-          confidence: { type: 'number', minimum: 0, maximum: 1 },
-          finding: {
-            type: ['object', 'null'],
-            properties: {
-              key: { type: 'string', enum: findingKeys },
-              severity: { type: 'string', enum: SEVERITIES },
-              confidence: { type: 'number', minimum: 0, maximum: 1 },
-              rationale: { type: 'string', description: 'One sentence: what is visible that supports this finding' },
+          parts: {
+            type: 'array',
+            maxItems: 8,
+            items: {
+              type: 'object',
+              properties: {
+                part: { type: 'string', enum: candidates.map((c) => c.key), description: 'Part key from the list' },
+                confidence: { type: 'number', minimum: 0, maximum: 1, description: 'How sure you are this is that part at that position' },
+                condition: { type: 'string', enum: CONDITIONS },
+                note: { type: 'string', description: 'One short sentence on what is visible' },
+                findings: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      key: { type: 'string', enum: findingKeys },
+                      severity: { type: 'string', enum: SEVERITIES },
+                      confidence: { type: 'number', minimum: 0, maximum: 1 },
+                      rationale: { type: 'string', description: 'What is visible that supports this finding' },
+                    },
+                    required: ['key', 'severity', 'confidence', 'rationale'],
+                  },
+                },
+              },
+              required: ['part', 'confidence', 'condition', 'note', 'findings'],
             },
-            required: ['key', 'severity', 'confidence', 'rationale'],
           },
         },
-        required: ['part', 'confidence', 'finding'],
+        required: ['parts'],
       },
     }],
     tool_choice: { type: 'tool', name: 'record_photo' },
@@ -118,7 +147,9 @@ export async function classifyPhoto(image: { bytes: Uint8Array; type: string }, 
       role: 'user',
       content: [
         { type: 'image', source: { type: 'base64', media_type: image.type.startsWith('image/') ? image.type : 'image/jpeg', data: b64(image.bytes) } },
-        { type: 'text', text: `This photo was taken during the "${stageName}" stage of a vehicle inspection. Part keys look like "classId@position".\n\nPossible parts:\n${list}\n\nWhich part does the photo show, and is any allowed finding clearly visible?` },
+        { type: 'text', text: `Taken during the "${stageName}" stage of a vehicle inspection. Part keys look like "classId@position". `
+          + `Parts on this vehicle, by stage (the photo's own stage first; it may also show parts from other stages):\n\n${list}\n\n`
+          + 'List every visible part and its condition. Use an empty list if no listed part is identifiable.' },
       ],
     }],
   });

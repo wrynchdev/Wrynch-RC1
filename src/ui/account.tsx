@@ -12,7 +12,7 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : 'Something wen
 
 // ------------------------------------------------------------------ sign in / sign up
 export function SignIn({ after }: { after?: () => Promise<void> | void }) {
-  const [mode, setMode] = useState<'in' | 'up' | 'reset'>('in');
+  const [mode, setMode] = useState<'in' | 'up' | 'reset'>(() => (window.location.hash.startsWith('#/signup') ? 'up' : 'in'));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');

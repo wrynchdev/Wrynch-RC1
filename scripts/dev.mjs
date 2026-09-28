@@ -1,5 +1,5 @@
-// Local development: rebuilds the app on change and serves it with the /api functions.
-//   npm run dev   -> http://localhost:5173
+// Local development (marketing page at /, app at /app/): rebuilds the app on change and serves it with the /api functions.
+//   npm run dev   -> http://localhost:5173 (marketing page) and http://localhost:5173/app/ (the app)
 import * as esbuild from 'esbuild';
 import { createServer } from 'node:http';
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -24,8 +24,11 @@ createServer(async (req, res) => {
     await toNode(h)(req, res);
     return;
   }
-  let file = normalize(join('dist', url.pathname === '/' ? 'index.html' : url.pathname));
-  if (!file.startsWith('dist') || !existsSync(file) || statSync(file).isDirectory()) file = 'dist/index.html';
+  // "/" is the marketing page; everything under "/app" is the app.
+  if (url.pathname === '/app') { res.statusCode = 308; res.setHeader('location', '/app/'); res.end(); return; }
+  let file = normalize(join('dist', url.pathname));
+  if (existsSync(file) && statSync(file).isDirectory()) file = join(file, 'index.html');
+  if (!file.startsWith('dist') || !existsSync(file)) file = url.pathname.startsWith('/app/') ? 'dist/app/index.html' : 'dist/index.html';
   res.setHeader('content-type', TYPES[extname(file)] ?? 'application/octet-stream');
   res.end(readFileSync(file));
 }).listen(port, () => {

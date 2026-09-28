@@ -8,7 +8,7 @@ import { Capture, ComponentView, Finish, History, Jobs, Missing, Overview, Point
 
 function route(p: string[]) {
   const [a, b, c, d, e] = p;
-  if (!a) return <Jobs />;
+  if (!a || a === 'signup') return <Jobs />;
   if (a === 'new') return <NewInspection />;
   if (a === 'setup' && b) return <Setup id={b} />;
   if (a === 'insp' && b) {

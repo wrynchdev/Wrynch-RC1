@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { candidatesFor, validateProposal } from './ai';
+import { candidatesFor, validateAnalysis } from './ai';
 import { mapVpic } from './vin';
 import { aiSort, aiWording, report, sendReport } from './routes';
 import { DEFAULT_TEMPLATE, clsByName, compKey } from '../src/domain/ontology';
@@ -19,14 +19,29 @@ test('candidates for under car on the 4Runner exclude parts that do not apply an
 test('AI output is validated against the candidates and the ontology', () => {
   const c = candidatesFor(DEFAULT_TEMPLATE, 'under_car', runner.config);
   const rotor = compKey(clsByName('brake_rotor').id, 'left_front');
-  const ok = validateProposal('m', { part: rotor, confidence: 0.9, finding: { key: 'grooved', severity: 'moderate', confidence: 0.8, rationale: 'grooves' } }, c);
-  assert.equal(ok.key, rotor);
-  assert.equal(ok.finding?.key, 'grooved');
-  assert.equal(validateProposal('m', { part: rotor, confidence: 0.9, finding: { key: 'dent', severity: 'minor' } }, c).finding, null, 'finding not allowed on rotors');
-  assert.equal(validateProposal('m', { part: '999@nowhere', confidence: 0.99, finding: null }, c).key, null, 'unknown part');
-  assert.equal(validateProposal('m', { part: rotor, confidence: 0.3, finding: null }, c).key, null, 'low confidence waits for the tech');
-  assert.equal(validateProposal('m', 'garbage', c).key, null);
-  assert.equal(validateProposal('m', { part: rotor, confidence: 7, finding: { key: 'grooved', severity: 'extreme' } }, c).finding, null, 'bad severity');
+  const caliper = compKey(clsByName('brake_caliper').id, 'left_front');
+  const tire = compKey(clsByName('tire').id, 'left_front');
+  const a = validateAnalysis('m', { parts: [
+    { part: rotor, confidence: 0.9, condition: 'concern', note: 'grooves', findings: [
+      { key: 'grooved', severity: 'moderate', confidence: 0.8, rationale: 'grooves' }, { key: 'dent', severity: 'minor' }] },
+    { part: caliper, confidence: 0.85, condition: 'looks_ok', note: 'dry', findings: [] },
+    { part: tire, confidence: 0.8, condition: 'concern', findings: [{ key: 'grooved', severity: 'minor' }] },
+    { part: '999@nowhere', confidence: 0.99, condition: 'looks_ok', findings: [] },
+    { part: rotor, confidence: 0.9, condition: 'looks_ok', findings: [] },
+    { part: compKey(clsByName('brake_pad').id, 'left_front'), confidence: 0.3, condition: 'looks_ok', findings: [] },
+  ] }, c);
+  assert.deepEqual(a.parts.map((p) => [p.key, p.condition]), [[rotor, 'concern'], [caliper, 'looks_ok'], [tire, 'unclear']],
+    'unknown part, duplicate and low-confidence dropped; tire concern with no allowed finding becomes unclear');
+  assert.deepEqual(a.parts[0].findings.map((f) => f.key), ['grooved'], 'finding not allowed on rotors dropped');
+  assert.equal(validateAnalysis('m', 'garbage', c).parts.length, 0);
+  assert.equal(validateAnalysis('m', { parts: [{ part: caliper, confidence: 0.9, condition: 'looks_ok', findings: [{ key: 'leak', severity: 'minor' }] }] }, c).parts[0].condition,
+    'concern', 'a finding overrides "looks OK"');
+});
+
+test('candidates cover every stage so one photo can count for several points', () => {
+  const c = candidatesFor(DEFAULT_TEMPLATE, 'under_car', runner.config);
+  assert.equal(c[0].stage, 'Under car', 'photo stage listed first');
+  assert.ok(c.some((x) => x.stage === 'Under hood'), 'other stages included');
 });
 
 test('VIN mapping: 4WD SUV, EV, pickup', () => {
@@ -80,28 +95,32 @@ const post = (path: string, body: unknown, jwt = 'user-jwt') =>
 test('ai-sort requires sign-in and records proposals with the service key only', async () => {
   assert.equal((await aiSort(new Request('https://app.test/api/ai-sort', { method: 'POST', body: '{}' }))).status, 401);
   respond = (url) => (url.endsWith('/get_inspection') ? bundle((i) => {
-    i.media = [1, 2, 3].map((n) => ({ id: `m${n}`, sectionId: 'under_car', url: `s/i/m${n}.jpg`, label: `IMG_${n}.jpg`, pointId: null, compKey: null,
-      status: 'unassigned', confidence: null, aiGuess: null, history: [], customerVisible: true }));
+    i.media = [1, 2, 3].map((n) => ({ id: `m${n}`, sectionId: 'under_car', url: `s/i/m${n}.jpg`, label: `IMG_${n}.jpg`,
+      excluded: false, customerVisible: true, analyzed: false, links: [] }));
+    i.media.push({ id: 'm4', sectionId: 'under_car', url: 's/i/m4.jpg', label: 'done.jpg', excluded: false, customerVisible: true, analyzed: true, links: [] });
   }) : null);
-  const r = await aiSort(post('ai-sort', { inspectionId: 'i-4r-now', mediaIds: ['m1', 'm2', 'm3'] }));
+  const r = await aiSort(post('ai-sort', { inspectionId: 'i-4r-now', mediaIds: ['m1', 'm2', 'm3', 'm4'] }));
   assert.equal(r.status, 200);
   assert.equal((await r.json()).model, 'stub');
   const get = calls.find((c) => c.url.endsWith('/get_inspection'))!;
   assert.equal(get.auth, 'Bearer user-jwt', 'inspection loaded as the user (RLS decides access)');
   const rec = calls.find((c) => c.url.endsWith('/ai_record_sort'))!;
   assert.equal(rec.auth, 'Bearer service');
-  assert.equal((rec.body as { p_items: unknown[] }).p_items.length, 3);
+  assert.equal((rec.body as { p_items: unknown[] }).p_items.length, 3, 'an already-analysed photo is skipped');
 });
 
 test('ai-sort with Claude: model output is validated before it is stored', async () => {
   process.env.ANTHROPIC_API_KEY = 'k';
   const rotor = compKey(clsByName('brake_rotor').id, 'left_front');
+  const caliper = compKey(clsByName('brake_caliper').id, 'left_front');
   respond = (url) => {
     if (url.endsWith('/get_inspection')) return bundle((i) => {
-      i.media = [{ id: 'm1', sectionId: 'under_car', url: 's/i/m1.jpg', label: 'a.jpg', pointId: null, compKey: null, status: 'unassigned', confidence: null, aiGuess: null, history: [], customerVisible: true }];
+      i.media = [{ id: 'm1', sectionId: 'under_car', url: 's/i/m1.jpg', label: 'a.jpg', excluded: false, customerVisible: true, analyzed: false, links: [] }];
     });
     if (url.includes('/storage/v1/object/inspection-media/')) return new Response(new Uint8Array([255, 216, 255]), { headers: { 'content-type': 'image/jpeg' } });
-    if (url.startsWith('https://api.anthropic.com')) return { content: [{ type: 'tool_use', input: { part: rotor, confidence: 0.92, finding: { key: 'crack', severity: 'minor', confidence: 0.7, rationale: 'hairline crack' } } }] };
+    if (url.startsWith('https://api.anthropic.com')) return { content: [{ type: 'tool_use', input: { parts: [
+      { part: rotor, confidence: 0.92, condition: 'concern', note: 'crack at a vent', findings: [{ key: 'crack', severity: 'minor', confidence: 0.7, rationale: 'hairline crack' }] },
+      { part: caliper, confidence: 0.88, condition: 'looks_ok', note: 'dry', findings: [] }] } }] };
     return null;
   };
   const r = await aiSort(post('ai-sort', { inspectionId: 'i-4r-now', mediaIds: ['m1'] }));
@@ -110,9 +129,9 @@ test('ai-sort with Claude: model output is validated before it is stored', async
   const b = ai.body as { tool_choice: { name: string }; messages: { content: { type: string }[] }[] };
   assert.equal(b.tool_choice.name, 'record_photo');
   assert.equal(b.messages[0].content[0].type, 'image');
-  const items = (calls.find((c) => c.url.endsWith('/ai_record_sort'))!.body as { p_items: { key: string; finding: { key: string } }[] }).p_items;
-  assert.equal(items[0].key, rotor);
-  assert.equal(items[0].finding.key, 'crack');
+  const items = (calls.find((c) => c.url.endsWith('/ai_record_sort'))!.body as { p_items: { parts: { key: string; condition: string; findings: { key: string }[] }[] }[] }).p_items;
+  assert.deepEqual(items[0].parts.map((p) => [p.key, p.condition]), [[rotor, 'concern'], [caliper, 'looks_ok']], 'one photo, two parts');
+  assert.equal(items[0].parts[0].findings[0].key, 'crack');
 });
 
 test('ai-wording rejects a model rewrite that changes numbers and falls back safely', async () => {
@@ -130,7 +149,7 @@ test('ai-wording rejects a model rewrite that changes numbers and falls back saf
 
 test('customer report signs only the photos the database returned', async () => {
   respond = (url) => {
-    if (url.endsWith('/customer_report')) return { ...bundle((i) => { i.media = [{ id: 'm1', sectionId: 'under_car', url: 's/i/m1.jpg', label: 'a', pointId: 'S24', compKey: null, status: 'confirmed', confidence: null, aiGuess: null, history: [], customerVisible: true }]; }), shop: { name: 'Demo', phone: null } };
+    if (url.endsWith('/customer_report')) return { ...bundle((i) => { i.media = [{ id: 'm1', sectionId: 'under_car', url: 's/i/m1.jpg', label: 'a', excluded: false, customerVisible: true, analyzed: true, links: [{ compKey: '71@left_front', status: 'confirmed', confidence: null }] }]; }), shop: { name: 'Demo', phone: null } };
     if (url.includes('/object/sign/')) return [{ path: 's/i/m1.jpg', signedURL: '/object/sign/inspection-media/s/i/m1.jpg?token=x' }];
     return null;
   };

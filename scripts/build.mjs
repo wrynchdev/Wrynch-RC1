@@ -30,9 +30,12 @@ export const appOptions = (dev = false) => ({
   logLevel: 'info',
 });
 
+// The marketing page is served at "/" and the app at "/app/".
 export function writeIndex() {
   mkdirSync('dist/assets', { recursive: true });
-  cpSync('index.html', 'dist/index.html');
+  mkdirSync('dist/app', { recursive: true });
+  cpSync('site/index.html', 'dist/index.html');
+  cpSync('index.html', 'dist/app/index.html');
 }
 
 const ROUTE_NAMES = ['ai-sort', 'ai-wording', 'vin', 'report', 'send-report'];
@@ -61,7 +64,10 @@ async function buildFunctions() {
     routes: [
       { src: '/assets/(.*)', headers: { 'cache-control': 'public, max-age=31536000, immutable' }, continue: true },
       { src: '/(index\\.html)?', headers: { 'cache-control': 'no-cache' }, continue: true },
+      { src: '/app/?(index\\.html)?', headers: { 'cache-control': 'no-cache' }, continue: true },
+      { src: '/app', status: 308, headers: { location: '/app/' } },
       { handle: 'filesystem' },
+      { src: '/app/.*', dest: '/app/index.html' },
     ],
   }, null, 2));
   console.log(`functions: ${readdirSync(`${out}/functions/api`).join(', ')}`);
@@ -72,13 +78,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   writeIndex();
   const result = await esbuild.build(appOptions(false));
   // Point index.html at the hashed file names.
-  let html = readFileSync('dist/index.html', 'utf8');
+  let html = readFileSync('dist/app/index.html', 'utf8');
   for (const out of Object.keys(result.metafile.outputs)) {
     const file = out.replace(/^dist\//, '');
-    if (/^assets\/app-[A-Z0-9]+\.js$/i.test(file)) html = html.replace('assets/app.js', file);
-    if (/^assets\/app-[A-Z0-9]+\.css$/i.test(file)) html = html.replace('assets/app.css', file);
+    if (/^assets\/app-[A-Z0-9]+\.js$/i.test(file)) html = html.replace('/assets/app.js', `/${file}`);
+    if (/^assets\/app-[A-Z0-9]+\.css$/i.test(file)) html = html.replace('/assets/app.css', `/${file}`);
   }
-  if (html.includes('assets/app.js') || html.includes('assets/app.css')) throw new Error('index.html still points at unhashed assets');
-  writeFileSync('dist/index.html', html);
+  if (html.includes('assets/app.js') || html.includes('assets/app.css')) throw new Error('app/index.html still points at unhashed assets');
+  writeFileSync('dist/app/index.html', html);
   await buildFunctions();
 }

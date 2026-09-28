@@ -124,19 +124,29 @@ export interface Finding {
   aiOriginal: { key: string; severity: Severity } | null;
 }
 
-export type AssignmentStatus = 'ai_proposed' | 'confirmed' | 'reassigned' | 'technician_assigned' | 'unassigned' | 'excluded';
+export type LinkStatus = 'ai_proposed' | 'confirmed' | 'technician_added';
+/** A part a photo shows. One photo can show several parts, so it appears under every point those parts belong to. */
+export interface MediaLink { compKey: CompKey; status: LinkStatus; confidence: number | null }
 export interface Media {
   id: string;
-  sectionId: string;
+  sectionId: string;   // the stage it was taken in
   url: string;
   label: string;
-  pointId: string | null;
-  compKey: CompKey | null;
-  status: AssignmentStatus;
-  confidence: number | null;
-  aiGuess: { pointId: string; compKey: CompKey } | null;
-  history: { at: string; status: AssignmentStatus; compKey: CompKey | null }[];
+  excluded: boolean;
   customerVisible: boolean;
+  analyzed: boolean;   // the AI has looked at it
+  links: MediaLink[];
+}
+
+/** AI suggestion that a part it saw looks fine. Counts for nothing until a technician confirms it. */
+export interface AiObservation {
+  id: string;
+  mediaId: string;
+  compKey: CompKey;
+  verdict: 'looks_ok';
+  note: string | null;
+  confidence: number | null;
+  status: 'pending' | 'confirmed' | 'rejected';
 }
 
 export type NotInspectedReason =
@@ -181,6 +191,7 @@ export interface Inspection {
   results: CheckResult[];
   findings: Finding[];
   media: Media[];
+  observations: AiObservation[];
   statuses: ComponentStatus[];
   notes: PointNote[];
   extraComponents: CompKey[]; // on-demand components added by the tech (e.g. a warning lamp)

@@ -10,7 +10,7 @@ import {
 } from '../domain/ontology';
 import { completionGate, rateValue, summarize, type Summary } from '../domain/rating';
 import { applyUnderCarExample, quickCheck, seedInspections, VEHICLES } from '../domain/seed';
-import { sortPhotos, suggestWording, wordingKeepsFacts } from '../domain/aiStub';
+import { analyzePhotos, applyAnalysis, suggestWording, wordingKeepsFacts } from '../domain/aiStub';
 import type {
   CompKey, EstimateLine, Inspection, NotInspectedReason, Rating, Severity, Template, Vehicle, VehicleConfig,
 } from '../domain/types';
@@ -46,7 +46,7 @@ export interface State {
   photoUrls: Record<string, string>;
 }
 
-const STORAGE_KEY = 'wrynch-demo-v2';
+const STORAGE_KEY = 'wrynch-demo-v3'; // bumped when the saved demo data shape changes
 const now = () => new Date().toISOString();
 let seq = Date.now();
 const uid = (p: string) => `${p}-${(seq++).toString(36)}`;
@@ -122,6 +122,7 @@ interface Bundle { inspection: Inspection; vehicle: Vehicle; template: Template 
 const queues = new Map<string, { tail: Promise<void>; waiting: number }>();
 function mergeBundle(b: Bundle) {
   b.inspection.estimate ??= [];
+  b.inspection.observations ??= [];
   const inspections = [...state.inspections.filter((i) => i.id !== b.inspection.id), b.inspection];
   const vehicles = [...state.vehicles.filter((v) => v.id !== b.vehicle.id), b.vehicle];
   if (b.template) setTemplate(b.template);
@@ -164,22 +165,33 @@ function liveEdit(inspId: string, optimistic: ((i: Inspection, v: Vehicle) => vo
 const local = {
   setOdometer: (odometer: number) => (i: Inspection) => { i.odometer = odometer; },
   confirmPlacements: (sectionId: string) => (i: Inspection) => {
-    for (const m of i.media) if (m.sectionId === sectionId && m.status === 'ai_proposed') {
-      m.status = 'confirmed'; m.history.push({ at: now(), status: 'confirmed', compKey: m.compKey });
-    }
+    for (const m of i.media) if (m.sectionId === sectionId && !m.excluded) for (const l of m.links) if (l.status === 'ai_proposed') l.status = 'confirmed';
   },
-  placePhoto: (mediaId: string, pointId: string, key: CompKey) => (i: Inspection) => {
+  /** The technician sets the full list of parts a photo shows (mirrors set_photo_parts on the server). */
+  setPhotoParts: (mediaId: string, keys: CompKey[]) => (i: Inspection) => {
     const m = i.media.find((x) => x.id === mediaId)!;
-    const same = m.aiGuess && m.aiGuess.compKey === key;
-    m.status = !m.aiGuess ? 'technician_assigned' : same && m.status === 'ai_proposed' ? 'confirmed' : 'reassigned';
-    m.pointId = pointId; m.compKey = key;
-    m.history.push({ at: now(), status: m.status, compKey: key });
-    for (const f of i.findings) if (f.mediaId === mediaId && f.status === 'pending' && f.compKey !== key) { f.status = 'denied'; f.reviewedAt = now(); }
+    const kept = m.links.filter((l) => keys.includes(l.compKey)).map((l) => (l.status === 'ai_proposed' ? { ...l, status: 'confirmed' as const } : l));
+    for (const k of keys) if (!kept.some((l) => l.compKey === k)) kept.push({ compKey: k, status: 'technician_added', confidence: null });
+    m.links = kept;
+    m.excluded = false;
+    for (const f of i.findings) if (f.mediaId === mediaId && f.status === 'pending' && !keys.includes(f.compKey)) { f.status = 'denied'; f.reviewedAt = now(); }
+    for (const o of i.observations) if (o.mediaId === mediaId && o.status === 'pending' && !keys.includes(o.compKey)) o.status = 'rejected';
   },
   excludePhoto: (mediaId: string) => (i: Inspection) => {
-    const m = i.media.find((x) => x.id === mediaId)!;
-    m.status = 'excluded'; m.history.push({ at: now(), status: 'excluded', compKey: m.compKey });
+    i.media.find((x) => x.id === mediaId)!.excluded = true;
     for (const f of i.findings) if (f.mediaId === mediaId && f.status === 'pending') { f.status = 'denied'; f.reviewedAt = now(); }
+    for (const o of i.observations) if (o.mediaId === mediaId && o.status === 'pending') o.status = 'rejected';
+  },
+  reviewObservations: (action: 'confirm' | 'reject', items: { id: string; check: string }[]) => (i: Inspection) => {
+    for (const it of items) {
+      const o = i.observations.find((x) => x.id === it.id && x.status === 'pending');
+      if (!o) continue;
+      o.status = action === 'confirm' ? 'confirmed' : 'rejected';
+      if (action === 'confirm' && !i.results.some((r) => r.compKey === o.compKey)
+          && !i.findings.some((f) => f.compKey === o.compKey && f.status !== 'denied') && !i.statuses.some((x) => x.compKey === o.compKey)) {
+        i.results.push({ compKey: o.compKey, checkKey: it.check, value: null, rating: 'ok', at: now() });
+      }
+    }
   },
   setPhotoVisible: (mediaId: string, visible: boolean) => (i: Inspection) => { i.media.find((x) => x.id === mediaId)!.customerVisible = visible; },
   setCheck: (key: CompKey, checkKey: string, value: number | null, picked: Rating | null) => (i: Inspection) => {
@@ -302,7 +314,7 @@ export const actions = {
       const id = uid('i');
       const insp: Inspection = { id, ro: f.ro, vehicleId: vid, odometer: f.odometer ?? 0, date: new Date().toISOString().slice(0, 10), technician: 'You',
         status: 'not_started', concerns: f.concerns, dtcs: [], results: [], findings: [], media: [], statuses: [], notes: [], extraComponents: [],
-        customerApprovals: [], estimate: [] };
+        customerApprovals: [], estimate: [], observations: [] };
       set({ vehicles: [...state.vehicles, vehicle], inspections: [...state.inspections, insp] });
       return id;
     }
@@ -325,7 +337,7 @@ export const actions = {
     try {
       const h = await withLoading(() => rpc<{ vehicle: Vehicle; inspections: Inspection[] }>('get_vehicle_history', { p_vehicle: vehicleId }));
       const ids = new Set(h.inspections.map((i) => i.id));
-      for (const i of h.inspections) i.estimate ??= [];
+      for (const i of h.inspections) { i.estimate ??= []; i.observations ??= []; }
       set({
         inspections: [...state.inspections.filter((i) => !ids.has(i.id)), ...h.inspections],
         vehicles: [...state.vehicles.filter((v) => v.id !== vehicleId), h.vehicle],
@@ -363,9 +375,9 @@ export const actions = {
     if (!files.length) return;
     if (state.mode === 'demo') {
       edit(inspId, (i, v) => {
-        const out = sortPhotos(sectionId, files.map((f) => ({ ...f, id: uid('m') })), v.config, now());
-        i.media.push(...out.media);
-        i.findings.push(...out.findings);
+        const withIds = files.map((f) => ({ ...f, id: uid('m') }));
+        for (const f of withIds) i.media.push({ id: f.id, sectionId, url: f.url, label: f.name, excluded: false, customerVisible: true, analyzed: false, links: [] });
+        applyAnalysis(i, analyzePhotos(sectionId, withIds, v.config));
         if (i.status === 'not_started') i.status = 'in_progress';
       });
       return;
@@ -399,9 +411,16 @@ export const actions = {
     if (state.mode === 'demo') return edit(inspId, local.confirmPlacements(sectionId));
     void liveEdit(inspId, local.confirmPlacements(sectionId), () => rpc('confirm_placements', { p_inspection: inspId, p_section: sectionId }));
   },
-  placePhoto(inspId: string, mediaId: string, pointId: string, key: CompKey) {
-    if (state.mode === 'demo') return edit(inspId, local.placePhoto(mediaId, pointId, key));
-    void liveEdit(inspId, local.placePhoto(mediaId, pointId, key), () => rpc('place_photo', { p_media: mediaId, p_point: pointId, p_key: key }));
+  setPhotoParts(inspId: string, mediaId: string, keys: CompKey[]) {
+    if (state.mode === 'demo') return edit(inspId, local.setPhotoParts(mediaId, keys));
+    void liveEdit(inspId, local.setPhotoParts(mediaId, keys), () => rpc('set_photo_parts', { p_media: mediaId, p_keys: keys }));
+  },
+  /** Confirm or reject AI "looks OK" suggestions. A confirmed one records OK on the part's visual check. */
+  reviewObservations(inspId: string, action: 'confirm' | 'reject', ids: string[]) {
+    const i = state.inspections.find((x) => x.id === inspId)!;
+    const items = ids.map((id) => ({ id, check: quickCheck(parseKey(i.observations.find((o) => o.id === id)!.compKey).classId) }));
+    if (state.mode === 'demo') return edit(inspId, local.reviewObservations(action, items));
+    void liveEdit(inspId, local.reviewObservations(action, items), () => rpc('review_observations', { p_inspection: inspId, p_action: action, p_items: items }));
   },
   excludePhoto(inspId: string, mediaId: string) {
     if (state.mode === 'demo') return edit(inspId, local.excludePhoto(mediaId));

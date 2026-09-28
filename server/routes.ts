@@ -1,7 +1,7 @@
 // HTTP endpoints. Each is deployed as its own function under /api/<name> (see scripts/build.mjs).
-import { sortPhotos } from '../src/domain/aiStub';
+import { analyzePhotos, type PhotoAnalysis } from '../src/domain/aiStub';
 import type { Inspection, Template, Vehicle } from '../src/domain/types';
-import { candidatesFor, classifyPhoto, rewriteNote, validateProposal, type Proposal } from './ai';
+import { analyzePhoto, candidatesFor, rewriteNote, validateAnalysis } from './ai';
 import { decodeVin } from './vin';
 import { bearer, downloadObject, env, HttpError, json, readJson, route, rpc, signUrls, type Handler } from './lib';
 
@@ -27,39 +27,34 @@ export const aiSort: Handler = route({
     if (!inspectionId || !Array.isArray(mediaIds) || mediaIds.length > 60) throw new HttpError(400, 'Send an inspection and up to 60 photos');
     const { inspection, vehicle, template } = await loadAsUser(jwt, inspectionId);
     if (inspection.status !== 'in_progress') throw new HttpError(409, 'This inspection is no longer open');
-    const todo = inspection.media.filter((m) => mediaIds.includes(m.id) && m.status === 'unassigned' && !m.aiGuess);
+    const todo = inspection.media.filter((m) => mediaIds.includes(m.id) && !m.excluded && !m.analyzed && m.links.length === 0);
     const bySection = new Map<string, typeof todo>();
     for (const m of todo) bySection.set(m.sectionId, [...(bySection.get(m.sectionId) ?? []), m]);
 
-    const proposals: Proposal[] = [];
+    const analyses: PhotoAnalysis[] = [];
     const useModel = !!env('ANTHROPIC_API_KEY');
     for (const [sectionId, items] of bySection) {
-      const candidates = candidatesFor(template, sectionId, vehicle.config);
-      const stage = template.sections.find((s) => s.id === sectionId)?.name ?? sectionId;
       if (useModel) {
-        proposals.push(...await pool(items, 4, async (m) => {
+        const candidates = candidatesFor(template, sectionId, vehicle.config);
+        const stage = template.sections.find((s) => s.id === sectionId)?.name ?? sectionId;
+        analyses.push(...await pool(items, 4, async (m) => {
           try {
-            const raw = await classifyPhoto(await downloadObject(m.url), candidates, stage);
-            return validateProposal(m.id, raw, candidates);
+            return validateAnalysis(m.id, await analyzePhoto(await downloadObject(m.url), candidates, stage), candidates);
           } catch (e) {
             console.error('photo', m.id, e);
-            return { mediaId: m.id, pointId: null, key: null, confidence: 0, finding: null } as Proposal;
+            return { mediaId: m.id, parts: [] };
           }
         }));
       } else {
         // No AI key configured: the deterministic stand-in keeps the workflow usable.
-        const out = sortPhotos(sectionId, items.map((m) => ({ id: m.id, url: m.url, name: m.label })), vehicle.config, new Date().toISOString(), template);
-        for (const m of out.media) {
-          const f = out.findings.find((x) => x.mediaId === m.id);
-          proposals.push({
-            mediaId: m.id, pointId: m.pointId, key: m.compKey, confidence: m.confidence ?? 0,
-            finding: f ? { key: f.key, severity: f.severity, confidence: f.confidence ?? 0, rationale: f.rationale ?? '' } : null,
-          });
-        }
+        analyses.push(...analyzePhotos(sectionId, items.map((m) => ({ id: m.id, name: m.label })), vehicle.config, template));
       }
     }
-    await rpc('ai_record_sort', { p_inspection: inspectionId, p_items: proposals }, 'service');
-    return json({ sorted: proposals.filter((p) => p.key).length, unsure: proposals.filter((p) => !p.key).length, model: useModel ? 'claude' : 'stub' });
+    await rpc('ai_record_sort', { p_inspection: inspectionId, p_items: analyses }, 'service');
+    return json({
+      photos: analyses.length, identified: analyses.filter((a) => a.parts.length).length,
+      parts: analyses.reduce((n, a) => n + a.parts.length, 0), model: useModel ? 'claude' : 'stub',
+    });
   },
 });
 
@@ -116,7 +111,7 @@ export const sendReport: Handler = route({
     const { inspection, vehicle } = await loadAsUser(jwt, inspectionId);
     if (inspection.status !== 'submitted' && inspection.status !== 'sent') throw new HttpError(409, 'Send to advisor first');
     const base = env('APP_URL') ?? new URL(req.url).origin;
-    const link = `${base.replace(/\/$/, '')}/#/r/${inspection.reportToken}`;
+    const link = `${base.replace(/\/$/, '')}/app/#/r/${inspection.reportToken}`;
     const who = `${vehicle.year ?? ''} ${vehicle.make} ${vehicle.model}`.trim();
     let status: 'sent' | 'failed' | 'skipped' = 'skipped';
     let detail = '';

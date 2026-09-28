@@ -76,18 +76,47 @@ select public.add_media((select v::uuid from t.ids where k = 'insp'), '00000000-
 select t.expect_error($$ select public.add_media((select v::uuid from t.ids where k = 'insp'), gen_random_uuid(), 'under_car', 'elsewhere/x.jpg', 'x') $$, '%wrong folder%');
 
 select t.act('service_role', null);
+-- One photo shows three parts: rotor (problem), caliper (looks OK), tire (looks OK). A finding the rotor can't have is dropped.
 select public.ai_record_sort((select v::uuid from t.ids where k = 'insp'),
-  '[{"mediaId":"00000000-0000-0000-0000-0000000000f1","pointId":"S24","key":"71@left_front","confidence":0.9,
-     "finding":{"key":"grooved","severity":"moderate","confidence":0.8,"rationale":"grooves visible"}},
-    {"mediaId":"00000000-0000-0000-0000-0000000000f1","pointId":"S24","key":"71@left_front","confidence":0.9,"finding":{"key":"dent","severity":"minor"}}]');
-select t.eq((select count(*) from public.finding where source = 'ai'), 1::bigint, 'disallowed AI finding dropped; duplicate placement ignored');
+  '[{"mediaId":"00000000-0000-0000-0000-0000000000f1","parts":[
+     {"key":"71@left_front","confidence":0.9,"condition":"concern","note":"grooves",
+      "findings":[{"key":"grooved","severity":"moderate","confidence":0.8,"rationale":"grooves visible"},{"key":"dent","severity":"minor"}]},
+     {"key":"72@left_front","confidence":0.85,"condition":"looks_ok","note":"dry, no leaks","findings":[]},
+     {"key":"4@left_front","confidence":0.8,"condition":"looks_ok","findings":[]}]}]');
+select t.eq((select count(*) from public.media_part), 3::bigint, 'one photo linked to three parts');
+select t.eq((select count(*) from public.finding where source = 'ai'), 1::bigint, 'disallowed AI finding dropped');
 select t.eq((select status from public.finding where source = 'ai'), 'pending', 'AI finding starts pending');
+select t.eq((select count(*) from public.ai_observation where status = 'pending'), 2::bigint, 'two looks-OK suggestions');
+select t.eq((select count(*) from public.check_result where component_id in (select component_id from public.ai_observation)), 0::bigint, 'looks-OK counts for nothing yet');
+-- Running the AI again on the same photo changes nothing.
+select public.ai_record_sort((select v::uuid from t.ids where k = 'insp'),
+  '[{"mediaId":"00000000-0000-0000-0000-0000000000f1","parts":[{"key":"73@left_front","confidence":0.9,"condition":"looks_ok"}]}]');
+select t.eq((select count(*) from public.media_part), 3::bigint, 'second AI run ignored');
 
 select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
 select t.expect_error($$ select public.submit_inspection((select v::uuid from t.ids where k = 'insp'), '{}') $$, '%Resolve 1 AI findings, 1 photos%');
 select public.review_finding((select id from public.finding where source = 'ai'), 'confirm');
-select t.expect_error($$ select public.submit_inspection((select v::uuid from t.ids where k = 'insp'), '{}') $$, '%Resolve 0 AI findings, 1 photos%');
-select t.eq(public.confirm_placements((select v::uuid from t.ids where k = 'insp'), 'under_car'), 1, 'one placement confirmed');
+-- Tech drops the tire from the photo: its pending looks-OK goes with it.
+select public.set_photo_parts('00000000-0000-0000-0000-0000000000f1', array['71@left_front', '72@left_front', '73@left_front']);
+select t.eq((select string_agg(status, ',' order by status) from public.media_part), 'confirmed,confirmed,technician_added', 'kept links confirmed, added one');
+select t.eq((select status from public.ai_observation o join public.component_instance c on c.id = o.component_id where c.class_id = 4), 'rejected', 'removed part''s suggestion rejected');
+select t.expect_error($$ select public.review_observations((select v::uuid from t.ids where k = 'insp'), 'confirm',
+  jsonb_build_array(jsonb_build_object('id', (select id from public.ai_observation where status = 'pending'), 'check', 'tire.tread_depth'))) $$, '%doesn''t apply%');
+select t.eq(public.review_observations((select v::uuid from t.ids where k = 'insp'), 'confirm',
+  jsonb_build_array(jsonb_build_object('id', (select id from public.ai_observation where status = 'pending'), 'check', 'brake_caliper.visual'))), 1, 'looks-OK confirmed');
+select t.eq((select rating from public.check_result where check_key = 'brake_caliper.visual'), 'ok', 'confirmed looks-OK records OK');
+-- A second photo: AI links it; "Confirm placements" confirms it; an unplaced photo blocks submit until excluded.
+insert into storage.objects (bucket_id, name) values ('inspection-media', (select v from t.ids where k = 'shop') || '/' || (select v from t.ids where k = 'insp') || '/m2.jpg');
+select public.add_media((select v::uuid from t.ids where k = 'insp'), '00000000-0000-0000-0000-0000000000f2', 'under_car',
+  (select v from t.ids where k = 'shop') || '/' || (select v from t.ids where k = 'insp') || '/m2.jpg', 'IMG_2.jpg');
+select public.add_media((select v::uuid from t.ids where k = 'insp'), '00000000-0000-0000-0000-0000000000f3', 'under_car',
+  (select v from t.ids where k = 'shop') || '/' || (select v from t.ids where k = 'insp') || '/m3.jpg', 'IMG_3.jpg');
+select t.act('service_role', null);
+select public.ai_record_sort((select v::uuid from t.ids where k = 'insp'), '[{"mediaId":"00000000-0000-0000-0000-0000000000f2","parts":[{"key":"73@left_front","confidence":0.7,"condition":"unclear"}]}]');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
+select t.expect_error($$ select public.submit_inspection((select v::uuid from t.ids where k = 'insp'), '{}') $$, '%Resolve 0 AI findings, 2 photos%');
+select t.eq(public.confirm_placements((select v::uuid from t.ids where k = 'insp'), 'under_car'), 1, 'one AI link confirmed');
+select public.exclude_photo('00000000-0000-0000-0000-0000000000f3');
 select public.set_note((select v::uuid from t.ids where k = 'insp'), 'S24', 'fronts 4mm rotors grooved');
 select public.submit_inspection((select v::uuid from t.ids where k = 'insp'), '{"immediate":0,"monitor":2,"ok":0}');
 select t.expect_error($$ select public.set_check((select v::uuid from t.ids where k = 'insp'), '73@left_front', 'brake_pad.lining_thickness', 9, null) $$, '%submitted and can''t be changed%');
@@ -110,9 +139,9 @@ select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
 select public.save_thresholds((select v::uuid from t.ids where k = 'shop'), '[{"checkKey":"brake_pad.lining_thickness","ok":[">=",6],"immediate":["<=",3]}]');
 insert into t.ids select 'insp2', public.create_inspection((select v::uuid from t.ids where k = 'shop'), 'JTEBU5JR4B5012345', null, null, null, null, null, null, '', '', '', '48300', 170000, '{}');
 select t.eq(public.set_check((select v::uuid from t.ids where k = 'insp2'), '73@left_front', 'brake_pad.lining_thickness', 3, null), 'immediate', 'new rules: 3 mm is immediate');
-select t.eq((select rating from public.check_result where inspection_id = (select v::uuid from t.ids where k = 'insp')), 'monitor', 'old result unchanged');
+select t.eq((select rating from public.check_result where inspection_id = (select v::uuid from t.ids where k = 'insp') and check_key = 'brake_pad.lining_thickness'), 'monitor', 'old result unchanged');
 select t.eq((select count(*) from public.vehicle), 1::bigint, 'same VIN reuses the vehicle');
-select t.eq((select count(distinct component_id) from public.check_result), 1::bigint, 'same part, same component row across visits');
+select t.eq((select count(distinct component_id) from public.check_result where check_key = 'brake_pad.lining_thickness'), 1::bigint, 'same part, same component row across visits');
 select t.eq(jsonb_array_length(public.get_vehicle_history((select id from public.vehicle)) -> 'inspections'), 2, 'history has both visits');
 select t.eq(jsonb_array_length(public.get_workspace() -> 'jobs'), 2, 'workspace lists jobs');
 
