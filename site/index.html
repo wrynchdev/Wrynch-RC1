@@ -60,9 +60,10 @@
     .hero { position: relative; min-height: min(100vh, 880px); display: flex; flex-direction: column; overflow: hidden; isolation: isolate;
       background: var(--bg); }
     .hero .photo { position: absolute; top: 0; right: 0; bottom: 0; width: 64%; z-index: -1;
-      background: url('/hero.jpg') 58% 30% / cover no-repeat; }
+      background: url('/hero.jpg') 70% 38% / cover no-repeat; }
     .hero .photo::after { content: ''; position: absolute; inset: 0;
       background:
+        linear-gradient(rgba(7,11,18,.12), rgba(7,11,18,.12)),
         linear-gradient(90deg, var(--bg) 0%, rgba(7,11,18,.82) 16%, rgba(7,11,18,.25) 44%, rgba(7,11,18,0) 70%),
         linear-gradient(0deg, rgba(7,11,18,.92) 0%, rgba(7,11,18,.35) 26%, rgba(7,11,18,0) 50%),
         linear-gradient(180deg, rgba(7,11,18,.65) 0%, rgba(7,11,18,0) 22%); }
@@ -234,7 +235,7 @@
       nav.links .btn { min-height: 38px; padding: 0 12px; font-size: 14px; }
       nav.links .btn.login { border-color: transparent; background: none; padding: 0 6px; }
       .hero { min-height: 0; }
-      .hero .photo { width: 100%; background-position: 62% 20%; }
+      .hero .photo { width: 100%; background-position: 71% 30%; }
       .hero .photo::after { background:
         linear-gradient(180deg, rgba(7,11,18,.8) 0%, rgba(7,11,18,.5) 30%, rgba(7,11,18,.72) 60%, var(--bg) 100%); }
       .hero-body { padding-top: 72px; padding-bottom: 32px; }
@@ -252,7 +253,7 @@
       .final .box { padding: 40px 22px; }
       .plan { padding: 24px; }
     }
-    @media (max-width: 400px) { nav.links .btn.primary { display: none; } }
+    @media (max-width: 374px) { nav.links .btn.primary { display: none; } }
     @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } }
   </style>
 </head>
