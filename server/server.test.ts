@@ -151,6 +151,15 @@ test('send-report: without a text provider it records the link and says texting 
   assert.equal(mark.auth, 'Bearer user-jwt', 'sending is recorded as the user so the role check applies');
 });
 
+test('new-style secret keys go only in the apikey header', async () => {
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'sb_secret_test';
+  respond = (url) => (url.endsWith('/customer_report') ? { ...bundle((i) => { i.media = []; }), shop: { name: 'Demo', phone: null } } : []);
+  const r = await report(new Request(`https://app.test/api/report?token=${'a'.repeat(64)}`));
+  assert.equal(r.status, 200);
+  const c = calls.find((x) => x.url.endsWith('/customer_report'))!;
+  assert.equal(c.auth, null, 'no Authorization header with a sb_secret_ key');
+});
+
 test('send-report refuses an inspection the tech has not finished', async () => {
   respond = (url) => (url.endsWith('/get_inspection') ? bundle() : null);
   assert.equal((await sendReport(post('send-report', { inspectionId: 'i-4r-now', channel: 'link' }))).status, 409);

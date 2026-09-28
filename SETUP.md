@@ -17,8 +17,11 @@ Nothing secret ever goes in the code or in chat: keys go only into Supabase's an
 3. **Authentication → URL Configuration:** set **Site URL** to your app's address (from step 2 below, e.g.
    `https://wrynch-rc1.vercel.app`) and add the same address under **Redirect URLs**. Email confirmation and
    password-reset links land there.
-4. **Project Settings → API:** you'll need the **Project URL**, the **anon public** key and the **service_role** key.
-   The service_role key can read everything: it goes only into Vercel (server side), never into the app or chat.
+4. **Project Settings → API Keys**, tab **Publishable and secret API keys**: copy the **publishable** key
+   (`sb_publishable_…`) and the **secret** key (`sb_secret_…`, click the eye to reveal it). The Project URL is under
+   **Project Settings → Data API** (`https://<id>.supabase.co`). The secret key can read everything: it goes only
+   into Vercel (server side), never into the app or chat. (The older anon / service_role keys also work until
+   Supabase retires them.)
 
 ## 2. Host the app (Vercel)
 
@@ -29,8 +32,8 @@ Nothing secret ever goes in the code or in chat: keys go only into Supabase's an
    | Name | Value | Needed |
    |---|---|---|
    | `SUPABASE_URL` | Project URL from Supabase | yes |
-   | `SUPABASE_ANON_KEY` | anon public key | yes |
-   | `SUPABASE_SERVICE_ROLE_KEY` | service_role key | yes |
+   | `SUPABASE_ANON_KEY` | publishable key (`sb_publishable_…`) | yes |
+   | `SUPABASE_SERVICE_ROLE_KEY` | secret key (`sb_secret_…`) | yes |
    | `APP_URL` | the app's address, e.g. `https://wrynch-rc1.vercel.app` | yes |
    | `ANTHROPIC_API_KEY` | from console.anthropic.com | for real AI photo sorting and wording |
    | `ANTHROPIC_MODEL` | defaults to `claude-sonnet-5` | optional |
