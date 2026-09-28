@@ -34,7 +34,7 @@ export const appOptions = (dev = false) => ({
 export function writeIndex() {
   mkdirSync('dist/assets', { recursive: true });
   mkdirSync('dist/app', { recursive: true });
-  cpSync('site/index.html', 'dist/index.html');
+  cpSync('site', 'dist', { recursive: true });
   cpSync('index.html', 'dist/app/index.html');
 }
 
