@@ -25,7 +25,8 @@ const B = `${ROOT}/app/`;
   const shot = (n) => p.screenshot({ path: S + n + '.png', fullPage: true });
     try {
     await step('landing', async () => {
-      await p.goto(ROOT + '/'); await p.waitForSelector('text=Every inspection, down to the part.');
+      await p.goto(ROOT + '/'); await p.waitForSelector('h1:has-text("Keep them moving")');
+      if (!(await p.evaluate(() => fetch('/hero.jpg').then((r) => r.ok && r.headers.get('content-type') === 'image/jpeg')))) errs.push('hero image not served');
       await shot('L00-landing');
       await p.goto(ROOT + '/#/join/abc'); await p.waitForFunction(() => location.pathname === '/app/' && location.hash.startsWith('#/join'));
     });

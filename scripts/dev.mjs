@@ -12,7 +12,7 @@ writeIndex();
 const ctx = await esbuild.context(appOptions(true));
 await ctx.watch();
 
-const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.map': 'application/json', '.svg': 'image/svg+xml' };
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.map': 'application/json', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
 const port = Number(process.env.PORT ?? 5173);
 
 createServer(async (req, res) => {
