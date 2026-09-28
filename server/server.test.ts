@@ -151,6 +151,13 @@ test('send-report: without a text provider it records the link and says texting 
   assert.equal(mark.auth, 'Bearer user-jwt', 'sending is recorded as the user so the role check applies');
 });
 
+test('a Supabase address pasted with /rest/v1/ still works', async () => {
+  process.env.SUPABASE_URL = 'https://db.test/rest/v1/';
+  respond = (url) => (url.endsWith('/customer_report') ? { ...bundle((i) => { i.media = []; }), shop: { name: 'Demo', phone: null } } : []);
+  await report(new Request(`https://app.test/api/report?token=${'a'.repeat(64)}`));
+  assert.ok(calls.some((c) => c.url === 'https://db.test/rest/v1/rpc/customer_report'), calls.map((c) => c.url).join());
+});
+
 test('new-style secret keys go only in the apikey header', async () => {
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'sb_secret_test';
   respond = (url) => (url.endsWith('/customer_report') ? { ...bundle((i) => { i.media = []; }), shop: { name: 'Demo', phone: null } } : []);

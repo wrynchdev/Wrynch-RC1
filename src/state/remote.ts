@@ -3,7 +3,8 @@ declare const __WRYNCH_CONFIG__: { supabaseUrl: string; supabaseAnonKey: string 
 
 const CFG = typeof __WRYNCH_CONFIG__ !== 'undefined' ? __WRYNCH_CONFIG__ : { supabaseUrl: '', supabaseAnonKey: '' };
 export const LIVE = !!(CFG.supabaseUrl && CFG.supabaseAnonKey);
-const URL_ = CFG.supabaseUrl.replace(/\/$/, '');
+// Accept the address with or without a pasted API path (e.g. "…supabase.co/rest/v1/").
+const URL_ = CFG.supabaseUrl.trim().replace(/\/+(rest|auth|storage)\/v1\/?$/, '').replace(/\/+$/, '');
 const KEY = CFG.supabaseAnonKey;
 
 export interface Session { accessToken: string; refreshToken: string; expiresAt: number; userId: string; email: string }
