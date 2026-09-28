@@ -8,7 +8,8 @@ export const env = (k: string): string | undefined => {
 export function need(k: string): string {
   const v = env(k);
   if (!v) throw new HttpError(500, `Server is missing the ${k} setting`);
-  return v;
+  // Accept the Supabase address with or without a pasted API path (e.g. "…supabase.co/rest/v1/").
+  return k === 'SUPABASE_URL' ? v.replace(/\/+(rest|auth|storage)\/v1\/?$/, '').replace(/\/+$/, '') : v;
 }
 
 export class HttpError extends Error {
