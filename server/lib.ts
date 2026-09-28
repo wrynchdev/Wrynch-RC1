@@ -67,14 +67,22 @@ export function bearer(req: Request): string {
 
 // ------------------------------------------------------------------ Supabase REST
 
+/**
+ * Headers for the server key. Supabase's newer secret keys (sb_secret_…) go only in the apikey header;
+ * the older service_role key is a JWT and also goes in Authorization. Both work.
+ */
+export function serviceHeaders(): Record<string, string> {
+  const key = need('SUPABASE_SERVICE_ROLE_KEY');
+  return key.startsWith('sb_') ? { apikey: key } : { apikey: key, authorization: `Bearer ${key}` };
+}
+
 /** Call a database function. `as` is the user's access token, or 'service' for the server key. */
 export async function rpc<T>(name: string, args: Record<string, unknown>, as: string | 'service'): Promise<T> {
   const url = need('SUPABASE_URL');
-  const key = as === 'service' ? need('SUPABASE_SERVICE_ROLE_KEY') : need('SUPABASE_ANON_KEY');
-  const token = as === 'service' ? key : as;
+  const auth = as === 'service' ? serviceHeaders() : { apikey: need('SUPABASE_ANON_KEY'), authorization: `Bearer ${as}` };
   const r = await fetch(`${url}/rest/v1/rpc/${name}`, {
     method: 'POST',
-    headers: { apikey: key, authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    headers: { ...auth, 'content-type': 'application/json' },
     body: JSON.stringify(args),
   });
   const text = await r.text();
@@ -89,9 +97,8 @@ export async function rpc<T>(name: string, args: Record<string, unknown>, as: st
 
 export async function downloadObject(path: string): Promise<{ bytes: Uint8Array; type: string }> {
   const url = need('SUPABASE_URL');
-  const key = need('SUPABASE_SERVICE_ROLE_KEY');
   const r = await fetch(`${url}/storage/v1/object/inspection-media/${path.split('/').map(encodeURIComponent).join('/')}`, {
-    headers: { apikey: key, authorization: `Bearer ${key}` },
+    headers: serviceHeaders(),
   });
   if (!r.ok) throw new HttpError(502, `Couldn't read photo ${path}`);
   return { bytes: new Uint8Array(await r.arrayBuffer()), type: r.headers.get('content-type') ?? 'image/jpeg' };
@@ -101,10 +108,9 @@ export async function downloadObject(path: string): Promise<{ bytes: Uint8Array;
 export async function signUrls(paths: string[], seconds = 3600): Promise<Record<string, string>> {
   if (!paths.length) return {};
   const url = need('SUPABASE_URL');
-  const key = need('SUPABASE_SERVICE_ROLE_KEY');
   const r = await fetch(`${url}/storage/v1/object/sign/inspection-media`, {
     method: 'POST',
-    headers: { apikey: key, authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+    headers: { ...serviceHeaders(), 'content-type': 'application/json' },
     body: JSON.stringify({ expiresIn: seconds, paths }),
   });
   if (!r.ok) throw new HttpError(502, "Couldn't prepare photo links");
