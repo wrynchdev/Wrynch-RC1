@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Wrynch · Every inspection, down to the part</title>
   <meta name="description" content="Digital vehicle inspection for independent shops. Wrynch rates every part behind your multi-point inspection, keeps its history, and lets AI read your photos while your tech makes the call.">
-  <meta name="theme-color" content="#15171A">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2l12 7v14l-12 7-12-7V9z' fill='%2315171A'/%3E%3Ccircle cx='16' cy='16' r='5.5' fill='none' stroke='%23F4F2ED' stroke-width='3'/%3E%3C/svg%3E">
+  <meta name="theme-color" content="#0E1013">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2l12 7v14l-12 7-12-7V9z' fill='%2315171A'/%3E%3Ccircle cx='16' cy='16' r='5.5' fill='none' stroke='%23FF6A13' stroke-width='3'/%3E%3C/svg%3E">
   <script>
     // Links into the app used to live at the root (#/r/…, #/join/…, email sign-in links). Send them to /app.
     (function () {
@@ -20,165 +20,253 @@
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
-      --paper: #F4F2ED; --paper2: #EAE7DF; --card: #FFFFFF; --ink: #15171A; --text2: #474B52; --muted: #6E727A; --line: #D9D5CB;
-      --blue: #1D44C4; --blue-soft: #E5EAFA; --ok: #1E7A45; --ok-soft: #E1F1E7; --mon: #A86200; --mon-soft: #FBEFD9; --imm: #B42318; --imm-soft: #FBE3E0;
-      --ai: #6B3FD4; --ai-soft: #EFE9FC;
+      --bg: #0E1013; --bg2: #121519; --panel: #171A1F; --panel2: #1D2127; --line: #2A2F37; --line2: #3A404A;
+      --text: #E8EAED; --text2: #A9AEB6; --muted: #7C828C;
+      --accent: #FF6A13; --accent-ink: #1A0C03; --accent-dim: rgba(255,106,19,.14);
+      --ok: #3DBE6E; --ok-bg: rgba(61,190,110,.12); --mon: #F2B21B; --mon-bg: rgba(242,178,27,.12); --imm: #F04438; --imm-bg: rgba(240,68,56,.13);
+      --ai: #A98BFF; --ai-bg: rgba(169,139,255,.12);
+      --steel: #D9DCE0; --steel2: #C3C7CD;
+      --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+      --cond: 'Barlow Condensed', 'Arial Narrow', sans-serif;
     }
     * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
-    body { margin: 0; background: var(--paper); color: var(--ink); font: 17px/1.55 Barlow, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.55 Barlow, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
     a { color: inherit; }
-    .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
-    .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
-    .eyebrow { font: 500 13px/1 'IBM Plex Mono', monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--blue); margin: 0 0 14px; }
-    h1, h2, h3 { font-family: 'Barlow Condensed', Barlow, sans-serif; font-weight: 700; letter-spacing: -.01em; margin: 0; line-height: 1.02; }
-    h1 { font-size: clamp(44px, 7vw, 84px); }
-    h2 { font-size: clamp(34px, 4.6vw, 56px); }
-    h3 { font-size: 26px; line-height: 1.1; }
+    img, svg { display: block; }
+    .wrap { max-width: 1240px; margin: 0 auto; padding: 0 28px; }
+    .mono { font-family: var(--mono); }
+    h1, h2, h3 { font-family: var(--cond); font-weight: 700; margin: 0; line-height: .98; text-transform: uppercase; letter-spacing: .005em; }
+    h1 { font-size: clamp(50px, 7.4vw, 104px); font-weight: 800; }
+    h2 { font-size: clamp(38px, 5vw, 64px); }
+    h3 { font-size: 24px; line-height: 1.05; letter-spacing: .02em; }
     p { margin: 0; }
-    .lead { font-size: clamp(18px, 1.6vw, 21px); color: var(--text2); max-width: 40em; }
-    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 22px; border-radius: 10px; font: 600 17px Barlow, sans-serif; text-decoration: none; border: 2px solid transparent; cursor: pointer; }
-    .btn.primary { background: var(--blue); color: #fff; }
-    .btn.primary:hover { background: #1738A3; }
-    .btn.ghost { border-color: var(--ink); }
-    .btn.ghost:hover { background: var(--ink); color: var(--paper); }
-    .btn:focus-visible, a:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+    .lead { font-size: clamp(18px, 1.5vw, 20px); color: var(--text2); max-width: 38em; }
+    .tag { display: inline-flex; align-items: center; gap: 10px; font: 500 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); margin: 0 0 20px; }
+    .tag::before { content: ''; width: 18px; height: 2px; background: var(--accent); }
+    .hl { color: var(--accent); }
 
-    header.top { position: sticky; top: 0; z-index: 10; background: rgba(244,242,237,.92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
-    header.top .wrap { display: flex; align-items: center; gap: 28px; height: 68px; }
-    .logo { display: flex; align-items: center; gap: 10px; font: 700 22px 'Barlow Condensed', sans-serif; letter-spacing: .08em; text-decoration: none; }
-    nav.links { display: flex; gap: 24px; margin-left: auto; font-weight: 500; }
-    nav.links a { text-decoration: none; color: var(--text2); }
-    nav.links a:hover { color: var(--ink); }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 50px; padding: 0 24px; border-radius: 2px;
+      font: 700 15px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; text-decoration: none; border: 1.5px solid transparent; cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
+    .btn.primary { background: var(--accent); color: var(--accent-ink); }
+    .btn.primary:hover { background: #FF8540; }
+    .btn.ghost { border-color: var(--line2); color: var(--text); }
+    .btn.ghost:hover { border-color: var(--steel); }
+    .btn .arr { font-family: var(--mono); }
+    .btn:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+    /* grid texture */
+    .grid-bg { background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size: 56px 56px; background-position: -1px -1px; }
+    .grid-fade { position: relative; }
+    .grid-fade::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 70% 60% at 30% 40%, transparent 0%, var(--bg) 78%); pointer-events: none; }
+    .grid-fade > * { position: relative; z-index: 1; }
+
+    /* header */
+    header.top { position: sticky; top: 0; z-index: 20; background: rgba(14,16,19,.9); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+    header.top .wrap { display: flex; align-items: center; gap: 32px; height: 64px; }
+    .logo { display: flex; align-items: center; gap: 10px; font: 800 22px var(--cond); letter-spacing: .14em; text-decoration: none; }
+    nav.links { display: flex; gap: 28px; margin-left: auto; }
+    nav.links a { text-decoration: none; color: var(--text2); font: 500 13px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    nav.links a:hover { color: var(--text); }
     header.top .actions { display: flex; gap: 10px; }
-    header.top .btn { min-height: 40px; padding: 0 16px; font-size: 16px; }
+    header.top .btn { min-height: 38px; padding: 0 16px; font-size: 12.5px; }
 
-    section { padding: 96px 0; }
-    section.tight { padding: 72px 0; }
-    .hero { padding: 72px 0 88px; }
-    .hero .grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: 56px; align-items: center; }
-    .hero .lead { margin: 24px 0 32px; }
+    section { padding: 112px 0; border-bottom: 1px solid var(--line); }
+
+    /* hero */
+    .hero { padding: 88px 0 0; border-bottom: 0; overflow: hidden; }
+    .hero .cols { display: grid; grid-template-columns: 1.08fr .92fr; gap: 64px; align-items: center; padding-bottom: 88px; }
+    .hero .lead { margin: 28px 0 36px; }
     .hero .cta { display: flex; gap: 12px; flex-wrap: wrap; }
-    .hero .fine { margin-top: 16px; color: var(--muted); font-size: 15px; }
+    .hero .fine { margin-top: 18px; color: var(--muted); font: 13px var(--mono); letter-spacing: .02em; }
 
-    /* phone mock */
-    .phone { background: var(--card); border: 1px solid var(--line); border-radius: 28px; padding: 18px; box-shadow: 0 30px 60px -30px rgba(21,23,26,.35); max-width: 380px; margin-left: auto; }
-    .phone .bar { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
-    .phone .bar strong { font: 700 20px 'Barlow Condensed', sans-serif; }
-    .phone .grp { font: 500 12px 'IBM Plex Mono', monospace; letter-spacing: .08em; color: var(--muted); margin: 14px 0 6px; }
-    .row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--paper); margin-bottom: 6px; font-size: 15px; }
-    .row .g { flex: 1; }
-    .row.ai { background: var(--ai-soft); border: 1.5px dashed var(--ai); }
-    .chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 99px; font: 600 13px Barlow, sans-serif; white-space: nowrap; }
-    .chip.ok { background: var(--ok-soft); color: var(--ok); }
-    .chip.mon { background: var(--mon-soft); color: var(--mon); }
-    .chip.imm { background: var(--imm-soft); color: var(--imm); }
-    .chip.ai { background: var(--ai); color: #fff; }
-    .spark { margin-top: 12px; padding: 12px; border-radius: 12px; background: var(--ink); color: var(--paper); font-size: 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    /* instrument panel */
+    .panel { background: var(--panel); border: 1px solid var(--line2); position: relative; }
+    .panel.bracket::before, .panel.bracket::after { content: ''; position: absolute; width: 14px; height: 14px; border: 2px solid var(--accent); }
+    .panel.bracket::before { top: -7px; left: -7px; border-right: 0; border-bottom: 0; }
+    .panel.bracket::after { bottom: -7px; right: -7px; border-left: 0; border-top: 0; }
+    .phead { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line2); background: var(--panel2);
+      font: 500 11.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text2); }
+    .phead .dots { display: flex; gap: 6px; }
+    .phead .dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--line2); }
+    .phead .live { color: var(--ok); display: flex; align-items: center; gap: 6px; }
+    .phead .live::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px rgba(61,190,110,.2); }
+    .pbody { padding: 16px; }
+    .ptitle { font: 700 22px var(--cond); text-transform: uppercase; letter-spacing: .02em; }
+    .psub { font: 12px var(--mono); color: var(--muted); margin-top: 2px; }
+    .pos { font: 600 11px var(--mono); letter-spacing: .14em; color: var(--muted); margin: 16px 0 8px; display: flex; align-items: center; gap: 10px; }
+    .pos::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+    .rowx { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); background: var(--bg2); margin-bottom: 6px; font-size: 15px; }
+    .rowx .pn { font: 11px var(--mono); color: var(--muted); }
+    .rowx .v { font-family: var(--mono); font-size: 13px; color: var(--text2); }
+    .rowx.ai { border: 1px dashed var(--ai); background: var(--ai-bg); }
+    .st { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; font: 600 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; border: 1px solid; }
+    .st.ok { color: var(--ok); background: var(--ok-bg); border-color: rgba(61,190,110,.35); }
+    .st.mon { color: var(--mon); background: var(--mon-bg); border-color: rgba(242,178,27,.35); }
+    .st.imm { color: var(--imm); background: var(--imm-bg); border-color: rgba(240,68,56,.4); }
+    .st.ai { color: var(--ai); background: var(--ai-bg); border-color: rgba(169,139,255,.45); }
+    .gauge { margin-top: 12px; border: 1px solid var(--line2); background: var(--bg); padding: 12px 14px; display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; }
+    .gauge .k { font: 11px var(--mono); letter-spacing: .1em; color: var(--muted); text-transform: uppercase; }
+    .gauge .n { font: 700 28px var(--cond); }
+    .gauge .n small { font: 500 13px var(--mono); color: var(--muted); margin-left: 4px; }
 
-    .band { background: var(--card); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-    .dark { background: var(--ink); color: var(--paper); }
-    .dark .lead, .dark .muted { color: #B9BCC2; }
-    .dark .eyebrow { color: #8FA6F2; }
-    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: start; }
-    .head { max-width: 760px; margin-bottom: 48px; }
-    .head .lead { margin-top: 18px; }
+    /* hazard + stat strip */
+    .hazard { height: 10px; background: repeating-linear-gradient(-45deg, var(--accent) 0 12px, var(--bg) 12px 24px); opacity: .9; }
+    .statband { border-bottom: 1px solid var(--line); background: var(--bg2); }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); border-left: 1px solid var(--line); border-right: 1px solid var(--line); padding: 0; }
+    .stat { padding: 28px 28px 26px; border-right: 1px solid var(--line); }
+    .stat:last-child { border-right: 0; }
+    .stat .n { font: 800 clamp(40px, 4.4vw, 56px)/1 var(--cond); }
+    .stat .n .u { color: var(--accent); }
+    .stat .l { margin-top: 8px; font: 12px/1.5 var(--mono); letter-spacing: .06em; color: var(--text2); text-transform: uppercase; }
 
-    .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-    .panel { border: 1px solid var(--line); border-radius: 16px; padding: 24px; background: var(--paper); }
-    .panel .label { font: 500 12px 'IBM Plex Mono', monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
-    .panel .old { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: 10px; background: var(--mon-soft); }
-    .panel .old .dot { width: 26px; height: 26px; border-radius: 50%; background: var(--mon); color: #fff; display: grid; place-items: center; font-weight: 700; flex: none; }
-    .panel .cap { margin-top: 14px; color: var(--text2); font-size: 15px; }
+    /* section heading */
+    .head { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: end; margin-bottom: 56px; }
+    .head .lead { justify-self: end; }
+    .secno { font: 500 12px var(--mono); color: var(--muted); letter-spacing: .12em; }
 
-    .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; counter-reset: s; }
-    .step { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 24px; }
-    .step .n { font: 500 14px 'IBM Plex Mono', monospace; color: var(--blue); }
-    .step h3 { margin: 10px 0 10px; }
+    /* compare */
+    .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--line2); }
+    .compare > div { padding: 28px; }
+    .compare > div + div { border-left: 1px solid var(--line2); background: var(--panel); }
+    .clabel { font: 600 11.5px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 18px; display: flex; justify-content: space-between; }
+    .old { border: 1px solid rgba(242,178,27,.35); background: var(--mon-bg); padding: 16px; display: grid; grid-template-columns: auto 1fr; gap: 14px; }
+    .old .dot { width: 30px; height: 30px; background: var(--mon); color: #1b1300; display: grid; place-items: center; font: 800 18px var(--cond); }
+    .old .note { font: 14px var(--mono); color: var(--text2); margin-top: 6px; }
+    .cap { margin-top: 18px; color: var(--text2); font-size: 15px; }
+    .cap strong { color: var(--text); }
+
+    /* process */
+    .steps { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line2); }
+    .step { padding: 28px 26px 32px; border-right: 1px solid var(--line2); position: relative; background: var(--bg); }
+    .step:last-child { border-right: 0; }
+    .step .n { font: 800 64px/1 var(--cond); color: transparent; -webkit-text-stroke: 1.5px var(--line2); }
+    .step:hover .n { -webkit-text-stroke-color: var(--accent); }
+    .step h3 { margin: 18px 0 12px; }
     .step p { color: var(--text2); font-size: 16px; }
+    .step .io { margin-top: 20px; font: 11.5px var(--mono); letter-spacing: .06em; color: var(--muted); text-transform: uppercase; border-top: 1px dashed var(--line2); padding-top: 12px; }
 
-    .rules { list-style: none; margin: 28px 0 0; padding: 0; display: grid; gap: 14px; }
-    .rules li { display: flex; gap: 12px; }
-    .rules li::before { content: ''; flex: none; width: 10px; height: 10px; margin-top: 9px; background: #8FA6F2; transform: rotate(45deg); }
-    .gatecard { background: #22252A; border: 1px solid #353941; border-radius: 16px; padding: 22px; }
-    .gatecard .t { font: 700 22px 'Barlow Condensed', sans-serif; margin-bottom: 14px; }
-    .gatecard .r { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #353941; font-size: 15px; }
-    .gatecard .r small { color: #B9BCC2; display: block; }
-    .gatecard .lock { margin-top: 14px; padding: 12px; text-align: center; border-radius: 10px; background: #353941; color: #8A8E96; font-weight: 600; }
+    /* ai */
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 72px; align-items: start; }
+    .rules { list-style: none; margin: 36px 0 0; padding: 0; border-top: 1px solid var(--line); }
+    .rules li { display: grid; grid-template-columns: 56px 1fr; gap: 8px; padding: 18px 0; border-bottom: 1px solid var(--line); color: var(--text2); }
+    .rules li b { font: 500 12px var(--mono); color: var(--accent); padding-top: 4px; letter-spacing: .08em; }
+    .gate .r { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+    .gate .r small { display: block; font: 12px var(--mono); color: var(--muted); margin-top: 2px; }
+    .gate .t { font: 700 26px var(--cond); text-transform: uppercase; margin-bottom: 6px; }
+    .gate .lock { margin-top: 16px; padding: 14px; text-align: center; border: 1px dashed var(--line2); color: var(--muted); font: 600 12.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
 
-    .tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
-    table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 16px; }
-    th, td { text-align: left; padding: 14px 18px; border-bottom: 1px solid var(--line); }
-    th { font: 600 15px Barlow, sans-serif; background: var(--paper2); }
-    tr:last-child td { border-bottom: 0; }
-    td.mono { font-size: 14px; }
-    .note { margin-top: 14px; color: var(--muted); font-size: 14px; }
+    /* spec table */
+    .tbl-wrap { overflow-x: auto; border: 1px solid var(--line2); background: var(--panel); }
+    table { border-collapse: collapse; width: 100%; min-width: 700px; }
+    th, td { text-align: left; padding: 16px 20px; border-bottom: 1px solid var(--line); font-size: 15px; }
+    thead th { background: var(--panel2); font: 600 11.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text2); }
+    tbody th { font: 600 17px var(--cond); text-transform: uppercase; letter-spacing: .04em; }
+    td { font-family: var(--mono); font-size: 13.5px; color: var(--text2); }
+    td.imm { color: var(--text); }
+    tr:last-child th, tr:last-child td { border-bottom: 0; }
+    tbody tr:hover { background: var(--bg2); }
+    .note { margin-top: 14px; color: var(--muted); font: 12.5px var(--mono); }
 
-    .chart { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 24px; }
-    .chart svg { width: 100%; height: auto; display: block; }
-    .bullets { list-style: none; padding: 0; margin: 24px 0 0; display: grid; gap: 12px; }
-    .bullets li { padding-left: 22px; position: relative; color: var(--text2); }
-    .bullets li::before { content: ''; position: absolute; left: 0; top: 10px; width: 8px; height: 8px; border-radius: 2px; background: var(--blue); }
+    /* history chart */
+    .chart .pbody { padding: 20px; }
+    .chart svg { width: 100%; height: auto; }
+    .bullets { list-style: none; padding: 0; margin: 32px 0 0; display: grid; gap: 0; border-top: 1px solid var(--line); }
+    .bullets li { padding: 16px 0 16px 30px; position: relative; color: var(--text2); border-bottom: 1px solid var(--line); }
+    .bullets li::before { content: '→'; position: absolute; left: 0; color: var(--accent); font-family: var(--mono); }
 
-    .map { display: grid; grid-template-columns: 1fr auto 1fr; gap: 18px; align-items: center; }
-    .map .pt { padding: 14px 16px; border-radius: 10px; background: var(--paper); border: 1px solid var(--line); font: 500 14px 'IBM Plex Mono', monospace; margin-bottom: 8px; }
-    .map .pt.on { background: var(--blue); color: #fff; border-color: var(--blue); }
-    .map .arrow { font-size: 28px; color: var(--muted); }
-    .map .parts { display: flex; flex-wrap: wrap; gap: 8px; }
-    .map .parts span { padding: 6px 10px; border-radius: 8px; background: var(--blue-soft); color: var(--blue); font-weight: 600; font-size: 14px; }
+    /* template map */
+    .map { display: grid; grid-template-columns: 1fr 60px 1.2fr; align-items: center; }
+    .pt { padding: 14px 16px; border: 1px solid var(--line2); font: 500 13px var(--mono); letter-spacing: .06em; color: var(--text2); margin-bottom: 8px; background: var(--bg); }
+    .pt.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+    .wire { height: 2px; background: repeating-linear-gradient(90deg, var(--accent) 0 6px, transparent 6px 10px); position: relative; }
+    .wire::after { content: ''; position: absolute; right: -2px; top: -5px; border: 6px solid transparent; border-left-color: var(--accent); }
+    .parts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .parts span { padding: 10px 12px; border: 1px solid var(--line2); background: var(--panel); font: 13px var(--mono); color: var(--text); display: flex; justify-content: space-between; gap: 8px; }
+    .parts span i { font-style: normal; color: var(--muted); }
 
-    .faq { max-width: 820px; }
-    details { border-top: 1px solid var(--line); padding: 20px 0; }
-    details:last-child { border-bottom: 1px solid var(--line); }
-    summary { cursor: pointer; font-weight: 600; font-size: 19px; list-style: none; display: flex; justify-content: space-between; gap: 16px; }
-    summary::after { content: '+'; font: 500 22px 'IBM Plex Mono', monospace; color: var(--blue); }
-    details[open] summary::after { content: '–'; }
-    details p { margin-top: 12px; color: var(--text2); }
+    /* faq */
+    .faq { display: grid; grid-template-columns: .8fr 1.2fr; gap: 72px; }
+    details { border-top: 1px solid var(--line2); }
+    details:last-child { border-bottom: 1px solid var(--line2); }
+    summary { cursor: pointer; font: 600 19px Barlow, system-ui, sans-serif; list-style: none; display: grid; grid-template-columns: 48px 1fr auto; gap: 8px; align-items: baseline; padding: 22px 0; }
+    summary::-webkit-details-marker { display: none; }
+    summary .q { font: 500 12px var(--mono); color: var(--muted); }
+    summary::after { content: '+'; font: 500 22px var(--mono); color: var(--accent); }
+    details[open] summary::after { content: '−'; }
+    details p { padding: 0 0 22px 56px; color: var(--text2); }
 
-    .final { text-align: center; }
-    .final .lead { margin: 18px auto 32px; }
-    .final .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-    .final .btn.ghost { border-color: var(--paper); color: var(--paper); }
-    .final .btn.ghost:hover { background: var(--paper); color: var(--ink); }
-    footer { padding: 32px 0; color: var(--muted); font-size: 14px; }
+    /* cta */
+    .final { border-bottom: 0; padding: 0; }
+    .final .box { position: relative; overflow: hidden; border: 1px solid var(--line2); background: var(--panel); padding: 72px 56px; display: grid; grid-template-columns: 1.3fr .7fr; gap: 40px; align-items: center; margin: 112px 0; }
+    .final .box::before { content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 38%; background: repeating-linear-gradient(-45deg, var(--accent-dim) 0 14px, transparent 14px 28px); pointer-events: none; }
+    .final .cta { display: flex; flex-direction: column; gap: 12px; position: relative; }
+    .final .lead { margin-top: 18px; }
+
+    footer { border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--muted); font: 12.5px var(--mono); letter-spacing: .04em; }
     footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    footer a { text-decoration: none; }
+    footer a:hover { color: var(--text); }
 
-    @media (max-width: 980px) {
+    @media (max-width: 1020px) {
       nav.links { display: none; }
       header.top .actions { margin-left: auto; }
-      .hero .grid, .two, .compare { grid-template-columns: 1fr; gap: 40px; }
-      .phone { margin: 0 auto; }
+      .hero .cols, .two, .faq, .final .box { grid-template-columns: 1fr; gap: 48px; }
+      .head { grid-template-columns: 1fr; gap: 20px; }
+      .head .lead { justify-self: start; }
       .steps { grid-template-columns: 1fr 1fr; }
-      section { padding: 72px 0; }
+      .step:nth-child(2) { border-right: 0; }
+      .step:nth-child(-n+2) { border-bottom: 1px solid var(--line2); }
+      .stats { grid-template-columns: 1fr 1fr; }
+      .stat:nth-child(2) { border-right: 0; }
+      .stat:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+      section { padding: 80px 0; }
+      .final .box { margin: 80px 0; padding: 48px 32px; }
+      .final .box::before { width: 100%; top: auto; height: 36px; }
     }
-    @media (max-width: 600px) {
+    @media (max-width: 640px) {
       body { font-size: 16px; }
       .wrap { padding: 0 16px; }
-      header.top .btn.ghost { border: 0; padding: 0 8px; }
-      header.top .btn { padding: 0 12px; }
+      header.top .wrap { gap: 12px; }
+      header.top .btn { padding: 0 12px; font-size: 11.5px; }
+      header.top .btn.ghost { border-color: transparent; padding: 0 6px; }
       .logo { font-size: 19px; }
+      .hero { padding-top: 56px; }
+      .hero .cols { padding-bottom: 64px; }
+      .compare { grid-template-columns: 1fr; }
+      .compare > div + div { border-left: 0; border-top: 1px solid var(--line2); }
+      .compare > div { padding: 20px; }
       .steps { grid-template-columns: 1fr; }
-      .map { grid-template-columns: 1fr; }
-      .map .arrow { transform: rotate(90deg); justify-self: center; }
-      .hero { padding: 48px 0 64px; }
+      .step { border-right: 0 !important; border-bottom: 1px solid var(--line2); }
+      .step:last-child { border-bottom: 0; }
+      .stat { padding: 20px 16px; }
+      .stats { border-left: 0; border-right: 0; }
+      .map { grid-template-columns: 1fr; gap: 16px; }
+      .wire { width: 2px; height: 36px; justify-self: center; background: repeating-linear-gradient(180deg, var(--accent) 0 6px, transparent 6px 10px); }
+      .wire::after { right: -5px; top: auto; bottom: -10px; border-left-color: transparent; border-top-color: var(--accent); }
+      .final .box { padding: 40px 20px 64px; }
+      summary { grid-template-columns: 36px 1fr auto; font-size: 17px; }
+      details p { padding-left: 44px; }
     }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } }
   </style>
 </head>
 <body>
   <header class="top">
     <div class="wrap">
       <a class="logo" href="/" aria-label="Wrynch home">
-        <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2l12 7v14l-12 7-12-7V9z" fill="#15171A"/><circle cx="16" cy="16" r="5.5" fill="none" stroke="#F4F2ED" stroke-width="3"/></svg>
+        <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2l12 7v14l-12 7-12-7V9z" fill="#E8EAED"/><circle cx="16" cy="16" r="5.5" fill="none" stroke="#FF6A13" stroke-width="3"/></svg>
         WRYNCH
       </a>
       <nav class="links" aria-label="Page sections">
         <a href="#how">How it works</a>
-        <a href="#ai">AI you control</a>
+        <a href="#ai">AI control</a>
+        <a href="#rules">Rating rules</a>
         <a href="#history">Part history</a>
-        <a href="#faq">Questions</a>
+        <a href="#faq">FAQ</a>
       </nav>
       <div class="actions">
         <a class="btn ghost" href="/app/">Sign in</a>
@@ -188,161 +276,178 @@
   </header>
 
   <main>
-    <section class="hero">
-      <div class="wrap grid">
+    <section class="hero grid-bg grid-fade">
+      <div class="wrap cols">
         <div>
-          <p class="eyebrow">Digital vehicle inspection for independent shops</p>
-          <h1>Every inspection, down to the part.</h1>
+          <p class="tag">Digital vehicle inspection · independent shops</p>
+          <h1>Every inspection, down to the <span class="hl">part.</span></h1>
           <p class="lead">Wrynch turns your multi-point inspection into a history for every part on the car: the left front pad, the right rear shock, the battery. Techs shoot faster, advisors explain better, and customers see what changed since last time.</p>
           <div class="cta">
-            <a class="btn primary" href="/app/#/signup">Create your shop</a>
+            <a class="btn primary" href="/app/#/signup">Create your shop <span class="arr" aria-hidden="true">→</span></a>
             <a class="btn ghost" href="#how">See how it works</a>
           </div>
-          <p class="fine">Works with the inspection template you already use.</p>
+          <p class="fine">// Works with the inspection template you already use.</p>
         </div>
-        <div class="phone" role="img" aria-label="Example: the brake inspection point broken into rated parts, with one AI suggestion waiting for the technician">
-          <div class="bar"><strong>Visual brake system condition</strong><span class="mono" style="font-size:12px;color:var(--muted)">UNDER CAR</span></div>
-          <div class="grp">LEFT FRONT</div>
-          <div class="row"><span class="g">Brake pad · 5.0 mm</span><span class="chip ok">● OK</span></div>
-          <div class="row"><span class="g">Brake rotor · grooved</span><span class="chip mon">▲ Monitor</span></div>
-          <div class="grp">RIGHT FRONT</div>
-          <div class="row"><span class="g">Brake pad · 5.0 mm</span><span class="chip ok">● OK</span></div>
-          <div class="row ai"><span class="g">Caliper · AI: looks OK</span><span class="chip ai">Confirm</span></div>
-          <div class="row ai"><span class="g">Rotor · AI: grooved?</span><span class="chip ai">Review</span></div>
-          <div class="spark"><span>Brake pad · left front<br><span class="mono" style="font-size:12px;color:#B9BCC2">9.5 → 5.0 mm over 4 visits</span></span>
-            <svg width="92" height="34" viewBox="0 0 92 34" aria-hidden="true"><polyline points="2,4 32,12 62,20 90,30" fill="none" stroke="#8FA6F2" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div class="panel bracket" role="img" aria-label="Example: the brake inspection point broken into rated parts, with AI suggestions waiting for the technician">
+          <div class="phead"><span class="dots"><i></i><i></i><i></i></span><span>RO 48213 · Under car</span><span class="live">Live</span></div>
+          <div class="pbody">
+            <div class="ptitle">Visual brake system condition</div>
+            <div class="psub">Point S24 · 17 parts · 2011 Toyota 4Runner</div>
+            <div class="pos">LF · LEFT FRONT</div>
+            <div class="rowx"><span class="pn">073</span><span>Brake pad <span class="v">5.0 mm</span></span><span class="st ok">● OK</span></div>
+            <div class="rowx"><span class="pn">074</span><span>Brake rotor <span class="v">grooved</span></span><span class="st mon">▲ Monitor</span></div>
+            <div class="pos">RF · RIGHT FRONT</div>
+            <div class="rowx"><span class="pn">073</span><span>Brake pad <span class="v">5.0 mm</span></span><span class="st ok">● OK</span></div>
+            <div class="rowx ai"><span class="pn">075</span><span>Caliper <span class="v">AI: looks OK</span></span><span class="st ai">Confirm</span></div>
+            <div class="rowx ai"><span class="pn">074</span><span>Rotor <span class="v">AI: grooved?</span></span><span class="st ai">Review</span></div>
+            <div class="gauge">
+              <div><div class="k">Brake pad · LF · 4 visits</div><div class="n">9.5 → 5.0<small>mm</small></div></div>
+              <svg width="110" height="40" viewBox="0 0 110 40" aria-hidden="true"><polyline points="4,6 38,14 72,23 106,34" fill="none" stroke="#FF6A13" stroke-width="2.5" stroke-linejoin="round"/><g fill="#FF6A13"><circle cx="4" cy="6" r="3"/><circle cx="38" cy="14" r="3"/><circle cx="72" cy="23" r="3"/><circle cx="106" cy="34" r="3"/></g></svg>
+            </div>
           </div>
         </div>
       </div>
-    </section>
-
-    <section class="band">
-      <div class="wrap">
-        <div class="head">
-          <h2>Your MPI says “brakes: yellow.” Which brake?</h2>
-          <p class="lead">A point-by-point checklist rolls four pads, four rotors and the lines into one color and one note. Wrynch keeps your checklist and rates every part behind it.</p>
-        </div>
-        <div class="compare">
-          <div class="panel">
-            <div class="label">A typical inspection today</div>
-            <div class="old"><span class="dot">!</span><div><strong>Visual brake system condition</strong><div class="mono" style="font-size:14px;margin-top:4px">fronts 5mm/rotors major grooving. rears 6mm</div></div></div>
-            <p class="cap">One color. Which rotor? Worse than last time? Nobody can tell.</p>
-          </div>
-          <div class="panel">
-            <div class="label">The same note in Wrynch</div>
-            <div class="row" style="background:var(--card)"><span class="g">Brake rotor · left front · grooved</span><span class="chip mon">▲ Monitor</span></div>
-            <div class="row" style="background:var(--card)"><span class="g">Brake rotor · right front · grooved</span><span class="chip mon">▲ Monitor</span></div>
-            <div class="row" style="background:var(--card)"><span class="g">Brake pads · front · 5.0 mm each</span><span class="chip ok">● OK</span></div>
-            <div class="row" style="background:var(--card)"><span class="g">Brake pads · rear · 6.0 mm each</span><span class="chip ok">● OK</span></div>
-            <p class="cap">Six records, each with a photo and a number. Next visit, each is compared with itself.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="how">
-      <div class="wrap">
-        <div class="head">
-          <p class="eyebrow">How it works</p>
-          <h2>Shoot the stage. Confirm. Send.</h2>
-        </div>
-        <div class="steps">
-          <div class="step"><span class="n">01</span><h3>Shoot the whole stage</h3><p>One burst for under the hood, one for under the car. Any order. No tapping into each point first.</p></div>
-          <div class="step"><span class="n">02</span><h3>AI reads every photo</h3><p>It finds each part in the shot and notes its condition: looks OK, or what's wrong. One photo of a wheel can cover the tire, pad, rotor and caliper at once.</p></div>
-          <div class="step"><span class="n">03</span><h3>The tech confirms</h3><p>Accept, change or reject each suggestion and enter the measurements. Nothing counts until the tech confirms it.</p></div>
-          <div class="step"><span class="n">04</span><h3>The customer gets it</h3><p>A phone report in plain words the tech approved, with photos and last visit's numbers. Customers approve work right from the report.</p></div>
-        </div>
-      </div>
-    </section>
-
-    <section id="ai" class="dark">
-      <div class="wrap two">
-        <div>
-          <p class="eyebrow">AI you control</p>
-          <h2>AI suggests. Your tech decides.</h2>
-          <ul class="rules">
-            <li>Every AI suggestion stays pending until a tech confirms or changes it, including “looks OK.”</li>
-            <li>Nothing unconfirmed reaches the customer: not a finding, a photo or a sentence. There's no setting to turn that off.</li>
-            <li>AI can reword a note for the customer, but can't add a finding, a measurement or a repair.</li>
-            <li>Measurements come from the tech's gauge, never from a photo guess.</li>
-          </ul>
-        </div>
-        <div class="gatecard" role="img" aria-label="Example: the inspection can't be sent until three AI items are reviewed">
-          <div class="t">3 things need you first</div>
-          <div class="r"><span>AI finding<small>Rotor · right front · grooved</small></span><span class="chip ai">Review</span></div>
-          <div class="r"><span>Photo parts<small>AI matched 1 photo to 4 parts</small></span><span class="chip ai">Confirm</span></div>
-          <div class="r"><span>Customer wording<small>Engine coolant</small></span><span class="chip ai">Review</span></div>
-          <div class="lock">Send to advisor (locked)</div>
-        </div>
-      </div>
+      <div class="hazard" aria-hidden="true"></div>
+      <div class="statband"><div class="wrap stats">
+        <div class="stat"><div class="n">282</div><div class="l">Part classes in the catalog</div></div>
+        <div class="stat"><div class="n">378</div><div class="l">Defined checks with limits</div></div>
+        <div class="stat"><div class="n">34<span class="u">→</span>166</div><div class="l">Points to parts, one shop's template</div></div>
+        <div class="stat"><div class="n">0</div><div class="l">Unconfirmed AI items shown to customers</div></div>
+      </div></div>
     </section>
 
     <section>
       <div class="wrap">
         <div class="head">
-          <h2>Red means it fails the minimum.</h2>
-          <p class="lead">You decide what OK, Monitor and Immediate mean. The defaults follow federal inspection minimums and industry guidelines, in the units your techs already use. Change a limit and past results keep the rules they were rated with, so history stays honest.</p>
+          <div><p class="tag">01 · The problem</p><h2>Your MPI says “brakes: yellow.” <span class="hl">Which brake?</span></h2></div>
+          <p class="lead">A point-by-point checklist rolls four pads, four rotors and the lines into one color and one note. Wrynch keeps your checklist and rates every part behind it.</p>
         </div>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr><th scope="col">Check</th><th scope="col"><span class="chip ok">● OK</span></th><th scope="col"><span class="chip mon">▲ Monitor</span></th><th scope="col"><span class="chip imm">■ Immediate</span></th></tr></thead>
-            <tbody>
-              <tr><th scope="row">Brake pad</th><td class="mono">5 mm or more</td><td class="mono">over 2, under 5 mm</td><td class="mono">2 mm or less</td></tr>
-              <tr><th scope="row">Tire tread</th><td class="mono">6/32 in or more</td><td class="mono">3 to 5/32 in</td><td class="mono">2/32 in or less</td></tr>
-              <tr><th scope="row">Brake fluid</th><td class="mono">under 100 ppm Cu</td><td class="mono">100 to 199 ppm</td><td class="mono">200 ppm or more</td></tr>
-              <tr><th scope="row">Rotor</th><td class="mono">above MIN</td><td class="mono">grooved, scored</td><td class="mono">at or below stamped MIN</td></tr>
-              <tr><th scope="row">Tie rod play</th><td class="mono">none</td><td class="mono">under 1/4 in</td><td class="mono">1/4 in or more</td></tr>
-            </tbody>
-          </table>
+        <div class="compare">
+          <div>
+            <div class="clabel"><span>A typical inspection today</span><span>1 record</span></div>
+            <div class="old"><span class="dot">!</span><div><strong>Visual brake system condition</strong><div class="note">fronts 5mm/rotors major grooving. rears 6mm</div></div></div>
+            <p class="cap">One color. Which rotor? Worse than last time? Nobody can tell.</p>
+          </div>
+          <div>
+            <div class="clabel"><span>The same note in Wrynch</span><span class="hl">6 records</span></div>
+            <div class="rowx"><span class="pn">LF</span><span>Brake rotor <span class="v">grooved</span></span><span class="st mon">▲ Monitor</span></div>
+            <div class="rowx"><span class="pn">RF</span><span>Brake rotor <span class="v">grooved</span></span><span class="st mon">▲ Monitor</span></div>
+            <div class="rowx"><span class="pn">F×2</span><span>Brake pads <span class="v">5.0 mm each</span></span><span class="st ok">● OK</span></div>
+            <div class="rowx"><span class="pn">R×2</span><span>Brake pads <span class="v">6.0 mm each</span></span><span class="st ok">● OK</span></div>
+            <p class="cap"><strong>Each with a photo and a number.</strong> Next visit, each is compared with itself.</p>
+          </div>
         </div>
-        <p class="note">Defaults include 49 CFR 570 in-use inspection minimums. Manufacturer specs override them.</p>
       </div>
     </section>
 
-    <section id="history" class="band">
+    <section id="how" class="grid-bg" style="background-color: var(--bg2)">
+      <div class="wrap">
+        <div class="head">
+          <div><p class="tag">02 · How it works</p><h2>Shoot the stage. <span class="hl">Confirm.</span> Send.</h2></div>
+          <p class="lead">Four steps from the bay to the customer's phone, and a tech signs off on every one of them.</p>
+        </div>
+        <div class="steps">
+          <div class="step"><div class="n">01</div><h3>Shoot the whole stage</h3><p>One burst for under the hood, one for under the car. Any order. No tapping into each point first.</p><div class="io">In: photos · Out: one batch per stage</div></div>
+          <div class="step"><div class="n">02</div><h3>AI reads every photo</h3><p>It finds each part in the shot and notes its condition: looks OK, or what's wrong. One photo of a wheel can cover the tire, pad, rotor and caliper at once.</p><div class="io">Out: pending suggestions</div></div>
+          <div class="step"><div class="n">03</div><h3>The tech confirms</h3><p>Accept, change or reject each suggestion and enter the measurements. Nothing counts until the tech confirms it.</p><div class="io">Out: rated parts</div></div>
+          <div class="step"><div class="n">04</div><h3>The customer gets it</h3><p>A phone report in plain words the tech approved, with photos and last visit's numbers. Customers approve work right from the report.</p><div class="io">Out: approvals</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="ai">
       <div class="wrap two">
         <div>
-          <h2>Every part keeps its own history.</h2>
-          <p class="lead" style="margin-top:18px">Because each pad, shock and tire is its own record, the next inspection shows how it changed, not just how it looks today.</p>
+          <p class="tag">03 · AI you control</p>
+          <h2>AI suggests. <span class="hl">Your tech decides.</span></h2>
+          <ul class="rules">
+            <li><b>R-01</b><span>Every AI suggestion stays pending until a tech confirms or changes it, including “looks OK.”</span></li>
+            <li><b>R-02</b><span>Nothing unconfirmed reaches the customer: not a finding, a photo or a sentence. There's no setting to turn that off.</span></li>
+            <li><b>R-03</b><span>AI can reword a note for the customer, but can't add a finding, a measurement or a repair.</span></li>
+            <li><b>R-04</b><span>Measurements come from the tech's gauge, never from a photo guess.</span></li>
+          </ul>
+        </div>
+        <div class="panel bracket gate" role="img" aria-label="Example: the inspection can't be sent until three AI items are reviewed">
+          <div class="phead"><span>Pre-send check</span><span style="color:var(--imm)">3 blocking</span></div>
+          <div class="pbody">
+            <div class="t">3 things need you first</div>
+            <div class="r"><span>AI finding<small>Rotor · RF · grooved · 81%</small></span><span class="st ai">Review</span></div>
+            <div class="r"><span>Photo parts<small>1 photo matched to 4 parts</small></span><span class="st ai">Confirm</span></div>
+            <div class="r"><span>Customer wording<small>Engine coolant</small></span><span class="st ai">Review</span></div>
+            <div class="lock">▣ Send to advisor · locked</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="rules" style="background: var(--bg2)">
+      <div class="wrap">
+        <div class="head">
+          <div><p class="tag">04 · Rating rules</p><h2>Red means it <span class="hl">fails the minimum.</span></h2></div>
+          <p class="lead">You decide what OK, Monitor and Immediate mean. Defaults follow federal inspection minimums and industry guidelines, in the units your techs already use. Change a limit and past results keep the rules they were rated with.</p>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th scope="col">Check</th><th scope="col"><span class="st ok">● OK</span></th><th scope="col"><span class="st mon">▲ Monitor</span></th><th scope="col"><span class="st imm">■ Immediate</span></th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Brake pad</th><td>≥ 5 mm</td><td>&gt; 2 and &lt; 5 mm</td><td class="imm">≤ 2 mm</td></tr>
+              <tr><th scope="row">Tire tread</th><td>≥ 6/32 in</td><td>3–5/32 in</td><td class="imm">≤ 2/32 in</td></tr>
+              <tr><th scope="row">Brake fluid</th><td>&lt; 100 ppm Cu</td><td>100–199 ppm</td><td class="imm">≥ 200 ppm</td></tr>
+              <tr><th scope="row">Rotor</th><td>above MIN</td><td>grooved, scored</td><td class="imm">at or below stamped MIN</td></tr>
+              <tr><th scope="row">Tie rod play</th><td>none</td><td>&lt; 1/4 in</td><td class="imm">≥ 1/4 in</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">// Defaults include 49 CFR 570 in-use inspection minimums. Manufacturer specs override them.</p>
+      </div>
+    </section>
+
+    <section id="history">
+      <div class="wrap two">
+        <div>
+          <p class="tag">05 · Part history</p>
+          <h2>Every part keeps <span class="hl">its own history.</span></h2>
+          <p class="lead" style="margin-top:22px">Because each pad, shock and tire is its own record, the next inspection shows how it changed, not just how it looks today.</p>
           <ul class="bullets">
             <li>Advisors show “5/32 today, 6/32 in March” instead of “getting low.”</li>
             <li>Declined work stays on the part it belongs to.</li>
             <li>Service records and trouble codes link to the parts they touch.</li>
           </ul>
         </div>
-        <div class="chart">
-          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:12px">
-            <strong>Brake fluid · copper by visit</strong><span class="chip imm">■ Immediate</span>
+        <div class="panel bracket chart">
+          <div class="phead"><span>Brake fluid · copper · ppm</span><span class="st imm">■ Immediate</span></div>
+          <div class="pbody">
+            <svg viewBox="0 0 420 230" role="img" aria-label="Example chart: brake fluid copper rising from 60 to 210 parts per million over four visits, crossing the 200 ppm Immediate line">
+              <g stroke="#2A2F37"><line x1="44" y1="20" x2="410" y2="20"/><line x1="44" y1="80" x2="410" y2="80"/><line x1="44" y1="140" x2="410" y2="140"/><line x1="44" y1="190" x2="410" y2="190"/></g>
+              <rect x="44" y="20" width="366" height="60" fill="rgba(240,68,56,.10)"/>
+              <rect x="44" y="80" width="366" height="60" fill="rgba(242,178,27,.08)"/>
+              <line x1="44" y1="80" x2="410" y2="80" stroke="#F04438" stroke-dasharray="5 4"/>
+              <line x1="44" y1="140" x2="410" y2="140" stroke="#F2B21B" stroke-dasharray="5 4"/>
+              <g font-family="IBM Plex Mono, monospace" font-size="11" fill="#7C828C" text-anchor="end"><text x="36" y="84">200</text><text x="36" y="144">100</text><text x="36" y="194">0</text></g>
+              <polyline points="72,164 184,128 296,98 400,74" fill="none" stroke="#E8EAED" stroke-width="2.5" stroke-linejoin="round"/>
+              <g font-family="IBM Plex Mono, monospace" font-size="11" fill="#E8EAED">
+                <rect x="67" y="159" width="10" height="10" fill="#0E1013" stroke="#E8EAED" stroke-width="2"/><text x="72" y="152" text-anchor="middle">60</text>
+                <rect x="179" y="123" width="10" height="10" fill="#0E1013" stroke="#E8EAED" stroke-width="2"/><text x="184" y="116" text-anchor="middle">120</text>
+                <rect x="291" y="93" width="10" height="10" fill="#0E1013" stroke="#E8EAED" stroke-width="2"/><text x="296" y="86" text-anchor="middle">170</text>
+                <rect x="395" y="69" width="10" height="10" fill="#F04438"/><text x="390" y="62" text-anchor="end" fill="#F04438">210</text>
+              </g>
+              <g font-family="IBM Plex Mono, monospace" font-size="11" fill="#7C828C" text-anchor="middle">
+                <text x="72" y="214">VISIT 1</text><text x="184" y="214">VISIT 2</text><text x="296" y="214">VISIT 3</text><text x="400" y="214" text-anchor="end">TODAY</text>
+              </g>
+            </svg>
+            <p class="note">// Recommended twice, declined twice. Now it fails the minimum. Example data.</p>
           </div>
-          <svg viewBox="0 0 420 220" role="img" aria-label="Example chart: brake fluid copper rising from 60 to 210 parts per million over four visits, crossing the 200 ppm Immediate line">
-            <rect x="40" y="10" width="370" height="60" fill="#FBE3E0"/>
-            <rect x="40" y="70" width="370" height="60" fill="#FBEFD9"/>
-            <line x1="40" y1="70" x2="410" y2="70" stroke="#B42318" stroke-dasharray="4 4"/>
-            <line x1="40" y1="130" x2="410" y2="130" stroke="#A86200" stroke-dasharray="4 4"/>
-            <text x="34" y="74" text-anchor="end" font-family="IBM Plex Mono" font-size="11" fill="#6E727A">200</text>
-            <text x="34" y="134" text-anchor="end" font-family="IBM Plex Mono" font-size="11" fill="#6E727A">100</text>
-            <polyline points="70,154 180,118 290,88 400,64" fill="none" stroke="#15171A" stroke-width="3" stroke-linejoin="round"/>
-            <g font-family="IBM Plex Mono" font-size="11" fill="#15171A">
-              <circle cx="70" cy="154" r="5"/><text x="70" y="146" text-anchor="middle">60</text>
-              <circle cx="180" cy="118" r="5"/><text x="180" y="110" text-anchor="middle">120</text>
-              <circle cx="290" cy="88" r="5"/><text x="290" y="80" text-anchor="middle">170</text>
-              <circle cx="400" cy="64" r="5" fill="#B42318"/><text x="392" y="56" text-anchor="end">210</text>
-            </g>
-            <g font-family="IBM Plex Mono" font-size="11" fill="#6E727A" text-anchor="middle">
-              <text x="70" y="200">Visit 1</text><text x="180" y="200">Visit 2</text><text x="290" y="200">Visit 3</text><text x="400" y="200" text-anchor="end">Today</text>
-            </g>
-          </svg>
-          <p class="note">Recommended twice, declined twice. Now it fails the minimum. Example data.</p>
         </div>
       </div>
     </section>
 
-    <section>
-      <div class="wrap two">
+    <section class="grid-bg" style="background-color: var(--bg2)">
+      <div class="wrap two" style="align-items:center">
         <div>
-          <h2>Keep the inspection you already do.</h2>
-          <p class="lead" style="margin-top:18px">Bring your current MPI. Wrynch maps each point to the parts behind it and shows you what it mapped. Your techs keep the point names they know.</p>
-          <p class="note" style="font-size:16px">One shop's 34-point template became 166 parts.</p>
+          <p class="tag">06 · Your template</p>
+          <h2>Keep the inspection <span class="hl">you already do.</span></h2>
+          <p class="lead" style="margin-top:22px">Bring your current MPI. Wrynch maps each point to the parts behind it and shows you what it mapped. Your techs keep the point names they know.</p>
+          <p class="note" style="font-size:13.5px">// One shop's 34-point template became 166 parts.</p>
         </div>
         <div class="map">
           <div>
@@ -350,31 +455,40 @@
             <div class="pt on">SUSPENSION COMPONENTS</div>
             <div class="pt">HORN AND EXTERIOR LIGHTS</div>
           </div>
-          <div class="arrow" aria-hidden="true">→</div>
+          <div class="wire" aria-hidden="true"></div>
           <div class="parts" aria-label="Parts behind the suspension point">
-            <span>Strut · LF</span><span>Strut · RF</span><span>Shock · LR</span><span>Shock · RR</span><span>Ball joint · LF</span><span>Ball joint · RF</span><span>Control arm × 4</span><span>Coil spring × 4</span><span>Sway bar link × 4</span>
+            <span>Strut <i>LF</i></span><span>Strut <i>RF</i></span><span>Shock <i>LR</i></span><span>Shock <i>RR</i></span>
+            <span>Ball joint <i>LF</i></span><span>Ball joint <i>RF</i></span><span>Control arm <i>×4</i></span><span>Coil spring <i>×4</i></span>
+            <span>Sway bar link <i>×4</i></span><span style="border-color:var(--accent);color:var(--accent)">30 parts <i style="color:var(--accent)">total</i></span>
           </div>
         </div>
       </div>
     </section>
 
-    <section id="faq" class="band">
+    <section id="faq">
       <div class="wrap faq">
-        <h2 style="margin-bottom:32px">Questions shops ask</h2>
-        <details><summary>Do my techs have to change how they inspect?</summary><p>No. They keep your points and shoot each stage in one go. The part-level detail comes from how photos and findings are sorted, not from extra taps.</p></details>
-        <details><summary>Can one photo count for several parts?</summary><p>Yes. A shot of a front wheel can show the tire, pad, rotor and caliper. The AI notes the condition of each part it can see, and the photo appears under every inspection point it covers. The tech can add or remove parts from any photo.</p></details>
-        <details><summary>What if the AI gets it wrong?</summary><p>The tech changes the parts on the photo or rejects the finding. Until they confirm, nothing counts and the customer can't see it.</p></details>
-        <details><summary>Can I use my own limits?</summary><p>Yes. Every threshold is yours to set, in mm or 32nds. Past results keep the rules they were rated with.</p></details>
+        <div><p class="tag">07 · FAQ</p><h2>Questions shops ask</h2></div>
+        <div>
+          <details><summary><span class="q">Q.01</span>Do my techs have to change how they inspect?</summary><p>No. They keep your points and shoot each stage in one go. The part-level detail comes from how photos and findings are sorted, not from extra taps.</p></details>
+          <details><summary><span class="q">Q.02</span>Can one photo count for several parts?</summary><p>Yes. A shot of a front wheel can show the tire, pad, rotor and caliper. The AI notes the condition of each part it can see, and the photo appears under every inspection point it covers. The tech can add or remove parts from any photo.</p></details>
+          <details><summary><span class="q">Q.03</span>What if the AI gets it wrong?</summary><p>The tech changes the parts on the photo or rejects the finding. Until they confirm, nothing counts and the customer can't see it.</p></details>
+          <details><summary><span class="q">Q.04</span>Can I use my own limits?</summary><p>Yes. Every threshold is yours to set, in mm or 32nds. Past results keep the rules they were rated with.</p></details>
+        </div>
       </div>
     </section>
 
-    <section class="dark final">
+    <section class="final">
       <div class="wrap">
-        <h2>See your own template, part by part.</h2>
-        <p class="lead">Create your shop, invite your techs and run your first inspection today.</p>
-        <div class="cta">
-          <a class="btn primary" href="/app/#/signup">Create your shop</a>
-          <a class="btn ghost" href="/app/">Sign in</a>
+        <div class="box">
+          <div>
+            <p class="tag">Start today</p>
+            <h2>See your own template, <span class="hl">part by part.</span></h2>
+            <p class="lead">Create your shop, invite your techs and run your first inspection today.</p>
+          </div>
+          <div class="cta">
+            <a class="btn primary" href="/app/#/signup">Create your shop <span class="arr" aria-hidden="true">→</span></a>
+            <a class="btn ghost" href="/app/" style="background:var(--bg)">Sign in</a>
+          </div>
         </div>
       </div>
     </section>
@@ -382,8 +496,8 @@
 
   <footer>
     <div class="wrap">
-      <span>© <span id="yr">2026</span> Wrynch</span>
-      <a href="/app/">Sign in</a>
+      <span>© <span id="yr">2026</span> WRYNCH · Digital vehicle inspection</span>
+      <a href="/app/">Sign in →</a>
     </div>
   </footer>
   <script>document.getElementById('yr').textContent = new Date().getFullYear();</script>
