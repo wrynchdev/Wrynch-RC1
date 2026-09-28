@@ -3,13 +3,16 @@
 // Public settings are baked into the app at build time: SUPABASE_URL, SUPABASE_ANON_KEY.
 // Without them the app runs in demo mode (seeded data in the browser).
 import * as esbuild from 'esbuild';
-import { cpSync, mkdirSync, rmSync, writeFileSync, readdirSync } from 'node:fs';
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync, readdirSync } from 'node:fs';
 import { loadEnv } from './env.mjs';
 
 loadEnv();
 export const appOptions = (dev = false) => ({
   entryPoints: { app: 'src/main.tsx' },
   outdir: 'dist/assets',
+  // Production files get a content hash in their name so browsers never keep an old version.
+  entryNames: dev ? '[name]' : '[name]-[hash]',
+  metafile: !dev,
   bundle: true,
   format: 'iife',
   jsx: 'automatic',
@@ -57,6 +60,7 @@ async function buildFunctions() {
     version: 3,
     routes: [
       { src: '/assets/(.*)', headers: { 'cache-control': 'public, max-age=31536000, immutable' }, continue: true },
+      { src: '/(index\\.html)?', headers: { 'cache-control': 'no-cache' }, continue: true },
       { handle: 'filesystem' },
     ],
   }, null, 2));
@@ -64,7 +68,17 @@ async function buildFunctions() {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  rmSync('dist', { recursive: true, force: true });
   writeIndex();
-  await esbuild.build(appOptions(false));
+  const result = await esbuild.build(appOptions(false));
+  // Point index.html at the hashed file names.
+  let html = readFileSync('dist/index.html', 'utf8');
+  for (const out of Object.keys(result.metafile.outputs)) {
+    const file = out.replace(/^dist\//, '');
+    if (/^assets\/app-[A-Z0-9]+\.js$/i.test(file)) html = html.replace('assets/app.js', file);
+    if (/^assets\/app-[A-Z0-9]+\.css$/i.test(file)) html = html.replace('assets/app.css', file);
+  }
+  if (html.includes('assets/app.js') || html.includes('assets/app.css')) throw new Error('index.html still points at unhashed assets');
+  writeFileSync('dist/index.html', html);
   await buildFunctions();
 }
