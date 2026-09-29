@@ -63,7 +63,7 @@ test('VIN mapping: 4WD SUV, EV, pickup', () => {
 
 // ---------------------------------------------------------------- endpoints with a fake Supabase / AI
 const realFetch = globalThis.fetch;
-let calls: { url: string; body: unknown; auth: string | null }[] = [];
+let calls: { url: string; body: unknown; auth: string | null; ws: string | null }[] = [];
 let respond: (url: string, body: unknown) => unknown;
 
 beforeEach(() => {
@@ -72,12 +72,13 @@ beforeEach(() => {
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'service';
   delete process.env.ANTHROPIC_API_KEY;
   delete process.env.AI_STUB;
+  delete process.env.ANTHROPIC_WORKSPACE_ID;
   delete process.env.TWILIO_ACCOUNT_SID;
   calls = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const body = init?.body && typeof init.body === 'string' ? JSON.parse(init.body) : null;
-    calls.push({ url, body, auth: new Headers(init?.headers).get('authorization') });
+    calls.push({ url, body, auth: new Headers(init?.headers).get('authorization'), ws: new Headers(init?.headers).get('anthropic-workspace-id') });
     const out = respond(url, body);
     if (out instanceof Response) return out;
     return new Response(JSON.stringify(out ?? null), { status: 200, headers: { 'content-type': 'application/json' } });
@@ -124,6 +125,7 @@ test('ai-sort requires sign-in and records proposals with the service key only',
 
 test('ai-sort with Claude: model output is validated before it is stored', async () => {
   process.env.ANTHROPIC_API_KEY = 'k';
+  process.env.ANTHROPIC_WORKSPACE_ID = 'wrkspc_test';
   const rotor = compKey(clsByName('brake_rotor').id, 'left_front');
   const caliper = compKey(clsByName('brake_caliper').id, 'left_front');
   respond = (url) => {
@@ -141,6 +143,7 @@ test('ai-sort with Claude: model output is validated before it is stored', async
   const ai = calls.find((c) => c.url.startsWith('https://api.anthropic.com'))!;
   const b = ai.body as { tool_choice: { name: string }; messages: { content: { type: string }[] }[] };
   assert.equal(b.tool_choice.name, 'record_photo');
+  assert.equal(ai.ws, 'wrkspc_test', 'workspace header sent when configured');
   assert.equal(b.messages[0].content[0].type, 'image');
   const items = (calls.find((c) => c.url.endsWith('/ai_record_sort'))!.body as { p_items: { parts: { key: string; condition: string; findings: { key: string }[] }[] }[] }).p_items;
   assert.deepEqual(items[0].parts.map((p) => [p.key, p.condition]), [[rotor, 'concern'], [caliper, 'looks_ok']], 'one photo, two parts');
@@ -232,6 +235,7 @@ test('AI errors are explained in plain language without leaking the key', () => 
   assert.match(explainAiError(400, JSON.stringify({ error: { type: 'invalid_request_error', message: 'Your credit balance is too low to access the Anthropic API.' } })), /out of credit/);
   assert.match(explainAiError(404, JSON.stringify({ error: { type: 'not_found_error', message: 'model: x' } })), /isn’t available/);
   assert.match(explainAiError(529, 'overloaded'), /busy/);
+  assert.match(explainAiError(400, JSON.stringify({ error: { type: 'invalid_request_error', message: 'This API key is not scoped to a workspace, so this request must include the anthropic-workspace-id header' } })), /ANTHROPIC_WORKSPACE_ID/);
 });
 
 test('ai-sort reports why a photo could not be read (unsupported format)', async () => {
