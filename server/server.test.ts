@@ -39,10 +39,13 @@ test('AI output is validated against the candidates and the ontology', () => {
     'concern', 'a finding overrides "looks OK"');
 });
 
-test('candidates cover every stage so one photo can count for several points', () => {
+test('candidates come only from the inspection points of the photo stage', () => {
   const c = candidatesFor(DEFAULT_TEMPLATE, 'under_car', runner.config);
-  assert.equal(c[0].stage, 'Under car', 'photo stage listed first');
-  assert.ok(c.some((x) => x.stage === 'Under hood'), 'other stages included');
+  const stage = DEFAULT_TEMPLATE.sections.find((s) => s.id === 'under_car')!;
+  assert.ok(c.length > 0);
+  assert.ok(c.every((x) => x.stage === 'Under car' && stage.points.some((p) => p.name === x.point)), 'no parts from other stages');
+  const hood = candidatesFor(DEFAULT_TEMPLATE, 'under_hood', runner.config).map((x) => x.key);
+  assert.ok(hood.some((k) => !c.some((x) => x.key === k)), 'under-hood-only parts are not offered for under-car photos');
 });
 
 test('VIN mapping: 4WD SUV, EV, pickup', () => {
