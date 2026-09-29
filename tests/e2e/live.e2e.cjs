@@ -141,6 +141,14 @@ const B = `${ROOT}/app/`;
         if (await btn.count()) { await btn.click(); await p.waitForTimeout(500); }
       }
       await p.goto(B + `#/insp/${inspId}/point/S24`); await p.waitForTimeout(300);
+      // AI note draft: built from confirmed ratings, shown for approval, saved only when approved.
+      await p.click('button.ai-draft'); await p.waitForSelector('.ai-card textarea');
+      const draft = await p.inputValue('.ai-card textarea');
+      if (!draft.includes('1.5')) errs.push('note draft missing the confirmed measurement: ' + draft);
+      if ((await p.inputValue('#note')) !== '') errs.push('draft was saved before approval');
+      await p.locator('.ai-card').screenshot({ path: S + 'L09b-note-draft.png' });
+      await p.click('.ai-card button.primary'); await p.waitForTimeout(600);
+      if (!(await p.inputValue('#note')).includes('1.5')) errs.push('approved draft did not become the note');
       await p.fill('#note', 'fronts 5mm/rotors major grooving. rears 6mm'); await p.locator('#note').blur(); await p.waitForTimeout(600);
       await p.goto(B + `#/insp/${inspId}/finish`); await p.waitForTimeout(800); await shot('L10-finish');
       await p.click('button:has-text("Send to advisor")'); await p.waitForSelector('text=Inspection results', { timeout: 10000 });

@@ -16,6 +16,7 @@ import type {
 } from '../domain/types';
 import { ApiError, auth, fn, getSession, LIVE, onSession, rpc, rpcAnon, shrinkPhoto, signPhotos, upload, type Session } from './remote';
 import { dashFromInspections, type DashData } from '../domain/dashboard';
+import { draftNote, pointFacts } from '../domain/noteDraft';
 
 export type Role = 'owner' | 'advisor' | 'technician';
 export interface Member { userId: string; name: string; role: Role }
@@ -101,6 +102,7 @@ export const photoSrc = (url: string) => (state.mode === 'demo' ? url : state.ph
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 // An invite or pilot link survives the email-confirmation round trip (which lands back on the app's home).
+export interface NoteDraft { text: string; source: 'ai' | 'rules'; basis: { parts: number; photos: number } }
 export interface PendingLink { kind: 'join' | 'pilot'; token: string }
 const PENDING_KEY = 'wrynch-pending-link';
 export function getPendingLink(): PendingLink | null {
@@ -545,6 +547,18 @@ export const actions = {
   setNote(inspId: string, pointId: string, text: string) {
     if (state.mode === 'demo') return edit(inspId, local.setNote(pointId, text));
     void liveEdit(inspId, local.setNote(pointId, text), () => rpc('set_note', { p_inspection: inspId, p_point: pointId, p_text: text }));
+  },
+  /** A draft note for a point from its confirmed facts (AI when available). Not saved: the tech approves it with setNote. */
+  async draftNote(inspId: string, pointId: string): Promise<NoteDraft> {
+    const i = state.inspections.find((x) => x.id === inspId)!;
+    if (state.mode === 'demo') {
+      const v = state.vehicles.find((x) => x.id === i.vehicleId)!;
+      const f = pointFacts(i, v, getPoint(pointId));
+      if (!f.parts.some((p) => p.state !== 'unrated')) throw new Error('Rate a part or confirm a photo on this point first');
+      return { text: draftNote(f), source: 'rules', basis: { parts: f.parts.filter((p) => p.state !== 'unrated').length, photos: f.photoIds.length } };
+    }
+    await queues.get(inspId)?.tail.catch(() => undefined); // save any ratings still on their way first
+    return fn<NoteDraft>('ai-note', { inspectionId: inspId, pointId });
   },
   async requestWording(inspId: string, pointId: string) {
     if (state.mode === 'demo') {
