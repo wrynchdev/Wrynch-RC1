@@ -36,6 +36,7 @@ export const aiSort: Handler = route({
 
     const analyses: PhotoAnalysis[] = [];
     let failed = 0;
+    let reason = '';
     const vehicleText = [vehicle.year || '', vehicle.make, vehicle.model, vehicle.trim].filter(Boolean).join(' ');
     for (const [sectionId, items] of bySection) {
       if (mode === 'claude') {
@@ -48,6 +49,7 @@ export const aiSort: Handler = route({
             // Not recorded, so the photo stays "not sorted" and can be retried.
             console.error('photo', m.id, e);
             failed++;
+            if (!reason) reason = e instanceof HttpError ? e.message : 'The AI couldn’t read this photo.';
             return null;
           }
         });
@@ -57,11 +59,11 @@ export const aiSort: Handler = route({
         analyses.push(...analyzePhotos(sectionId, items.map((m) => ({ id: m.id, name: m.label })), vehicle.config, template));
       }
     }
-    if (todo.length && !analyses.length) throw new HttpError(502, 'The AI couldn’t read these photos right now. They’re saved; try “Sort with AI” again or place them by hand.');
+    if (todo.length && !analyses.length) throw new HttpError(502, `${reason || 'The AI couldn’t read these photos right now.'} Photos are saved; try “Sort with AI” again or place them by hand.`);
     if (analyses.length) await rpc('ai_record_sort', { p_inspection: inspectionId, p_items: analyses }, 'service');
     return json({
       photos: analyses.length, identified: analyses.filter((a) => a.parts.length).length,
-      parts: analyses.reduce((n, a) => n + a.parts.length, 0), failed, model: mode === 'claude' ? model() : 'stub',
+      parts: analyses.reduce((n, a) => n + a.parts.length, 0), failed, reason, model: mode === 'claude' ? model() : 'stub',
     });
   },
 });

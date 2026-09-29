@@ -76,6 +76,23 @@ export function validateAnalysis(mediaId: string, raw: unknown, candidates: Cand
   return out;
 }
 
+/** A plain-language reason for an Anthropic API error (never includes the key). */
+export function explainAiError(status: number, body: string): string {
+  let type = '', message = '';
+  try { const e = JSON.parse(body).error ?? {}; type = String(e.type ?? ''); message = String(e.message ?? ''); } catch { /* not JSON */ }
+  if (status === 401 || type === 'authentication_error') return 'The Anthropic API key isn’t valid. Check ANTHROPIC_API_KEY in Vercel.';
+  if (/credit balance|billing/i.test(message)) return 'The Anthropic account is out of credit. Add credit at console.anthropic.com.';
+  if (status === 403 || type === 'permission_error') return 'The Anthropic API key doesn’t have access to this model.';
+  if (status === 404 || type === 'not_found_error') return `The AI model “${model()}” isn’t available. Check ANTHROPIC_MODEL in Vercel.`;
+  if (status === 429 || type === 'rate_limit_error') return 'The AI is rate-limited right now. Wait a minute and try again.';
+  if (status === 529 || status >= 500 || type === 'overloaded_error' || type === 'api_error') return 'The AI service is busy. Try again in a minute.';
+  if (/image/i.test(message)) return `The AI couldn’t open this photo (${message.slice(0, 120)}).`;
+  return `The AI service returned an error${message ? `: ${message.slice(0, 160)}` : ` (${status})`}.`;
+}
+
+const AI_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const AI_IMAGE_MAX = 5 * 1024 * 1024;
+
 export const model = () => env('ANTHROPIC_MODEL') ?? 'claude-sonnet-5';
 /** Real AI when a key is set; the rule-based stand-in only when explicitly asked for (tests, local demos). */
 export const aiMode = (): 'claude' | 'stub' | 'off' => (env('ANTHROPIC_API_KEY') ? 'claude' : env('AI_STUB') === '1' ? 'stub' : 'off');
@@ -83,15 +100,23 @@ export const aiMode = (): 'claude' | 'stub' | 'off' => (env('ANTHROPIC_API_KEY')
 async function claude(body: Record<string, unknown>): Promise<Record<string, unknown>> {
   const key = env('ANTHROPIC_API_KEY');
   if (!key) throw new HttpError(503, 'AI is not configured');
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: model(), ...body }),
-  });
+  let r: Response;
+  try {
+    r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: model(), ...body }),
+      // Stay inside the 60-second function limit so the app gets a clear answer.
+      signal: AbortSignal.timeout(50_000),
+    });
+  } catch (e) {
+    const timedOut = e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError');
+    throw new HttpError(504, timedOut ? 'The AI took too long on this photo. Try again.' : 'Couldn’t reach the AI service. Try again.');
+  }
   if (!r.ok) {
     const t = await r.text();
     console.error('Anthropic API error', r.status, t.slice(0, 500));
-    throw new HttpError(502, 'The AI service returned an error');
+    throw new HttpError(502, explainAiError(r.status, t));
   }
   return (await r.json()) as Record<string, unknown>;
 }
@@ -105,6 +130,9 @@ const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64');
 
 /** Ask Claude which parts one photo shows and the visible condition of each. */
 export async function analyzePhoto(image: { bytes: Uint8Array; type: string }, candidates: Candidate[], stageName: string, vehicleText = ''): Promise<unknown> {
+  const type = image.type.split(';')[0].trim().toLowerCase();
+  if (!AI_IMAGE_TYPES.includes(type)) throw new HttpError(415, `This photo is ${type || 'an unknown format'}; the AI reads JPEG or PNG. Retake it or export it as JPEG.`);
+  if (image.bytes.length * 4 / 3 > AI_IMAGE_MAX) throw new HttpError(413, 'This photo is too large for the AI. Retake it at a lower resolution.');
   const findingKeys = [...new Set(candidates.flatMap((c) => c.findings))];
   const byStage = new Map<string, Candidate[]>();
   for (const c of candidates) byStage.set(c.stage, [...(byStage.get(c.stage) ?? []), c]);
@@ -164,7 +192,7 @@ export async function analyzePhoto(image: { bytes: Uint8Array; type: string }, c
     messages: [{
       role: 'user',
       content: [
-        { type: 'image', source: { type: 'base64', media_type: image.type.startsWith('image/') ? image.type : 'image/jpeg', data: b64(image.bytes) } },
+        { type: 'image', source: { type: 'base64', media_type: type, data: b64(image.bytes) } },
         { type: 'text', text: `${vehicleText ? `Vehicle: ${vehicleText}. ` : ''}Taken during the "${stageName}" stage of a vehicle inspection. Part keys look like "classId@position". `
           + `Parts on this vehicle, by stage (the photo's own stage first; it may also show parts from other stages):\n\n${list}\n\n`
           + 'Describe the view, then list only the parts you can clearly see, with their condition. Use an empty list if no listed part is identifiable.' },

@@ -255,15 +255,29 @@ export interface NewInspection {
 }
 
 // ------------------------------------------------------------------ actions
-/** Sort photos with the AI in batches; reports photos it couldn't read (they stay unsorted and can be retried). */
+/**
+ * Sort photos with the AI, one photo per request and a few at a time, so no request comes near the server's
+ * time limit. Photos the AI couldn't read stay unsorted and can be retried; the first reason is shown.
+ */
 async function runAiSort(inspId: string, ids: string[]) {
-  let failed = 0;
-  for (let k = 0; k < ids.length; k += 12) {
-    set({ busy: `AI is sorting photos ${k + 1}–${Math.min(k + 12, ids.length)} of ${ids.length}…` });
-    const r = await fn<{ failed?: number }>('ai-sort', { inspectionId: inspId, mediaIds: ids.slice(k, k + 12) });
-    failed += r?.failed ?? 0;
-  }
-  if (failed) toast(`The AI couldn’t read ${failed} ${failed === 1 ? 'photo' : 'photos'}. Try “Sort with AI” again or place them by hand.`, 'error');
+  let done = 0, failed = 0, reason = '';
+  set({ busy: `AI is reading photo 1 of ${ids.length}…` });
+  await pool(ids, 3, async (id) => {
+    try {
+      const r = await fn<{ failed?: number; reason?: string }>('ai-sort', { inspectionId: inspId, mediaIds: [id] });
+      if (r?.failed) { failed += r.failed; reason ||= r.reason ?? ''; }
+    } catch (e) {
+      failed++; reason ||= errText(e);
+    }
+    done++;
+    set({ busy: done < ids.length ? `AI is reading photo ${done + 1} of ${ids.length}…` : 'Saving…' });
+  });
+  if (failed) toast(`The AI couldn’t read ${failed} of ${ids.length} ${ids.length === 1 ? 'photo' : 'photos'}. ${reason.replace(/ Photos are saved;.*$/, '')} Use “Sort with AI” to retry or place them by hand.`, 'error');
+}
+
+async function pool<T>(items: T[], n: number, fn: (x: T) => Promise<void>) {
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (next < items.length) await fn(items[next++]); }));
 }
 
 export const actions = {

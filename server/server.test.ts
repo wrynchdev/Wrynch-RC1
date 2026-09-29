@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { candidatesFor, validateAnalysis } from './ai';
+import { candidatesFor, explainAiError, validateAnalysis } from './ai';
 import { mapVpic } from './vin';
 import { aiSort, aiWording, report, sendReport, status } from './routes';
 import { DEFAULT_TEMPLATE, clsByName, compKey } from '../src/domain/ontology';
@@ -225,4 +225,26 @@ test('new-style secret keys go only in the apikey header', async () => {
 test('send-report refuses an inspection the tech has not finished', async () => {
   respond = (url) => (url.endsWith('/get_inspection') ? bundle() : null);
   assert.equal((await sendReport(post('send-report', { inspectionId: 'i-4r-now', channel: 'link' }))).status, 409);
+});
+
+test('AI errors are explained in plain language without leaking the key', () => {
+  assert.match(explainAiError(401, JSON.stringify({ error: { type: 'authentication_error', message: 'invalid x-api-key' } })), /key isn’t valid/);
+  assert.match(explainAiError(400, JSON.stringify({ error: { type: 'invalid_request_error', message: 'Your credit balance is too low to access the Anthropic API.' } })), /out of credit/);
+  assert.match(explainAiError(404, JSON.stringify({ error: { type: 'not_found_error', message: 'model: x' } })), /isn’t available/);
+  assert.match(explainAiError(529, 'overloaded'), /busy/);
+});
+
+test('ai-sort reports why a photo could not be read (unsupported format)', async () => {
+  process.env.ANTHROPIC_API_KEY = 'k';
+  respond = (url) => {
+    if (url.endsWith('/get_inspection')) return bundle((i) => {
+      i.media = [{ id: 'm1', sectionId: 'under_car', url: 's/i/m1.heic', label: 'a.heic', excluded: false, customerVisible: true, analyzed: false, links: [] }];
+    });
+    if (url.includes('/storage/v1/object/inspection-media/')) return new Response(new Uint8Array([0, 0, 0]), { headers: { 'content-type': 'image/heic' } });
+    return null;
+  };
+  const r = await aiSort(post('ai-sort', { inspectionId: 'i-4r-now', mediaIds: ['m1'] }));
+  assert.equal(r.status, 502);
+  assert.match((await r.json()).error, /image\/heic; the AI reads JPEG/);
+  assert.ok(!calls.some((c) => c.url.startsWith('https://api.anthropic.com')), 'unsupported photo never sent');
 });

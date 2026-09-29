@@ -56,7 +56,8 @@ export function analyzePhotos(sectionId: string, files: { id: string; name: stri
     const h = hash(`${f.name}:${i}`);
     const confidence = 0.5 + ((h >>> 3) % 50) / 100; // 0.50–0.99
     if (!targets.length || confidence < 0.58) return { mediaId: f.id, parts: [] };
-    const first = targets[(i * 7 + (h % 3)) % targets.length];
+    // Spread photos over the stage by file name, so the result doesn't depend on how photos are batched.
+    const first = targets[(hash(f.name) >>> 5) % targets.length];
     const pos = parseKey(first).position;
     const nearby = targets.filter((k) => k !== first && parseKey(k).position === pos).slice(0, h % 3);
     const parts = [first, ...nearby].map((key, j): PartReading => {
