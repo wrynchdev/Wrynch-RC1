@@ -187,19 +187,25 @@ const B = `${ROOT}/app/`;
       const port = process.env.PORT ?? 5173;
       const num = require('child_process').spawnSync('psql', ['-Atc', "select number from shop where name = 'Reyes Auto Care'", PGURL], { encoding: 'utf8' }).stdout.trim();
       if (!/^\d{4,}$/.test(num)) throw new Error('no shop number: ' + num);
+      // Wait until the page is on this shop's address (tolerating redirects that replace one another).
+      const atShop = async (page, path = '') => {
+        const re = new RegExp(`^http://${num}\\.${APPRE}:${port}/${path.replace(/[#/]/g, (c) => '\\' + c)}`);
+        for (let k = 0; k < 20; k++) { if (re.test(page.url())) return; await page.waitForTimeout(500); }
+        throw new Error('not on the shop address: ' + page.url());
+      };
       const ctx2 = await b.newContext({ viewport: { width: 1280, height: 860 } });
       const q = await ctx2.newPage();
       q.on('pageerror', (e) => errs.push('shop-address pageerror: ' + e.message));
       // Sign in on wrynch.app: land on the shop's own address, signed in.
       await q.goto(`http://${APPD}:${port}/`); await q.waitForSelector('text=Sign in');
       await q.fill('#em', 'owner@shop.test'); await q.fill('#pw', 'password123'); await q.click('button:has-text("Sign in")');
-      await q.waitForURL(new RegExp(`^http://${num}\\.${APPRE}:${port}/`)); await q.waitForSelector('h2:has-text("In the bays")');
+      await atShop(q); await q.waitForSelector('h2:has-text("In the bays")');
       if (!(await q.locator(`text=#${num}`).count())) errs.push('shop number not shown');
       await q.screenshot({ path: S + 'L15-shop-address.png' });
       // The marketing domain's /app goes to the app; the shared sign-in carries over to the shop address.
-      await q.goto(`http://${SITED}:${port}/app/`); await q.waitForURL(new RegExp(`^http://${num}\\.${APPRE}:${port}/`)); await q.waitForSelector('h2:has-text("In the bays")');
+      await q.goto(`http://${SITED}:${port}/app/`).catch(() => undefined); await atShop(q); await q.waitForSelector('h2:has-text("In the bays")');
       // Someone else's (or a mistyped) shop number sends you to your own shop.
-      await q.goto(`http://9999.${APPD}:${port}/#/jobs`); await q.waitForURL(new RegExp(`^http://${num}\\.${APPRE}:${port}/#/jobs`));
+      await q.goto(`http://9999.${APPD}:${port}/#/jobs`).catch(() => undefined); await atShop(q, '#/jobs');
       // Customer report links are served on the shop's address without signing in.
       const tok = require('child_process').spawnSync('psql', ['-Atc', "select report_token from inspection where status = 'sent' limit 1", PGURL], { encoding: 'utf8' }).stdout.trim();
       const c2 = await b.newPage(); await c2.goto(`http://${num}.${APPD}:${port}/#/r/${tok}`); await c2.waitForSelector('text=Vehicle inspection report'); await c2.close();
@@ -212,6 +218,10 @@ const B = `${ROOT}/app/`;
   if (db !== '4wd|true') errs.push('vehicle config in database: ' + db);
   const real = errs.filter((e) => !/ERR_TUNNEL_CONNECTION_FAILED|fonts\.g/.test(e));
   await b.close();
-  if (real.length) { console.error('E2E FAILED', JSON.stringify(real, null, 1), `screenshots: ${SHOTS}`); process.exit(1); }
+  if (real.length) {
+    // In GitHub Actions, also report each failure as an annotation so it shows on the check without opening logs.
+    if (process.env.GITHUB_ACTIONS) for (const e of real) console.log(`::error title=E2E::${String(e).replace(/\r?\n/g, ' ').slice(0, 900)}`);
+    console.error('E2E FAILED', JSON.stringify(real, null, 1), `screenshots: ${SHOTS}`); process.exit(1);
+  }
   console.log('E2E PASSED: sign-up, shop, invite, new inspection, upload + AI sort, measurement, finish, estimate, send, customer approval');
 })();

@@ -45,6 +45,8 @@ function Overlays() {
   );
 }
 
+let redirecting = false;
+
 export function App() {
   const parts = useHash();
   const [confirmReset, setConfirmReset] = useState(false);
@@ -70,7 +72,7 @@ export function App() {
     const host = hostInfo();
     const num = s.workspace.shop?.number;
     if (host.onAppDomain && num && host.shopNumber !== num) {
-      window.location.replace(shopUrl(num, window.location.hash));
+      if (!redirecting) { redirecting = true; window.location.replace(shopUrl(num, window.location.hash)); } // once, even if we re-render
       return <div className="phone"><div className="body"><p className="muted" role="status">Opening {s.workspace.shop?.name}…</p></div></div>;
     }
   }
