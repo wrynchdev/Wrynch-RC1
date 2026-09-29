@@ -322,6 +322,11 @@ export function Sort({ id, sectionId }: { id: string; sectionId: string }) {
             <strong>{busy ? 'Working on your photos…' : 'No photos yet'}</strong>
             {!busy && <a className="btn primary" href={`#/insp/${id}/capture/${sectionId}`}><Icon name="camera" />Capture this stage</a>}
           </div>
+        ) : !aiOff && media.every((m) => !m.analyzed && m.links.length === 0) && mode === 'live' ? (
+          <div className="ai-box row" style={{ alignItems: 'flex-start' }} role="status">
+            <Icon name="ai" />
+            <span className="small"><strong>{busy ? 'The AI is reading these photos…' : 'The AI hasn’t read these photos yet.'}</strong>{!busy && ' Tap “Sort with AI” below, or place them by hand.'}</span>
+          </div>
         ) : aiOff ? (
           <div className="card pad small" role="status">
             <strong>AI photo sorting isn’t set up for this shop yet.</strong> Tap <em>Place</em> on each photo to pick the parts it shows.

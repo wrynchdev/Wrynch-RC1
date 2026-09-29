@@ -81,6 +81,7 @@ export function explainAiError(status: number, body: string): string {
   let type = '', message = '';
   try { const e = JSON.parse(body).error ?? {}; type = String(e.type ?? ''); message = String(e.message ?? ''); } catch { /* not JSON */ }
   if (status === 401 || type === 'authentication_error') return 'The Anthropic API key isn’t valid. Check ANTHROPIC_API_KEY in Vercel.';
+  if (/workspace/i.test(message)) return 'This Anthropic key isn’t tied to a workspace. Set ANTHROPIC_WORKSPACE_ID in Vercel, or create the key inside a workspace.';
   if (/credit balance|billing/i.test(message)) return 'The Anthropic account is out of credit. Add credit at console.anthropic.com.';
   if (status === 403 || type === 'permission_error') return 'The Anthropic API key doesn’t have access to this model.';
   if (status === 404 || type === 'not_found_error') return `The AI model “${model()}” isn’t available. Check ANTHROPIC_MODEL in Vercel.`;
@@ -104,7 +105,11 @@ async function claude(body: Record<string, unknown>): Promise<Record<string, unk
   try {
     r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      headers: {
+        'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json',
+        // Keys that aren't scoped to a workspace must name one.
+        ...(env('ANTHROPIC_WORKSPACE_ID') ? { 'anthropic-workspace-id': env('ANTHROPIC_WORKSPACE_ID')! } : {}),
+      },
       body: JSON.stringify({ model: model(), ...body }),
       // Stay inside the 60-second function limit so the app gets a clear answer.
       signal: AbortSignal.timeout(50_000),
