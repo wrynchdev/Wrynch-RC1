@@ -83,3 +83,21 @@ accounts from their invite link, and everyone signs in as usual.
   `select public.approve_pilot_request('<application id>');`
 - The link lets one person create an account and set up the shop. It works once and expires after 30 days.
 - If the shop tried the template preview, the mapped template is saved with its application.
+
+## Domains
+
+- **getwrynch.com** is the marketing site. Its `/app` links go to the app.
+- **wrynch.app** is the app. Each shop has its own address, made from its shop number: `https://1001.wrynch.app`.
+  Signing in on wrynch.app takes you to your shop's address. The sign-in is shared by every wrynch.app address, so it
+  carries over. Customer report links use the shop's address.
+- Shop numbers start at 1001 and never change (the `number` column on `shop`).
+
+Setup:
+1. **Vercel → Project → Settings → Domains:** add `getwrynch.com`, `www.getwrynch.com` (redirect to getwrynch.com),
+   `wrynch.app` and `*.wrynch.app`. The wildcard needs wrynch.app to use Vercel's nameservers
+   (`ns1.vercel-dns.com`, `ns2.vercel-dns.com`), set at your domain registrar.
+2. **Supabase → Authentication → URL Configuration:** Site URL `https://wrynch.app`. Under Redirect URLs, add
+   `https://wrynch.app/**` and `https://*.wrynch.app/**`.
+3. Optional: `APP_DOMAIN` / `SITE_DOMAIN` environment variables if the domains ever change. They default to wrynch.app and getwrynch.com.
+
+The vercel.app address keeps working as before: the marketing page at `/` and the app at `/app/`.

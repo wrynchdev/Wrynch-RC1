@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { actions, getPendingLink, jobList, useStore } from '../state/store';
+import { hostInfo, shopUrl } from '../state/remote';
 import { Join, NewInspection, NoShop, Pilot, SetPassword, Settings, SignIn, Team, TemplateEditor } from './account';
 import { AdvisorList, AdvisorResults, DemoReport, LiveReport, Rules, VehicleHistory } from './advisor';
 import { go, useHash } from './hooks';
@@ -65,6 +66,13 @@ export function App() {
       if (pending?.kind === 'pilot') return <><Pilot token={pending.token} /><Overlays /></>;
       return <><NoShop /><Overlays /></>;
     }
+    // Each shop has its own address (1001.wrynch.app). Send people to their shop's address, keeping the page.
+    const host = hostInfo();
+    const num = s.workspace.shop?.number;
+    if (host.onAppDomain && num && host.shopNumber !== num) {
+      window.location.replace(shopUrl(num, window.location.hash));
+      return <div className="phone"><div className="body"><p className="muted" role="status">Opening {s.workspace.shop?.name}…</p></div></div>;
+    }
   }
 
   const role = s.mode === 'demo' ? 'owner' : s.workspace?.role ?? 'technician';
@@ -98,7 +106,22 @@ export function App() {
         {shopName && (
           <div className="shop">
             <span className="avatar">{initials(shopName)}</span>
-            <span style={{ minWidth: 0 }}><span className="n" style={{ display: 'block' }}>{shopName}</span><span className="d">{s.mode === 'demo' ? 'Demo shop' : ROLE_LABEL[role]}</span></span>
+            <span style={{ minWidth: 0 }}><span className="n" style={{ display: 'block' }}>{shopName}</span>
+              <span className="d">{s.mode === 'demo' ? 'Demo shop' : `${ROLE_LABEL[role]}${s.workspace?.shop?.number ? ` · #${s.workspace.shop.number}` : ''}`}</span></span>
+          </div>
+        )}
+        {s.mode === 'live' && (s.workspace?.shops.length ?? 0) > 1 && (
+          <div className="field">
+            <label className="sr" htmlFor="shopsel">Switch shop</label>
+            <select id="shopsel" className="input" value={s.workspace?.shop?.id} onChange={(e) => {
+              const to = s.workspace!.shops.find((x) => x.id === e.target.value);
+              if (!to) return;
+              if (hostInfo().onAppDomain && to.number) window.location.assign(shopUrl(to.number, '#/'));
+              else { void actions.loadWorkspace(to.id); go('/'); }
+              setMenu(false);
+            }}>
+              {s.workspace!.shops.map((x) => <option key={x.id} value={x.id}>{x.name}{x.number ? ` (#${x.number})` : ''}</option>)}
+            </select>
           </div>
         )}
         <nav className="nav" aria-label="Sections">

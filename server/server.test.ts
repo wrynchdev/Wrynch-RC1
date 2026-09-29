@@ -2,7 +2,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildMappedPoint, candidatesFor, explainAiError, resetAiState, validateAnalysis } from './ai';
 import { mapVpic } from './vin';
-import { aiNote, aiSort, aiWording, pilot, report, sendReport, status, templateMap, templateRead } from './routes';
+import { aiNote, aiSort, aiWording, appRoot, pilot, report, sendReport, status, templateMap, templateRead } from './routes';
 import { resetRateLimits } from './lib';
 import { DEFAULT_TEMPLATE, clsByName, compKey } from '../src/domain/ontology';
 import { seedInspections, vehicle } from '../src/domain/seed';
@@ -378,4 +378,14 @@ test('ai-note needs something rated on the point and an open inspection', async 
   respond = (url) => (url.endsWith('/get_inspection') ? bundle() : null);
   const r = await (await aiNote(post('ai-note', { inspectionId: 'i-4r-now', pointId: 'S14' }))).json();
   assert.equal(r.source, 'rules', 'without an AI key the rules draft is used');
+});
+
+test('links we send point at the shop\'s own address on wrynch.app, and at /app/ elsewhere', () => {
+  delete process.env.APP_URL; delete process.env.APP_DOMAIN;
+  assert.equal(appRoot(new Request('https://1001.wrynch.app/api/send-report')), 'https://1001.wrynch.app/');
+  assert.equal(appRoot(new Request('https://wrynch.app/api/send-report')), 'https://wrynch.app/');
+  assert.equal(appRoot(new Request('https://wrynch-rc-1.vercel.app/api/send-report')), 'https://wrynch-rc-1.vercel.app/app/');
+  process.env.APP_URL = 'http://localhost:5179';
+  assert.equal(appRoot(new Request('http://localhost:5179/api/send-report')), 'http://localhost:5179/app/');
+  delete process.env.APP_URL;
 });
