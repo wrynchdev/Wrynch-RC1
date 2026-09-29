@@ -6,24 +6,22 @@ import type { CompKey, PointNote, Severity, Template, VehicleConfig } from '../s
 import { SIDE_UNSURE_CONFIDENCE } from '../src/domain/types';
 import { env, HttpError } from './lib';
 
-export interface Candidate { key: CompKey; stage: string; label: string; findings: string[] }
+export interface Candidate { key: CompKey; stage: string; point: string; label: string; findings: string[] }
 
 /**
- * Parts a photo could show on this vehicle: every photo-capable part in the template, not just the stage it was
- * taken in, so one photo can count for several inspection points. The photo's own stage is listed first.
+ * Parts a photo could show: the photo-capable parts of the inspection points in the stage the photo was taken in.
+ * A part shared by several points in that stage is listed once, under the first point.
  */
 export function candidatesFor(template: Template, sectionId: string, config: VehicleConfig): Candidate[] {
-  if (!template.sections.some((s) => s.id === sectionId)) throw new HttpError(400, `Unknown stage ${sectionId}`);
-  const ordered = [...template.sections].sort((a, b) => (a.id === sectionId ? -1 : b.id === sectionId ? 1 : 0));
+  const section = template.sections.find((s) => s.id === sectionId);
+  if (!section) throw new HttpError(400, `Unknown stage ${sectionId}`);
   const out = new Map<CompKey, Candidate>();
-  for (const s of ordered) {
-    for (const p of s.points) {
-      for (const c of pointComponents(p, config)) {
-        if (!c.applies || out.has(c.key)) continue;
-        const k = cls(parseKey(c.key).classId);
-        if (k.aiPhoto === 'no') continue;
-        out.set(c.key, { key: c.key, stage: s.name, label: compLabel(c.key), findings: Object.keys(k.findings) });
-      }
+  for (const p of section.points) {
+    for (const c of pointComponents(p, config)) {
+      if (!c.applies || out.has(c.key)) continue;
+      const k = cls(parseKey(c.key).classId);
+      if (k.aiPhoto === 'no') continue;
+      out.set(c.key, { key: c.key, stage: section.name, point: p.name, label: compLabel(c.key), findings: Object.keys(k.findings) });
     }
   }
   return [...out.values()];
@@ -170,9 +168,9 @@ export async function analyzePhoto(image: { bytes: Uint8Array; type: string }, c
   if (!AI_IMAGE_TYPES.includes(type)) throw new HttpError(415, `This photo is ${type || 'an unknown format'}; the AI reads JPEG or PNG. Retake it or export it as JPEG.`);
   if (image.bytes.length * 4 / 3 > AI_IMAGE_MAX) throw new HttpError(413, 'This photo is too large for the AI. Retake it at a lower resolution.');
   const findingKeys = [...new Set(candidates.flatMap((c) => c.findings))];
-  const byStage = new Map<string, Candidate[]>();
-  for (const c of candidates) byStage.set(c.stage, [...(byStage.get(c.stage) ?? []), c]);
-  const list = [...byStage.entries()].map(([stage, cs]) => `${stage}:\n` + cs.map((c) =>
+  const byPoint = new Map<string, Candidate[]>();
+  for (const c of candidates) byPoint.set(c.point, [...(byPoint.get(c.point) ?? []), c]);
+  const list = [...byPoint.entries()].map(([point, cs]) => `${point}:\n` + cs.map((c) =>
     `- ${c.key}: ${c.label} (findings: ${c.findings.map((k) => findingLabel(k).toLowerCase()).join(', ')})`).join('\n')).join('\n\n');
   const res = await claude({
     max_tokens: 4000,
@@ -230,7 +228,7 @@ export async function analyzePhoto(image: { bytes: Uint8Array; type: string }, c
       content: [
         { type: 'image', source: { type: 'base64', media_type: type, data: b64(image.bytes) } },
         { type: 'text', text: `${vehicleText ? `Vehicle: ${vehicleText}. ` : ''}Taken during the "${stageName}" stage of a vehicle inspection. Part keys look like "classId@position". `
-          + `Parts on this vehicle, by stage (the photo's own stage first; it may also show parts from other stages):\n\n${list}\n\n`
+          + `Only these parts count: the inspection points of this stage and the parts behind each (parts from other stages are not on this list and must not be reported):\n\n${list}\n\n`
           + 'Describe the view, then list only the parts you can clearly see, with their condition. Use an empty list if no listed part is identifiable.' },
       ],
     }],
