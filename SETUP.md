@@ -38,6 +38,7 @@ Nothing secret ever goes in the code or in chat: keys go only into Supabase's an
    | `ANTHROPIC_API_KEY` | from console.anthropic.com | for real AI photo sorting and wording |
    | `ANTHROPIC_MODEL` | defaults to `claude-sonnet-5` | optional |
    | `ANTHROPIC_WORKSPACE_ID` | Console → Settings → Workspaces (`wrkspc_…`) | only if your key isn't created inside a workspace |
+   | `PILOT_NOTIFY_EMAIL` | your email | where pilot applications are emailed (needs `RESEND_API_KEY` and `EMAIL_FROM`) |
 
    Without `ANTHROPIC_API_KEY` the app does not guess: photos stay unsorted and techs place them by hand.
    To check, open `https://<your-app>/api/status`: `{"ai":true,…}` means real AI sorting is on.
@@ -71,3 +72,14 @@ npm test                       # rules, AI guardrails, server functions
 npm run test:db                # database permissions and rules (needs PostgreSQL 15+)
 npm run e2e                    # full browser run against a local database (needs PostgreSQL + Playwright)
 ```
+
+## Pilot program
+
+New shops can't sign up on their own. They apply with the form on the home page. Invited teammates can still create
+accounts from their invite link, and everyone signs in as usual.
+
+- Each application is saved in the `pilot_request` table. It's emailed to `PILOT_NOTIFY_EMAIL` if that's set up.
+- To approve an application, run this in the Supabase SQL editor and send the shop the link it returns:
+  `select public.approve_pilot_request('<application id>');`
+- The link lets one person create an account and set up the shop. It works once and expires after 30 days.
+- If the shop tried the template preview, the mapped template is saved with its application.

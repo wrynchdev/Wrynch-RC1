@@ -1,8 +1,9 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { candidatesFor, explainAiError, resetAiState, validateAnalysis } from './ai';
+import { buildMappedPoint, candidatesFor, explainAiError, resetAiState, validateAnalysis } from './ai';
 import { mapVpic } from './vin';
-import { aiSort, aiWording, report, sendReport, status } from './routes';
+import { aiSort, aiWording, pilot, report, sendReport, status, templateMap, templateRead } from './routes';
+import { resetRateLimits } from './lib';
 import { DEFAULT_TEMPLATE, clsByName, compKey } from '../src/domain/ontology';
 import { seedInspections, vehicle } from '../src/domain/seed';
 import { SIDE_UNSURE_CONFIDENCE } from '../src/domain/types';
@@ -77,6 +78,8 @@ beforeEach(() => {
   delete process.env.AI_STUB;
   delete process.env.ANTHROPIC_WORKSPACE_ID;
   resetAiState();
+  resetRateLimits();
+  delete process.env.PILOT_NOTIFY_EMAIL; delete process.env.RESEND_API_KEY; delete process.env.EMAIL_FROM;
   delete process.env.TWILIO_ACCOUNT_SID;
   calls = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -279,4 +282,62 @@ test('a model that refuses a forced tool choice is asked again with auto and sti
   assert.deepEqual(aiBodies.map((b) => b.tool_choice.type), ['tool', 'auto']);
   const items = (calls.find((c) => c.url.endsWith('/ai_record_sort'))!.body as { p_items: { parts: { key: string }[] }[] }).p_items;
   assert.equal(items[0].parts[0].key, caliper, 'JSON in a text answer is used when no tool call comes back');
+});
+
+// ---------------------------------------------------------------- marketing site: pilot applications and template preview
+const pub = (path: string, body: unknown, ip = '1.2.3.4') => new Request(`https://app.test/api/${path}`, {
+  method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': ip }, body: JSON.stringify(body) });
+
+test('pilot applications are stored with the service key, emailed with the approval command, and rate limited', async () => {
+  respond = (url) => (url.endsWith('/record_pilot_request') ? 'req-1' : { id: 'e1' });
+  assert.equal((await pilot(pub('pilot', { shopName: 'A', contactName: 'B', email: 'nope' }))).status, 400);
+  const bot = await pilot(pub('pilot', { shopName: 'A', contactName: 'B', email: 'b@a.test', website: 'spam.example' }));
+  assert.equal(bot.status, 200);
+  assert.ok(!calls.some((c) => c.url.endsWith('/record_pilot_request')), 'honeypot submissions are dropped');
+  process.env.PILOT_NOTIFY_EMAIL = 'me@wrynch.test'; process.env.RESEND_API_KEY = 're'; process.env.EMAIL_FROM = 'Wrynch <x@wrynch.test>';
+  const r = await pilot(pub('pilot', { shopName: 'Reyes Auto', contactName: 'Dana', email: 'Dana@Reyes.test', techs: '4', notes: 'hi' }));
+  assert.equal(r.status, 200);
+  const rec = calls.find((c) => c.url.endsWith('/record_pilot_request'))!;
+  assert.equal(rec.auth, 'Bearer service');
+  assert.deepEqual([(rec.body as { p: Record<string, unknown> }).p.email, (rec.body as { p: Record<string, unknown> }).p.techs], ['dana@reyes.test', 4]);
+  const mail = calls.find((c) => c.url.startsWith('https://api.resend.com'))!;
+  assert.match((mail.body as { text: string }).text, /approve_pilot_request\('req-1'\)/);
+  for (let i = 0; i < 3; i++) await pilot(pub('pilot', { shopName: 'x', contactName: 'y', email: 'y@x.test' }));
+  assert.equal((await pilot(pub('pilot', { shopName: 'x', contactName: 'y', email: 'y@x.test' }))).status, 429, 'sixth try in an hour is refused');
+  assert.equal((await pilot(pub('pilot', { shopName: 'x', contactName: 'y', email: 'y@x.test' }, '9.9.9.9'))).status, 200, 'other visitors unaffected');
+});
+
+test('template preview: reads a PDF with the document block, and refuses when AI is off or the file is wrong', async () => {
+  const file = (type: string) => new Request('https://app.test/api/template-read', { method: 'POST', headers: { 'content-type': type }, body: new Uint8Array([37, 80, 68, 70]) });
+  assert.equal((await templateRead(file('application/pdf'))).status, 503);
+  process.env.ANTHROPIC_API_KEY = 'k';
+  respond = (url) => (url.startsWith('https://api.anthropic.com') ? { content: [{ type: 'tool_use', input: { name: 'Shop MPI', points: [
+    { stage: 'Under car', name: 'Brakes', detail: 'LF RF LR RR' }, { stage: 'Tires', name: 'LF tire' }] } }] } : null);
+  const r = await templateRead(file('application/pdf'));
+  assert.equal(r.status, 200);
+  assert.deepEqual((await r.json()).points.map((p: { name: string }) => p.name), ['Brakes', 'LF tire']);
+  const body = calls.find((c) => c.url.startsWith('https://api.anthropic.com'))!.body as { messages: { content: { type: string }[] }[] };
+  assert.equal(body.messages[0].content[0].type, 'document');
+  assert.equal((await templateRead(file('application/zip'))).status, 415);
+});
+
+test('template mapping: standard points bring their parts and positions; unknown ids and positions are dropped', () => {
+  const brakes = buildMappedPoint({ stage: 'Under car', name: 'Brakes' }, { standard: ['S24', 'nope'], extra: [{ classId: 99999 }] });
+  assert.deepEqual(brakes.matched, ['Visual brake system condition']);
+  const pad = brakes.parts.find((p) => p.label === 'Brake pad')!;
+  assert.deepEqual(pad.positions, ['left_front', 'right_front', 'left_rear', 'right_rear']);
+  assert.ok(brakes.count >= 8);
+  const tire = buildMappedPoint({ stage: 'Tires', name: 'LF tire' }, { standard: [], extra: [{ classId: clsByName('tire').id, positions: ['left_front', 'moon'] }] });
+  assert.deepEqual(tire.parts.map((p) => [p.label, p.positions]), [['Tire', ['left_front']]]);
+  assert.equal(buildMappedPoint({ stage: 'x', name: 'Customer concern' }, undefined).count, 0);
+});
+
+test('template-map calls the model and returns mapped points', async () => {
+  process.env.ANTHROPIC_API_KEY = 'k';
+  respond = (url) => (url.startsWith('https://api.anthropic.com') ? { content: [{ type: 'tool_use', input: { items: [{ index: 0, standard: ['S24'], extra: [] }, { index: 1, standard: [], extra: [], note: 'Not a part' }] } }] } : null);
+  const r = await templateMap(pub('template-map', { points: [{ stage: 'Under car', name: 'Brakes' }, { stage: 'Other', name: 'Customer concern' }] }));
+  const out = (await r.json()).points;
+  assert.equal(out.length, 2);
+  assert.ok(out[0].count > 0);
+  assert.deepEqual([out[1].count, out[1].note], [0, 'Not a part']);
 });

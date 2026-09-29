@@ -42,6 +42,7 @@
     .on-ink { --bg: var(--ink); --panel: #1E2126; --panel2: #25292F; --line: #2C3036; --line2: #3A3F46;
       --text: var(--paper); --text2: #C5C8CE; --muted: #9A9FA7; --blue2: #8FA6F2; --blue-line: rgba(143,166,242,.5); color: var(--text); }
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
     html { scroll-behavior: smooth; }
     body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 var(--body); -webkit-font-smoothing: antialiased; }
     a { color: inherit; }
@@ -207,6 +208,41 @@
     .final .cta { display: flex; flex-direction: column; gap: 12px; }
     .final .lead { margin-top: 18px; }
 
+    /* template preview */
+    .tryer { padding: 24px; }
+    .drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 40px 20px; border: 2px dashed var(--line); border-radius: 12px; cursor: pointer; color: var(--text2); background: var(--paper); transition: border-color .15s, background .15s; }
+    .drop svg { color: var(--blue); }
+    .drop strong { color: var(--text); font-size: 18px; }
+    .drop:hover, .drop.over { border-color: var(--blue); background: var(--blue-dim); }
+    .drop:focus-within { outline: 2px solid var(--blue); outline-offset: 3px; }
+    .tstatus { margin-top: 16px; padding: 14px 16px; border-radius: 8px; background: var(--blue-dim); color: var(--blue-hover); font-weight: 600; }
+    .tstatus.err { background: var(--imm-bg); color: var(--imm); }
+    .tsum { display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: baseline; margin: 22px 0 18px; }
+    .tsum b { font: 800 34px/1 var(--display); }
+    .tsum span { color: var(--text2); font-size: 15px; }
+    .tlist { display: grid; gap: 22px; }
+    .tstage h3 { font-size: 15px; letter-spacing: .14em; color: var(--muted); margin-bottom: 10px; }
+    .tpt { display: grid; grid-template-columns: minmax(180px, 1fr) 2.2fr; gap: 14px; padding: 14px 0; border-top: 1px solid var(--line); }
+    .tpt .nm { font-weight: 600; }
+    .tpt .nm small { display: block; color: var(--muted); font-weight: 400; font-size: 13px; margin-top: 2px; }
+    .tparts { display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start; }
+    .tparts span { padding: 5px 10px; border-radius: 99px; background: var(--paper); border: 1px solid var(--line); font-size: 14px; }
+    .tparts span i { font-style: normal; color: var(--muted); font-family: var(--mono); font-size: 12px; margin-left: 4px; }
+    .tparts span.eq { border-style: dashed; color: var(--text2); }
+    .tparts .none { color: var(--muted); font-size: 14px; border: 0; background: none; padding: 5px 0; }
+    .tactions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+    /* pilot form */
+    .final .box.pilotbox { grid-template-columns: 1fr 1.25fr; align-items: start; }
+    .pform { display: grid; gap: 14px; }
+    .pform .f2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .pform label { display: grid; gap: 6px; font-size: 14px; font-weight: 600; color: var(--text2); }
+    .pform input, .pform textarea { font: 400 16px var(--body); color: var(--paper); box-sizing: border-box; min-width: 0; background: rgba(255,255,255,.06); border: 1px solid var(--line2); border-radius: 8px; padding: 12px 14px; width: 100%; }
+    .pform input:focus, .pform textarea:focus { outline: 2px solid var(--blue2); outline-offset: 1px; border-color: transparent; }
+    .pform .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+    .pform .btn { justify-self: start; }
+    .perr { color: #FFB4AE; font-weight: 600; margin: 0; }
+    .pnote { margin-top: 16px; color: var(--blue2); font-weight: 600; font-size: 15px; }
+    .pdone h3 { font-size: 28px; margin-bottom: 10px; }
     footer { background: var(--ink); padding: 32px 0 44px; color: var(--muted); font-size: 14px; }
     footer .wrap { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
     footer .f-brand { display: flex; align-items: center; gap: 10px; font: 800 18px var(--display); letter-spacing: .08em; color: var(--text); }
@@ -224,6 +260,7 @@
       .hero-foot { grid-template-columns: 1fr; }
       .feats { order: -1; grid-template-columns: repeat(4, 1fr); }
       .head, .two, .faq, .final .box { grid-template-columns: 1fr; gap: 28px; }
+      .final .box.pilotbox { grid-template-columns: 1fr; }
       .head .lead { justify-self: start; }
       .two { gap: 48px; }
       .steps { grid-template-columns: 1fr 1fr; }
@@ -261,6 +298,9 @@
       .wire { width: 2px; height: 36px; justify-self: center; background: repeating-linear-gradient(180deg, var(--blue2) 0 6px, transparent 6px 10px); }
       .wire::after { right: -5px; top: auto; bottom: -10px; border-left-color: transparent; border-top-color: var(--blue2); }
       .final .box { padding: 40px 22px; }
+      .pform .f2, .tpt { grid-template-columns: 1fr; }
+      .tryer { padding: 16px; }
+      .tpt { gap: 8px; }
       .plan { padding: 24px; }
     }
     @media (max-width: 440px) {
@@ -300,7 +340,7 @@
           <a class="nl" href="#pricing">Pricing</a>
           <a class="nl" href="#faq">Resources</a>
           <a class="btn outline login" href="/app/">Log In</a>
-          <a class="btn primary" href="/app/#/signup">Get Started</a>
+          <a class="btn primary" href="#pilot">Join the Pilot</a>
         </nav>
       </header>
 
@@ -309,8 +349,8 @@
           <h1><span>See more.</span> <span>Know sooner.</span> <span>Keep them moving.</span></h1>
           <p class="sub">AI-assisted inspections, real insights, and long-term vehicle health — built for the shops that keep people on the road.</p>
           <div class="cta">
-            <a class="btn primary" href="/app/#/signup">Get Started</a>
-            <a class="btn outline" href="#product"><span class="play" aria-hidden="true"></span>See How It Works</a>
+            <a class="btn primary" href="#pilot">Join the Pilot Program</a>
+            <a class="btn outline" href="#try"><span class="play" aria-hidden="true"></span>See How It Works</a>
           </div>
         </div>
       </div>
@@ -345,6 +385,33 @@
           <div class="stat"><div class="n">378</div><div class="l">Checks with built-in pass and fail limits</div></div>
           <div class="stat"><div class="n">34<span class="u">→</span>166</div><div class="l">One shop's inspection points, broken into parts</div></div>
           <div class="stat"><div class="n">0</div><div class="l">AI suggestions a customer sees before your tech signs off</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="try" class="s">
+      <div class="wrap">
+        <div class="head">
+          <div><p class="kicker">See how it works</p><h2>Your inspection sheet, <span class="hl">part by part.</span></h2></div>
+          <p class="lead">Upload a PDF or a photo of the inspection sheet you use today. Wrynch reads it and shows the parts it would track behind each of your points. We don’t keep the file.</p>
+        </div>
+        <div class="card tryer">
+          <label class="drop" id="drop" for="tfile">
+            <input id="tfile" type="file" accept="application/pdf,image/*" hidden>
+            <svg viewBox="0 0 48 48" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 30h-3a8 8 0 0 1-1-16 11 11 0 0 1 21-3 9 9 0 0 1 6 18h-3"/><path d="M24 22v18M18 28l6-6 6 6"/></svg>
+            <strong>Choose your inspection sheet</strong>
+            <span>PDF or photo, up to 4 MB. Drop it here or tap to choose.</span>
+          </label>
+          <div id="tstatus" class="tstatus" role="status" aria-live="polite" hidden></div>
+          <div id="tresult" hidden>
+            <div class="tsum" id="tsum"></div>
+            <div id="tlist" class="tlist"></div>
+            <div class="tactions">
+              <a class="btn primary" href="#pilot" id="tuse">Join the pilot with this template</a>
+              <button class="btn outline" type="button" id="tagain">Try another sheet</button>
+            </div>
+            <p class="note">The AI’s first pass. In Wrynch you review the mapping and change anything before it’s used.</p>
+          </div>
         </div>
       </div>
     </section>
@@ -515,7 +582,7 @@
               <li>Your own template and rating rules</li>
               <li>Customer reports with estimates and approvals</li>
             </ul>
-            <a class="btn primary" href="/app/#/signup">Get Started</a>
+            <a class="btn primary" href="#pilot">Join the Pilot</a>
           </div>
           <div class="card plan">
             <h3>Groups</h3>
@@ -525,7 +592,7 @@
               <li>Each location with its own team and template</li>
               <li>Switch between locations from one account</li>
             </ul>
-            <a class="btn outline" href="/app/#/signup">Get Started</a>
+            <a class="btn outline" href="#pilot">Join the Pilot</a>
           </div>
         </div>
       </div>
@@ -544,17 +611,40 @@
       </div>
     </section>
 
-    <section class="s final">
+    <section id="pilot" class="s final">
       <div class="wrap">
-        <div class="box on-ink">
+        <div class="box on-ink pilotbox">
           <div>
-            <p class="kicker">Get started</p>
-            <h2>See your own inspection, <span class="hl">part by part.</span></h2>
-            <p class="lead">Create your shop, invite your techs and run your first inspection today.</p>
+            <p class="kicker">Pilot program</p>
+            <h2>Join the <span class="hl">Wrynch pilot.</span></h2>
+            <p class="lead">We’re onboarding a small group of independent shops and working closely with each one. Tell us about your shop and we’ll be in touch with a sign-up link.</p>
+            <p class="lead" style="margin-top:14px;font-size:15px">Already in the pilot? <a href="/app/" style="color:var(--blue2);font-weight:600">Log in</a>.</p>
+            <p class="pnote" id="ptemplate" hidden>Your inspection sheet will be sent with your application.</p>
           </div>
-          <div class="cta">
-            <a class="btn primary" href="/app/#/signup">Get Started</a>
-            <a class="btn outline" href="/app/">Log In</a>
+          <div class="pside">
+          <form id="pform" class="pform" novalidate>
+            <div class="f2">
+              <label>Shop name*<input name="shopName" required maxlength="120" autocomplete="organization"></label>
+              <label>Your name*<input name="contactName" required maxlength="120" autocomplete="name"></label>
+            </div>
+            <div class="f2">
+              <label>Email*<input name="email" type="email" required maxlength="200" autocomplete="email"></label>
+              <label>Phone<input name="phone" type="tel" maxlength="40" autocomplete="tel"></label>
+            </div>
+            <div class="f2">
+              <label>City and state<input name="location" maxlength="120" autocomplete="address-level2"></label>
+              <label>Technicians<input name="techs" type="number" min="0" max="500" inputmode="numeric"></label>
+            </div>
+            <label>What do you use for inspections today?<input name="currentTool" maxlength="120" placeholder="Paper, or the name of your DVI"></label>
+            <label>Anything else we should know?<textarea name="notes" rows="3" maxlength="2000"></textarea></label>
+            <label class="hp" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
+            <p class="perr" id="perr" role="alert" hidden></p>
+            <button class="btn primary" type="submit" id="psend">Apply for the pilot</button>
+          </form>
+          <div class="pdone" id="pdone" role="status" hidden>
+            <h3>Thanks, we got it.</h3>
+            <p class="lead">We’ll email <strong id="pemail"></strong> about next steps.</p>
+          </div>
           </div>
         </div>
       </div>
@@ -565,11 +655,130 @@
     <div class="wrap">
       <span class="f-brand"><svg aria-hidden="true"><use href="#wmark"/></svg>WRYNCH</span>
       <nav aria-label="Footer">
-        <a href="#product">Product</a><a href="#pricing">Pricing</a><a href="#faq">Resources</a><a href="/app/">Log In</a>
+        <a href="#try">Try your template</a><a href="#pilot">Pilot program</a><a href="#pricing">Pricing</a><a href="#faq">Resources</a><a href="/app/">Log In</a>
       </nav>
       <span>© <span id="yr">2026</span> Wrynch</span>
     </div>
   </footer>
-  <script>document.getElementById('yr').textContent = new Date().getFullYear();</script>
+  <script>
+    document.getElementById('yr').textContent = new Date().getFullYear();
+    (function () {
+      var $ = function (id) { return document.getElementById(id); };
+      var POS = { left_front: 'LF', right_front: 'RF', left_rear: 'LR', right_rear: 'RR', front: 'front', rear: 'rear', left: 'left', right: 'right', center: 'center', left_mid: 'L mid', right_mid: 'R mid', roof: 'roof', bed: 'bed', cargo_area: 'cargo', underbody: 'underbody' };
+      var mapped = null; // template sent with a pilot application
+
+      function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+      function status(text, err) { var s = $('tstatus'); s.hidden = !text; s.textContent = text || ''; s.classList.toggle('err', !!err); }
+      async function call(path, opts) {
+        var r = await fetch('/api/' + path, opts), body = null;
+        try { body = await r.json(); } catch (e) { body = null; }
+        if (!r.ok) throw new Error((body && body.error) || (r.status === 413 ? 'That file is too large. Try a photo of the sheet.' : 'Something went wrong. Try again.'));
+        return body;
+      }
+      // Photos are shrunk in the browser (long side 2400 px) so they upload quickly; PDFs go as they are.
+      function shrink(file) {
+        return new Promise(function (resolve) {
+          if (!/^image\//.test(file.type) || !window.createImageBitmap) return resolve(file);
+          createImageBitmap(file).then(function (bmp) {
+            var k = Math.min(1, 2400 / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas');
+            c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+            c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+            c.toBlob(function (b) { resolve(b || file); }, 'image/jpeg', 0.85);
+          }).catch(function () { resolve(file); });
+        });
+      }
+      function posText(p) {
+        var ps = p.positions.filter(function (x) { return x; });
+        if (!ps.length) return '';
+        if (ps.length === 4 && ['left_front', 'right_front', 'left_rear', 'right_rear'].every(function (x) { return ps.indexOf(x) >= 0; })) return '×4';
+        return ps.map(function (x) { return POS[x] || x; }).join(' ');
+      }
+      function render(points, pending) {
+        var list = $('tlist'); list.textContent = '';
+        var stages = [], by = {};
+        points.forEach(function (p) { if (!by[p.stage]) { by[p.stage] = []; stages.push(p.stage); } by[p.stage].push(p); });
+        var keys = {}, mappedCount = 0;
+        stages.forEach(function (st) {
+          var box = el('div', 'tstage'); box.appendChild(el('h3', null, st));
+          by[st].forEach(function (p) {
+            var row = el('div', 'tpt'), nm = el('div', 'nm', p.name);
+            if (p.detail) nm.appendChild(el('small', null, p.detail));
+            var parts = el('div', 'tparts');
+            if (!p.parts) parts.appendChild(el('span', 'none', 'Mapping…'));
+            else if (!p.parts.length) parts.appendChild(el('span', 'none', p.note || 'No parts: not a part inspection.'));
+            else {
+              mappedCount++;
+              p.parts.forEach(function (x) {
+                x.positions.forEach(function (q) { keys[x.classId + '@' + (q || '')] = 1; });
+                var chip = el('span', x.ifEquipped ? 'eq' : null, x.label), t = posText(x);
+                if (t) chip.appendChild(el('i', null, t));
+                if (x.ifEquipped) chip.title = 'Only on vehicles that have it';
+                parts.appendChild(chip);
+              });
+            }
+            row.appendChild(nm); row.appendChild(parts); box.appendChild(row);
+          });
+          list.appendChild(box);
+        });
+        var sum = $('tsum'); sum.textContent = '';
+        [[points.length, 'inspection points found'], [Object.keys(keys).length, pending ? 'parts so far' : 'parts Wrynch would track'], [mappedCount, 'points mapped to parts']]
+          .forEach(function (x) { var d = el('div'); d.appendChild(el('b', null, String(x[0]))); d.appendChild(document.createTextNode(' ')); d.appendChild(el('span', null, x[1])); sum.appendChild(d); });
+        $('tresult').hidden = false;
+      }
+      async function run(file) {
+        if (!file) return;
+        if (file.size > 12e6 || (file.type === 'application/pdf' && file.size > 4e6)) { status('That file is over 4 MB. Try a photo of the sheet, or a smaller PDF.', true); return; }
+        $('tresult').hidden = true; mapped = null;
+        try {
+          status('Reading your inspection sheet…');
+          var body = await shrink(file);
+          var read = await call('template-read', { method: 'POST', headers: { 'content-type': body.type || file.type }, body: body });
+          var points = read.points.map(function (p) { return { stage: p.stage, name: p.name, detail: p.detail }; });
+          status('Found ' + points.length + ' inspection points. Mapping them to parts…');
+          render(points, true);
+          var batches = [];
+          for (var i = 0; i < points.length; i += 12) batches.push(i);
+          var next = 0, failed = 0;
+          async function worker() {
+            while (next < batches.length) {
+              var start = batches[next++], chunk = points.slice(start, start + 12);
+              try {
+                var m = await call('template-map', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ points: chunk }) });
+                m.points.forEach(function (x, j) { points[start + j] = x; });
+              } catch (e) { failed += chunk.length; chunk.forEach(function (_, j) { points[start + j].parts = []; points[start + j].note = 'Couldn’t map this one.'; }); }
+              render(points, true);
+            }
+          }
+          await Promise.all([worker(), worker(), worker()]);
+          render(points, false);
+          mapped = { name: read.name || '', points: points };
+          status(failed ? 'Done, but ' + failed + ' points couldn’t be mapped. Try again for the rest.' : '', !!failed);
+        } catch (e) { status(e.message, true); }
+      }
+      var input = $('tfile'), drop = $('drop');
+      input.addEventListener('change', function () { run(input.files[0]); input.value = ''; });
+      ['dragenter', 'dragover'].forEach(function (t) { drop.addEventListener(t, function (e) { e.preventDefault(); drop.classList.add('over'); }); });
+      ['dragleave', 'drop'].forEach(function (t) { drop.addEventListener(t, function (e) { e.preventDefault(); drop.classList.remove('over'); }); });
+      drop.addEventListener('drop', function (e) { run(e.dataTransfer.files[0]); });
+      $('tagain').addEventListener('click', function () { $('tresult').hidden = true; status(''); input.click(); });
+      $('tuse').addEventListener('click', function () { $('ptemplate').hidden = !mapped; });
+
+      var form = $('pform');
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        var d = Object.fromEntries(new FormData(form).entries()), err = $('perr');
+        err.hidden = true;
+        if (!d.shopName || !d.contactName) { err.textContent = 'Add your shop name and your name.'; err.hidden = false; return; }
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email || '')) { err.textContent = 'That email address doesn’t look right.'; err.hidden = false; return; }
+        if (mapped) d.template = mapped;
+        $('psend').disabled = true; $('psend').textContent = 'Sending…';
+        try {
+          await call('pilot', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(d) });
+          form.hidden = true; $('pemail').textContent = d.email; $('pdone').hidden = false;
+        } catch (x) { err.textContent = x.message; err.hidden = false; }
+        finally { $('psend').disabled = false; $('psend').textContent = 'Apply for the pilot'; }
+      });
+    })();
+  </script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { actions, jobList, useStore } from '../state/store';
-import { CreateShop, Join, NewInspection, SetPassword, Settings, SignIn, Team, TemplateEditor } from './account';
+import { actions, getPendingLink, jobList, useStore } from '../state/store';
+import { Join, NewInspection, NoShop, Pilot, SetPassword, Settings, SignIn, Team, TemplateEditor } from './account';
 import { AdvisorList, AdvisorResults, DemoReport, LiveReport, Rules, VehicleHistory } from './advisor';
 import { go, useHash } from './hooks';
 import { Logo } from './kit';
@@ -51,9 +51,16 @@ export function App() {
 
   if (s.mode === 'live') {
     if (parts[0] === 'join' && parts[1]) return <><Join token={parts[1]} /><Overlays /></>;
+    if (parts[0] === 'pilot' && parts[1]) return <><Pilot token={parts[1]} /><Overlays /></>;
     if (!s.session) return <><SignIn /><Overlays /></>;
     if (!s.workspace) return <div className="phone"><div className="body"><p className="muted" role="status">Loading your shop…</p></div><Overlays /></div>;
-    if (!s.workspace.shop && parts[0] !== 'account') return <><CreateShop /><Overlays /></>;
+    if (!s.workspace.shop && parts[0] !== 'account') {
+      // Back from an email confirmation: pick up the invite or pilot link the person started from.
+      const pending = getPendingLink();
+      if (pending?.kind === 'join') return <><Join token={pending.token} /><Overlays /></>;
+      if (pending?.kind === 'pilot') return <><Pilot token={pending.token} /><Overlays /></>;
+      return <><NoShop /><Overlays /></>;
+    }
   }
 
   const section = parts[0] === 'advisor' || parts[0] === 'vehicle' ? 'advisor'

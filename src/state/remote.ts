@@ -119,6 +119,14 @@ export async function rpc<T = unknown>(name: string, args: Record<string, unknow
   return parse(r) as Promise<T>;
 }
 
+/** Call a database function without signing in (only functions granted to anon). */
+export async function rpcAnon<T = unknown>(name: string, args: Record<string, unknown> = {}): Promise<T> {
+  const r = await fetch(`${URL_}/rest/v1/rpc/${name}`, {
+    method: 'POST', headers: { apikey: KEY, 'content-type': 'application/json' }, body: JSON.stringify(args),
+  });
+  return parse(r) as Promise<T>;
+}
+
 /** Call one of this app's /api functions. */
 export async function fn<T = unknown>(name: string, body?: unknown, method = 'POST', auth = true): Promise<T> {
   const headers: Record<string, string> = { 'content-type': 'application/json' };

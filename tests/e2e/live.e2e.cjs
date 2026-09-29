@@ -30,13 +30,41 @@ const B = `${ROOT}/app/`;
       await shot('L00-landing');
       await p.goto(ROOT + '/#/join/abc'); await p.waitForFunction(() => location.pathname === '/app/' && location.hash.startsWith('#/join'));
     });
+    await step('template-preview', async () => {
+      await p.goto(ROOT + '/#try'); await p.waitForSelector('text=Choose your inspection sheet');
+      await p.setInputFiles('#tfile', PHOTOS[0]);
+      await p.waitForSelector('#tresult:not([hidden]) >> text=parts Wrynch would track', { timeout: 20000 });
+      const chips = await p.locator('.tparts span:not(.none)').count();
+      if (!chips) errs.push('template preview showed no parts');
+      await p.locator('#try').screenshot({ path: S + 'L00b-template-preview.png' });
+    });
+    await step('pilot-apply', async () => {
+      await p.click('#tuse');
+      await p.fill('input[name=shopName]', 'Reyes Auto Care'); await p.fill('input[name=contactName]', 'Jordan L.');
+      await p.fill('input[name=email]', 'owner@shop.test'); await p.fill('input[name=techs]', '4');
+      await p.click('#psend'); await p.waitForSelector('#pdone:not([hidden])');
+      if (await p.locator('#pform').isVisible()) errs.push('pilot form still visible after applying');
+      await p.locator('#pilot').screenshot({ path: S + 'L00c-pilot-applied.png' });
+    });
+    let pilotLink;
+    await step('pilot-approve', async () => {
+      const q = (sql) => require('child_process').spawnSync('psql', ['-Atc', sql, PGURL], { encoding: 'utf8' }).stdout.trim();
+      const row = q("select id || '|' || (template is not null) from pilot_request where email = 'owner@shop.test'");
+      if (!row.endsWith('|true')) errs.push('pilot application missing or without its template: ' + row);
+      pilotLink = q(`select public.approve_pilot_request('${row.split('|')[0]}', '${ROOT}')`);
+      if (!pilotLink.includes('/app/#/pilot/')) throw new Error('no pilot link: ' + pilotLink);
+    });
     await step('signup', async () => {
       await p.goto(B); await p.waitForSelector('text=Sign in');
+      if (await p.locator('text=New here: create an account').count()) errs.push('plain sign-in still offers sign-up');
+      if (!(await p.locator('text=Apply for the pilot').count())) errs.push('sign-in does not point to the pilot');
       await shot('L01-signin');
-      await p.click('text=New here: create an account');
-      await p.fill('#nm', 'Jordan L.'); await p.fill('#em', 'owner@shop.test'); await p.fill('#pw', 'password123');
+      await p.goto(pilotLink); await p.waitForSelector('text=Welcome to the Wrynch pilot');
+      if ((await p.inputValue('#em')) !== 'owner@shop.test') errs.push('pilot sign-up email not prefilled');
+      await p.fill('#nm', 'Jordan L.'); await p.fill('#pw', 'password123');
       await p.click('button:has-text("Create account")');
       await p.waitForSelector('text=Set up your shop'); await shot('L02-create-shop');
+      if ((await p.inputValue('#sn')) !== 'Reyes Auto Care') errs.push('shop name not prefilled from the application');
     });
     await step('create-shop', async () => {
       await p.fill('#sn', 'Reyes Auto Care'); await p.fill('#yn', 'Jordan L.');

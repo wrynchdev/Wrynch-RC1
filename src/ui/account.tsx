@@ -1,19 +1,24 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
   cls, compLabel, CONDITIONS, currentTemplate, DEFAULT_TEMPLATE, ONTOLOGY, positionLabel,
 } from '../domain/ontology';
 import type { Template, TemplateComponent, VehicleConfig } from '../domain/types';
 import { VEHICLES } from '../domain/seed';
-import { actions, isLive, toast, useStore, type Role } from '../state/store';
+import { actions, isLive, setPendingLink, toast, useStore, type Role } from '../state/store';
 import { go } from './hooks';
 import { Icon, Logo, TopBar } from './kit';
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong');
 
 // ------------------------------------------------------------------ sign in / sign up
-export function SignIn({ after }: { after?: () => Promise<void> | void }) {
-  const [mode, setMode] = useState<'in' | 'up' | 'reset'>(() => (window.location.hash.startsWith('#/signup') ? 'up' : 'in'));
-  const [email, setEmail] = useState('');
+/**
+ * Sign-in screen. Creating an account is only offered from an invite link or an approved pilot link
+ * (allowSignUp); the database enforces it too (create_shop needs a pilot link).
+ */
+export function SignIn({ after, allowSignUp = false, startWithSignUp = false, initialEmail = '' }:
+  { after?: () => Promise<void> | void; allowSignUp?: boolean; startWithSignUp?: boolean; initialEmail?: string }) {
+  const [mode, setMode] = useState<'in' | 'up' | 'reset'>(allowSignUp && startWithSignUp ? 'up' : 'in');
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -55,9 +60,13 @@ export function SignIn({ after }: { after?: () => Promise<void> | void }) {
         </form>
         <div className="stack" style={{ gap: 4 }}>
           {mode !== 'in' && <button className="linkbtn" style={{ textAlign: 'left' }} onClick={() => { setMode('in'); setMsg(null); }}>I have an account: sign in</button>}
-          {mode !== 'up' && <button className="linkbtn" style={{ textAlign: 'left' }} onClick={() => { setMode('up'); setMsg(null); }}>New here: create an account</button>}
+          {allowSignUp && mode !== 'up' && <button className="linkbtn" style={{ textAlign: 'left' }} onClick={() => { setMode('up'); setMsg(null); }}>New here: create an account</button>}
           {mode === 'in' && <button className="linkbtn" style={{ textAlign: 'left' }} onClick={() => { setMode('reset'); setMsg(null); }}>Forgot your password?</button>}
         </div>
+        {!allowSignUp && (
+          <div className="card pad small">New to Wrynch? We're onboarding shops through our pilot program. <a href="/#pilot" style={{ fontWeight: 700 }}>Apply for the pilot</a>.
+            Joining your shop's team? Open the invite link your shop owner sent you.</div>
+        )}
       </div>
     </div>
   );
@@ -80,16 +89,60 @@ export function SetPassword() {
   );
 }
 
-// ------------------------------------------------------------------ first run: create a shop or join one
-export function CreateShop() {
-  const [shop, setShop] = useState('');
-  const [name, setName] = useState('');
+// ------------------------------------------------------------------ first run: create a shop (pilot link) or join one
+/** Signed in but not in any shop, with no invite or pilot link in hand. */
+export function NoShop() {
+  return (
+    <div className="phone">
+      <div className="body" style={{ gap: 16, paddingTop: 32 }}>
+        <h1 className="display" style={{ margin: 0, fontSize: 34 }}>You're not in a shop yet</h1>
+        <p className="muted" style={{ margin: 0 }}>Joining your shop's team? Open the invite link your shop owner sent you on this device.</p>
+        <div className="card pad small">Setting up a new shop? Wrynch is onboarding shops through a pilot program. <a href="/#pilot" style={{ fontWeight: 700 }}>Apply for the pilot</a> and we'll send you a sign-up link.</div>
+        <button type="button" className="linkbtn" style={{ textAlign: 'left' }} onClick={() => void actions.signOut()}>Sign out</button>
+      </div>
+    </div>
+  );
+}
+
+/** An approved pilot link: create an account (if needed), then the shop. */
+export function Pilot({ token }: { token: string }) {
+  const session = useStore((s) => s.session);
+  const [info, setInfo] = useState<{ shopName: string; contactName: string; email: string } | null | undefined>(undefined);
+  useEffect(() => {
+    setPendingLink({ kind: 'pilot', token });
+    actions.pilotInvite(token).then((r) => setInfo(r ?? null)).catch(() => setInfo(null));
+  }, [token]);
+  if (info === undefined) return <div className="phone"><div className="body"><p className="muted" role="status">Checking your pilot link…</p></div></div>;
+  if (info === null) {
+    return (
+      <div className="phone"><div className="body" style={{ gap: 16, paddingTop: 32 }}>
+        <h1 className="display" style={{ margin: 0, fontSize: 34 }}>This pilot link isn't valid</h1>
+        <p className="muted" style={{ margin: 0 }}>It may have been used already or expired. If your shop is already set up, <a href="#/" onClick={() => setPendingLink(null)}>sign in</a>. Otherwise reply to your pilot email and we'll send a new link.</p>
+      </div></div>
+    );
+  }
+  if (!session) {
+    return (
+      <div>
+        <div className="phone" style={{ minHeight: 0 }}><div className="body" style={{ paddingBottom: 0 }}>
+          <div className="card pad">Welcome to the Wrynch pilot{info.contactName ? `, ${info.contactName.split(' ')[0]}` : ''}. Create your account to set up <strong>{info.shopName}</strong>.</div>
+        </div></div>
+        <SignIn allowSignUp startWithSignUp initialEmail={info.email} />
+      </div>
+    );
+  }
+  return <CreateShop pilotToken={token} initialShop={info.shopName} initialName={info.contactName} />;
+}
+
+export function CreateShop({ pilotToken, initialShop = '', initialName = '' }: { pilotToken?: string; initialShop?: string; initialName?: string }) {
+  const [shop, setShop] = useState(initialShop);
+  const [name, setName] = useState(initialName);
   const [busy, setBusy] = useState(false);
   return (
     <div className="phone">
       <form className="body" style={{ gap: 16, paddingTop: 32 }} onSubmit={async (e) => {
         e.preventDefault(); setBusy(true);
-        try { await actions.createShop(shop.trim(), name.trim()); go('/'); } catch (err) { toast(errText(err), 'error'); } finally { setBusy(false); }
+        try { await actions.createShop(shop.trim(), name.trim(), pilotToken); go('/'); } catch (err) { toast(errText(err), 'error'); } finally { setBusy(false); }
       }}>
         <h1 className="display" style={{ margin: 0, fontSize: 34 }}>Set up your shop</h1>
         <p className="muted" style={{ margin: 0 }}>You'll be the owner. You can invite your technicians and advisors next. The shop starts with the standard multi-point template and rating rules; you can change both in Settings.</p>
@@ -107,11 +160,12 @@ export function Join({ token }: { token: string }) {
   const session = useStore((s) => s.session);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  useEffect(() => { setPendingLink({ kind: 'join', token }); }, [token]);
   if (!session) {
     return (
       <div>
         <div className="phone" style={{ minHeight: 0 }}><div className="body" style={{ paddingBottom: 0 }}><div className="card pad">You've been invited to a shop on Wrynch. Sign in or create an account to accept.</div></div></div>
-        <SignIn />
+        <SignIn allowSignUp />
       </div>
     );
   }
@@ -119,7 +173,10 @@ export function Join({ token }: { token: string }) {
     <div className="phone">
       <form className="body" style={{ gap: 16, paddingTop: 32 }} onSubmit={async (e) => {
         e.preventDefault(); setBusy(true);
-        try { await actions.acceptInvite(token, name.trim()); toast('You joined the shop'); go('/'); } catch (err) { toast(errText(err), 'error'); } finally { setBusy(false); }
+        try { await actions.acceptInvite(token, name.trim()); toast('You joined the shop'); go('/'); } catch (err) {
+          toast(errText(err), 'error');
+          if (/no longer valid|expired/i.test(errText(err))) { setPendingLink(null); go('/'); }
+        } finally { setBusy(false); }
       }}>
         <h1 className="display" style={{ margin: 0, fontSize: 34 }}>Join the shop</h1>
         <div className="field"><label htmlFor="jn">Your name (shown on inspections)</label><input id="jn" className="input" required value={name} onChange={(e) => setName(e.target.value)} /></div>

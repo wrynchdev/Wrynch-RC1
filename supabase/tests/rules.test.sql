@@ -27,11 +27,35 @@ grant all on t.ids to anon, authenticated, service_role;
 insert into auth.users values ('00000000-0000-0000-0000-00000000000a', 'owner@shop.test'),
   ('00000000-0000-0000-0000-00000000000b', 'tech@shop.test'), ('00000000-0000-0000-0000-00000000000c', 'stranger@other.test');
 
--- 1. Owner creates a shop with a small template.
+-- 0. Pilot program: applications come from the server; only an approved link lets a new user create a shop.
+select t.act('anon', null);
+select t.expect_error($$ select public.record_pilot_request('{"shopName":"X","contactName":"Y","email":"y@x.test"}') $$, '%permission denied%');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
+select t.expect_error($$ select public.record_pilot_request('{"shopName":"X","contactName":"Y","email":"y@x.test"}') $$, '%permission denied%');
+select t.expect_error($$ select public.approve_pilot_request(gen_random_uuid()) $$, '%permission denied%');
+select t.expect_error($$ select * from public.pilot_request $$, '%permission denied%');
+select t.expect_error($$ select public.create_shop('Sneaky Auto', 'Me', '{"sections":[]}') $$, '%pilot program%');
+select t.act('service_role', null);
+insert into t.ids select 'pilot', public.record_pilot_request('{"shopName":"Demo Auto","contactName":"Jordan L.","email":"Owner@Shop.test","techs":"4","template":{"points":[]}}');
+select t.expect_error($$ select public.record_pilot_request('{"shopName":"X","contactName":"Y","email":"not-an-email"}') $$, '%check constraint%');
+reset role;
+insert into t.ids select 'pilot_link', public.approve_pilot_request((select v::uuid from t.ids where k = 'pilot'));
+insert into t.ids select 'pilot_token', split_part(v, '/app/#/pilot/', 2) from t.ids where k = 'pilot_link';
+select t.eq((select length(v) from t.ids where k = 'pilot_token'), 64, 'pilot link carries a 64-character token');
+select t.act('anon', null);
+select t.eq(public.pilot_invite((select v from t.ids where k = 'pilot_token')) ->> 'shopName', 'Demo Auto', 'pilot link shows the shop name');
+select t.eq(public.pilot_invite('nope') is null, true, 'unknown pilot link');
+
+-- 1. Owner creates a shop with a small template, using the pilot link.
 select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
 insert into t.ids select 'shop', public.create_shop('Demo Auto', 'Jordan L.',
   '{"id":"shop-mpi","name":"Shop MPI","sections":[{"id":"under_car","name":"Under car","points":[{"id":"S24","name":"Visual brake system condition","note":null,
-    "components":[{"classId":73,"position":"left_front","required":true,"when":"always"},{"classId":71,"position":"left_front","required":true,"when":"always"}]}]}]}'::jsonb);
+    "components":[{"classId":73,"position":"left_front","required":true,"when":"always"},{"classId":71,"position":"left_front","required":true,"when":"always"}]}]}]}'::jsonb,
+  (select v from t.ids where k = 'pilot_token'));
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000c');
+select t.expect_error($$ select public.create_shop('Reuse Auto', 'Me', '{"sections":[]}', (select v from t.ids where k = 'pilot_token')) $$, '%pilot program%');
+select t.eq(public.pilot_invite((select v from t.ids where k = 'pilot_token')) is null, true, 'a used pilot link is no longer valid');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
 select t.expect_error($$ select public.create_shop('Bad', 'X', '{"sections":[{"id":"a","name":"A","points":[{"id":"p","name":"P","components":[{"classId":99999}]}]}]}') $$, '%Unknown part ids%');
 
 -- 2. Invite a technician; they accept.

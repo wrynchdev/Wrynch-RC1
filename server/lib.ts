@@ -120,3 +120,21 @@ export async function signUrls(paths: string[], seconds = 3600): Promise<Record<
   for (const x of list) if (x.signedURL) out[x.path] = `${url}/storage/v1${x.signedURL}`;
   return out;
 }
+
+// ------------------------------------------------------------------ public endpoints
+
+const hits = new Map<string, number[]>();
+/**
+ * Simple per-visitor limit for public endpoints (per server instance, so it's a speed bump, not a wall).
+ * Throws 429 when the caller has used up `max` requests in the last `windowMs`.
+ */
+export function rateLimit(req: Request, bucket: string, max: number, windowMs: number) {
+  const ip = (req.headers.get('x-forwarded-for') ?? req.headers.get('x-real-ip') ?? 'local').split(',')[0].trim();
+  const key = `${bucket}:${ip}`, now = Date.now();
+  const list = (hits.get(key) ?? []).filter((t) => now - t < windowMs);
+  if (list.length >= max) throw new HttpError(429, 'Too many tries from this connection. Wait a while and try again.');
+  list.push(now);
+  hits.set(key, list);
+  if (hits.size > 5000) hits.clear();
+}
+export function resetRateLimits() { hits.clear(); }
