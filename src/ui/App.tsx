@@ -3,12 +3,15 @@ import { actions, getPendingLink, jobList, useStore } from '../state/store';
 import { Join, NewInspection, NoShop, Pilot, SetPassword, Settings, SignIn, Team, TemplateEditor } from './account';
 import { AdvisorList, AdvisorResults, DemoReport, LiveReport, Rules, VehicleHistory } from './advisor';
 import { go, useHash } from './hooks';
-import { Logo, Wordmark } from './kit';
+import { Icon, Wordmark } from './kit';
+import { Dashboard } from './dashboard';
 import { Capture, ComponentView, Finish, History, Jobs, Missing, Overview, PointView, Setup, Sort, Wording } from './tech';
 
-function route(p: string[]) {
+function route(p: string[], home: 'dashboard' | 'jobs') {
   const [a, b, c, d, e] = p;
-  if (!a || a === 'signup') return <Jobs />;
+  if (!a || a === 'signup') return home === 'dashboard' ? <Dashboard /> : <Jobs />;
+  if (a === 'dashboard') return <Dashboard />;
+  if (a === 'jobs') return <Jobs />;
   if (a === 'new') return <NewInspection />;
   if (a === 'setup' && b) return <Setup id={b} />;
   if (a === 'insp' && b) {
@@ -36,7 +39,7 @@ function Overlays() {
   return (
     <>
       {busy && <div className="toast" role="status" style={{ bottom: 'auto', top: 68 }}>{busy}</div>}
-      {toast && <div className="toast" role={toast.kind === 'error' ? 'alert' : 'status'} style={toast.kind === 'error' ? { background: 'var(--imm)' } : undefined}>{toast.text}</div>}
+      {toast && <div className={`toast${toast.kind === 'error' ? ' err' : ''}`} role={toast.kind === 'error' ? 'alert' : 'status'}>{toast.text}</div>}
     </>
   );
 }
@@ -44,6 +47,7 @@ function Overlays() {
 export function App() {
   const parts = useHash();
   const [confirmReset, setConfirmReset] = useState(false);
+  const [menu, setMenu] = useState(false);
   const s = useStore((x) => x);
 
   // Customer report links never show the shop app around them.
@@ -63,31 +67,71 @@ export function App() {
     }
   }
 
-  const section = parts[0] === 'advisor' || parts[0] === 'vehicle' ? 'advisor'
-    : parts[0] === 'settings' || parts[0] === 'rules' ? 'settings' : parts[0] === 'report' ? 'customer' : 'tech';
-  const canAdvise = s.mode === 'demo' || s.workspace?.role !== 'technician';
+  const role = s.mode === 'demo' ? 'owner' : s.workspace?.role ?? 'technician';
+  const canAdvise = role !== 'technician';
+  const home: 'dashboard' | 'jobs' = canAdvise ? 'dashboard' : 'jobs';
+  const here = parts[0] ?? '';
+  const current = !here || here === 'signup' ? home
+    : here === 'insp' || here === 'setup' || here === 'new' || here === 'history' ? 'jobs'
+    : here === 'vehicle' ? 'advisor' : here === 'settings' ? (parts[1] ?? 'settings') : here;
   const latestSent = jobList(s).filter((i) => i.status === 'sent' || i.status === 'submitted').sort((x, y) => y.date.localeCompare(x.date))[0];
+  const openJobs = jobList(s).filter((j) => j.status === 'not_started' || j.status === 'in_progress').length;
+  const toReview = jobList(s).filter((j) => j.status === 'submitted').length;
+  const shopName = s.workspace?.shop?.name ?? (s.mode === 'demo' ? 'Reyes Auto Care' : '');
+  const me = s.workspace?.me?.name ?? (s.mode === 'demo' ? 'Jordan L.' : '');
+  const initials = (t: string) => t.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('') || 'W';
+  const link = (id: string, href: string, icon: string, label: string, badge?: number) => (
+    <a href={href} aria-current={current === id ? 'page' : undefined} onClick={() => setMenu(false)}>
+      <Icon name={icon} size={19} />{label}{badge ? <span className="badge">{badge}</span> : null}
+    </a>
+  );
   return (
-    <>
+    <div className="shell">
       <header className="appbar">
-        <a className="logo" href="#/" aria-label="Wrynch home">{s.workspace?.shop?.name
-          ? <><Logo /><span className="hide-sm">{s.workspace.shop.name}</span></>
-          : <Wordmark height={22} />}</a>
-        <nav className="roles" aria-label="Sections">
-          <button aria-pressed={section === 'tech'} onClick={() => go('/')}>{s.mode === 'demo' ? 'Tech' : 'Jobs'}</button>
-          {canAdvise && <button aria-pressed={section === 'advisor'} onClick={() => go('/advisor')}>Advisor</button>}
-          {s.mode === 'demo' && <button aria-pressed={section === 'customer'} onClick={() => latestSent && go(`/report/${latestSent.id}`)}>Customer</button>}
-          <button aria-pressed={section === 'settings'} onClick={() => go('/settings')}>Settings</button>
-        </nav>
-        {s.mode === 'demo' && (
-          <button className="reset" onClick={() => {
-            if (!confirmReset) { setConfirmReset(true); setTimeout(() => setConfirmReset(false), 4000); return; }
-            setConfirmReset(false); actions.reset(); go('/');
-          }}>{confirmReset ? 'Tap again to reset' : 'Reset demo'}</button>
-        )}
+        <button className="iconbtn" aria-label="Menu" aria-expanded={menu} onClick={() => setMenu(true)}><Icon name="menu" size={22} /></button>
+        <a className="logo" href="#/" aria-label="Wrynch home"><Wordmark height={20} /></a>
+        {canAdvise && <a className="btn primary sm" href="#/new"><Icon name="plus" size={16} />New</a>}
       </header>
-      <div id="content">{route(parts)}</div>
+      <div className={`scrim${menu ? ' open' : ''}`} onClick={() => setMenu(false)} />
+      <aside className={`side${menu ? ' open' : ''}`} aria-label="Navigation">
+        <a className="brand" href="#/" aria-label="Wrynch home" onClick={() => setMenu(false)}><Wordmark height={24} /></a>
+        {shopName && (
+          <div className="shop">
+            <span className="avatar">{initials(shopName)}</span>
+            <span style={{ minWidth: 0 }}><span className="n" style={{ display: 'block' }}>{shopName}</span><span className="d">{s.mode === 'demo' ? 'Demo shop' : ROLE_LABEL[role]}</span></span>
+          </div>
+        )}
+        <nav className="nav" aria-label="Sections">
+          {canAdvise && link('dashboard', '#/dashboard', 'dashboard', 'Dashboard')}
+          {link('jobs', '#/jobs', 'clipboard', 'Inspections', openJobs)}
+          {canAdvise && link('advisor', '#/advisor', 'review', 'Review & send', toReview)}
+          {s.mode === 'demo' && link('report', latestSent ? `#/report/${latestSent.id}` : '#/advisor', 'eye', 'Customer view')}
+          <span className="cap">Shop</span>
+          {canAdvise && link('rules', '#/rules', 'sliders', 'Rating rules')}
+          {canAdvise && link('template', '#/settings/template', 'layers', 'Inspection template')}
+          {s.mode === 'live' && role === 'owner' && link('team', '#/settings/team', 'users', 'Team')}
+          {link('settings', '#/settings', 'gear', 'Settings')}
+        </nav>
+        <div className="me">
+          <span className="avatar round">{initials(me)}</span>
+          <span style={{ minWidth: 0 }}><span className="n" style={{ display: 'block' }}>{me || 'Signed in'}</span><span className="d">{ROLE_LABEL[role]}</span></span>
+          {s.mode === 'demo' ? (
+            <button className="iconbtn" title={confirmReset ? 'Tap again to reset the demo' : 'Reset demo'} aria-label={confirmReset ? 'Tap again to reset the demo' : 'Reset demo'}
+              style={confirmReset ? { color: 'var(--imm)' } : undefined} onClick={() => {
+                if (!confirmReset) { setConfirmReset(true); setTimeout(() => setConfirmReset(false), 4000); return; }
+                setConfirmReset(false); actions.reset(); go('/');
+              }}><Icon name="move" size={18} /></button>
+          ) : (
+            <button className="iconbtn" title="Sign out" aria-label="Sign out" onClick={() => void actions.signOut()}><Icon name="logout" size={18} /></button>
+          )}
+        </div>
+      </aside>
+      <main className="main">
+        <div id="content">{route(parts, home)}</div>
+      </main>
       <Overlays />
-    </>
+    </div>
   );
 }
+
+const ROLE_LABEL: Record<string, string> = { owner: 'Owner', advisor: 'Service advisor', technician: 'Technician' };

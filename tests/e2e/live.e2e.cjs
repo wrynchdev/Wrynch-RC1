@@ -69,7 +69,7 @@ const B = `${ROOT}/app/`;
     await step('create-shop', async () => {
       await p.fill('#sn', 'Reyes Auto Care'); await p.fill('#yn', 'Jordan L.');
       await p.click('button:has-text("Create shop")');
-      await p.waitForSelector('text=New inspection'); await shot('L03-jobs-empty');
+      await p.waitForSelector('h2:has-text("In the bays")'); await shot('L03-dashboard');
     });
     await step('invite', async () => {
       await p.goto(B + '#/settings/team'); await p.waitForSelector('text=Invite someone');

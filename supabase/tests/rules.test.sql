@@ -170,4 +170,16 @@ select t.eq(jsonb_array_length(public.get_vehicle_history((select id from public
 select t.eq(jsonb_array_length(public.get_workspace() -> 'jobs'), 2, 'workspace lists jobs');
 
 reset role;
+
+-- Dashboard: members only; dollar amounts only for owners and advisors.
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
+select t.eq(jsonb_array_length(public.shop_dashboard((select v::uuid from t.ids where k = 'shop'), 7) -> 'rows') >= 1, true, 'owner sees inspections');
+select t.eq((public.shop_dashboard((select v::uuid from t.ids where k = 'shop'), 7) ->> 'money')::boolean, true, 'owner sees money');
+select t.eq(jsonb_array_length(public.shop_dashboard((select v::uuid from t.ids where k = 'shop'), 7) -> 'events') >= 1, true, 'recent activity');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
+select t.eq((public.shop_dashboard((select v::uuid from t.ids where k = 'shop'), 7) ->> 'money')::boolean, false, 'technician sees no money');
+select t.eq((select bool_and((r ->> 'estimate')::numeric = 0) from jsonb_array_elements(public.shop_dashboard((select v::uuid from t.ids where k = 'shop'), 30) -> 'rows') r), true, 'technician gets no estimate totals');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000c');
+select t.expect_error($$ select public.shop_dashboard((select v::uuid from t.ids where k = 'shop'), 7) $$, '%permission%');
+reset role;
 \echo ALL DATABASE TESTS PASSED
