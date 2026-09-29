@@ -13,9 +13,12 @@ const PHOTOS = JSON.parse(fs.readFileSync(path.join(__dirname, 'photos.json'), '
 });
 const S = SHOTS + '/';
 const ROOT = `http://localhost:${process.env.PORT ?? 5173}`;
+const APPD = process.env.APP_DOMAIN ?? 'wrynch.test', SITED = process.env.SITE_DOMAIN ?? 'getwrynch.test';
+const APPRE = APPD.replace(/\./g, '\\.');
 const B = `${ROOT}/app/`;
 (async () => {
-  const b = await chromium.launch();
+  // Map the production hostnames to this machine so shop addresses (1001.wrynch.app) are tested for real.
+  const b = await chromium.launch({ args: [`--host-resolver-rules=MAP ${APPD} 127.0.0.1, MAP *.${APPD} 127.0.0.1, MAP ${SITED} 127.0.0.1`] });
   const ctx = await b.newContext({ viewport: { width: 400, height: 860 } });
   const p = await ctx.newPage();
   const errs = [];
@@ -147,8 +150,10 @@ const B = `${ROOT}/app/`;
       if (!draft.includes('1.5')) errs.push('note draft missing the confirmed measurement: ' + draft);
       if ((await p.inputValue('#note')) !== '') errs.push('draft was saved before approval');
       await p.locator('.ai-card').screenshot({ path: S + 'L09b-note-draft.png' });
-      await p.click('.ai-card button.primary'); await p.waitForTimeout(600);
-      if (!(await p.inputValue('#note')).includes('1.5')) errs.push('approved draft did not become the note');
+      await p.click('.ai-card button.primary');
+      await p.waitForFunction(() => (document.querySelector('#note')?.value ?? '').includes('1.5'), null, { timeout: 10000 })
+        .catch(() => errs.push('approved draft did not become the note'));
+      await p.waitForTimeout(800); // let the save reach the server before the note is overwritten below
       await p.fill('#note', 'fronts 5mm/rotors major grooving. rears 6mm'); await p.locator('#note').blur(); await p.waitForTimeout(600);
       await p.goto(B + `#/insp/${inspId}/finish`); await p.waitForTimeout(800); await shot('L10-finish');
       await p.click('button:has-text("Send to advisor")'); await p.waitForSelector('text=Inspection results', { timeout: 10000 });
@@ -177,6 +182,30 @@ const B = `${ROOT}/app/`;
       await p.reload(); await p.waitForTimeout(1500); await shot('L14-advisor-after');
       const approved = await p.locator('text=Approved').count();
       if (!approved) errs.push('approval not visible to advisor');
+    });
+    await step('shop-address', async () => {
+      const port = process.env.PORT ?? 5173;
+      const num = require('child_process').spawnSync('psql', ['-Atc', "select number from shop where name = 'Reyes Auto Care'", PGURL], { encoding: 'utf8' }).stdout.trim();
+      if (!/^\d{4,}$/.test(num)) throw new Error('no shop number: ' + num);
+      const ctx2 = await b.newContext({ viewport: { width: 1280, height: 860 } });
+      const q = await ctx2.newPage();
+      q.on('pageerror', (e) => errs.push('shop-address pageerror: ' + e.message));
+      // Sign in on wrynch.app: land on the shop's own address, signed in.
+      await q.goto(`http://${APPD}:${port}/`); await q.waitForSelector('text=Sign in');
+      await q.fill('#em', 'owner@shop.test'); await q.fill('#pw', 'password123'); await q.click('button:has-text("Sign in")');
+      await q.waitForURL(new RegExp(`^http://${num}\\.${APPRE}:${port}/`)); await q.waitForSelector('h2:has-text("In the bays")');
+      if (!(await q.locator(`text=#${num}`).count())) errs.push('shop number not shown');
+      await q.screenshot({ path: S + 'L15-shop-address.png' });
+      // The marketing domain's /app goes to the app; the shared sign-in carries over to the shop address.
+      await q.goto(`http://${SITED}:${port}/app/`); await q.waitForURL(new RegExp(`^http://${num}\\.${APPRE}:${port}/`)); await q.waitForSelector('h2:has-text("In the bays")');
+      // Someone else's (or a mistyped) shop number sends you to your own shop.
+      await q.goto(`http://9999.${APPD}:${port}/#/jobs`); await q.waitForURL(new RegExp(`^http://${num}\\.${APPRE}:${port}/#/jobs`));
+      // Customer report links are served on the shop's address without signing in.
+      const tok = require('child_process').spawnSync('psql', ['-Atc', "select report_token from inspection where status = 'sent' limit 1", PGURL], { encoding: 'utf8' }).stdout.trim();
+      const c2 = await b.newPage(); await c2.goto(`http://${num}.${APPD}:${port}/#/r/${tok}`); await c2.waitForSelector('text=Vehicle inspection report'); await c2.close();
+      // The marketing site still opens at getwrynch.com.
+      await q.goto(`http://${SITED}:${port}/`); await q.waitForSelector('h1:has-text("Keep them moving")');
+      await ctx2.close();
     });
   } catch (e) { /* recorded */ }
   const db = require('child_process').spawnSync('psql', ['-Atc', "select config->>'drivetrain', config->>'transferCase' from vehicle", PGURL], { encoding: 'utf8' }).stdout.trim();

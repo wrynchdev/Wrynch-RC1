@@ -4,7 +4,7 @@ import * as esbuild from 'esbuild';
 import { createServer } from 'node:http';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
-import { appOptions, writeIndex } from './build.mjs';
+import { APP_DOMAIN, APP_HOST, SITE_HOST, appOptions, writeIndex } from './build.mjs';
 import { ROUTES } from '../server/routes.ts';
 import { toNode } from '../server/lib.ts';
 
@@ -24,7 +24,12 @@ createServer(async (req, res) => {
     await toNode(h)(req, res);
     return;
   }
-  // "/" is the marketing page; everything under "/app" is the app.
+  // Same host rules as production (scripts/build.mjs): the app's domain and shop addresses open the app at "/";
+  // the marketing domain sends /app to the app's domain. Other hosts: "/" is the marketing page, "/app/" the app.
+  const host = (req.headers.host ?? '').split(':')[0].toLowerCase();
+  const port = (req.headers.host ?? '').includes(':') ? `:${req.headers.host.split(':')[1]}` : '';
+  if (new RegExp(`^${SITE_HOST}$`).test(host) && /^\/app(\/|$)/.test(url.pathname)) { res.statusCode = 308; res.setHeader('location', `http://${APP_DOMAIN}${port}/`); res.end(); return; }
+  if (new RegExp(`^${APP_HOST}$`).test(host) && (url.pathname === '/' || url.pathname === '/index.html')) { res.setHeader('content-type', 'text/html'); res.end(readFileSync('dist/app/index.html')); return; }
   if (url.pathname === '/app') { res.statusCode = 308; res.setHeader('location', '/app/'); res.end(); return; }
   let file = normalize(join('dist', url.pathname));
   if (existsSync(file) && statSync(file).isDirectory()) file = join(file, 'index.html');

@@ -40,7 +40,7 @@ insert into t.ids select 'pilot', public.record_pilot_request('{"shopName":"Demo
 select t.expect_error($$ select public.record_pilot_request('{"shopName":"X","contactName":"Y","email":"not-an-email"}') $$, '%check constraint%');
 reset role;
 insert into t.ids select 'pilot_link', public.approve_pilot_request((select v::uuid from t.ids where k = 'pilot'));
-insert into t.ids select 'pilot_token', split_part(v, '/app/#/pilot/', 2) from t.ids where k = 'pilot_link';
+insert into t.ids select 'pilot_token', split_part(v, '#/pilot/', 2) from t.ids where k = 'pilot_link';
 select t.eq((select length(v) from t.ids where k = 'pilot_token'), 64, 'pilot link carries a 64-character token');
 select t.act('anon', null);
 select t.eq(public.pilot_invite((select v from t.ids where k = 'pilot_token')) ->> 'shopName', 'Demo Auto', 'pilot link shows the shop name');
@@ -182,4 +182,13 @@ select t.eq((select bool_and((r ->> 'estimate')::numeric = 0) from jsonb_array_e
 select t.act('authenticated', '00000000-0000-0000-0000-00000000000c');
 select t.expect_error($$ select public.shop_dashboard((select v::uuid from t.ids where k = 'shop'), 7) $$, '%permission%');
 reset role;
+
+-- Shop numbers: every shop has one, members can list theirs, the pilot link points at wrynch.app.
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
+select t.eq((public.my_shop_list() -> 0 ->> 'number')::int >= 1001, true, 'shop has a number from 1001');
+select t.eq((select count(distinct number) = count(*) from public.shop), true, 'shop numbers are unique');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000c');
+select t.eq(jsonb_array_length(public.my_shop_list()), 0, 'strangers list no shops');
+reset role;
+select t.eq((select v from t.ids where k = 'pilot_link') like 'https://wrynch.app/#/pilot/%', true, 'pilot link on the app domain');
 \echo ALL DATABASE TESTS PASSED

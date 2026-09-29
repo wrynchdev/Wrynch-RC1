@@ -14,15 +14,15 @@ import { analyzePhotos, applyAnalysis, suggestWording, wordingKeepsFacts } from 
 import type {
   CompKey, EstimateLine, Inspection, NotInspectedReason, Rating, Severity, Template, Vehicle, VehicleConfig,
 } from '../domain/types';
-import { ApiError, auth, fn, getSession, LIVE, onSession, rpc, rpcAnon, shrinkPhoto, signPhotos, upload, type Session } from './remote';
+import { ApiError, auth, fn, getSession, hostInfo, LIVE, onSession, rpc, rpcAnon, shared, shrinkPhoto, signPhotos, upload, type Session } from './remote';
 import { dashFromInspections, type DashData } from '../domain/dashboard';
 import { draftNote, pointFacts } from '../domain/noteDraft';
 
 export type Role = 'owner' | 'advisor' | 'technician';
 export interface Member { userId: string; name: string; role: Role }
 export interface Workspace {
-  shops: { id: string; name: string; role: Role }[];
-  shop: { id: string; name: string; phone: string | null } | null;
+  shops: { id: string; name: string; role: Role; number?: number }[];
+  shop: { id: string; name: string; phone: string | null; number?: number } | null;
   role: Role | null;
   me: { userId: string; name: string } | null;
   members: Member[];
@@ -106,10 +106,10 @@ export interface NoteDraft { text: string; source: 'ai' | 'rules'; basis: { part
 export interface PendingLink { kind: 'join' | 'pilot'; token: string }
 const PENDING_KEY = 'wrynch-pending-link';
 export function getPendingLink(): PendingLink | null {
-  try { return JSON.parse(localStorage.getItem(PENDING_KEY) ?? 'null'); } catch { return null; }
+  try { return JSON.parse(shared.get(PENDING_KEY) ?? 'null'); } catch { return null; }
 }
 export function setPendingLink(l: PendingLink | null) {
-  try { if (l) localStorage.setItem(PENDING_KEY, JSON.stringify(l)); else localStorage.removeItem(PENDING_KEY); } catch { /* ignore */ }
+  shared.set(PENDING_KEY, l ? JSON.stringify(l) : null);
 }
 
 export function toast(text: string, kind: 'error' | 'info' = 'info') {
@@ -309,9 +309,15 @@ export const actions = {
 
   async loadWorkspace(shopId?: string) {
     if (state.mode !== 'live' || !getSession()) return;
-    const ws = await withLoading(() => rpc<Workspace & { jobs?: JobHeader[] }>('get_workspace', { p_shop: shopId ?? state.workspace?.shop?.id ?? null, p_days: 14 }));
+    // Shop numbers give each shop its own address (1001.wrynch.app). On a shop's address, open that shop.
+    const list = await rpc<{ id: string; name: string; number: number; role: Role }[]>('my_shop_list').catch(() => []);
+    const host = hostInfo();
+    const fromAddress = host.shopNumber !== null ? list.find((x) => x.number === host.shopNumber)?.id : undefined;
+    const ws = await withLoading(() => rpc<Workspace & { jobs?: JobHeader[] }>('get_workspace', { p_shop: shopId ?? fromAddress ?? state.workspace?.shop?.id ?? null, p_days: 14 }));
+    const num = (id?: string) => list.find((x) => x.id === id)?.number;
     const full: Workspace = {
-      shops: ws.shops ?? [], shop: ws.shop ?? null, role: ws.role ?? null, me: ws.me ?? null, members: ws.members ?? [],
+      shops: (ws.shops ?? []).map((x) => ({ ...x, number: num(x.id) })), shop: ws.shop ? { ...ws.shop, number: num(ws.shop.id) } : null,
+      role: ws.role ?? null, me: ws.me ?? null, members: ws.members ?? [],
       invites: ws.invites ?? [], template: ws.template ?? null, rules: ws.rules ?? null,
     };
     setTemplate(full.template?.data ?? structuredClone(DEFAULT_TEMPLATE));

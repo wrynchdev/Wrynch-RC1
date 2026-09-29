@@ -1,7 +1,45 @@
 // Talks to Supabase (auth, database functions, photo storage) and the app's /api functions over plain fetch.
-declare const __WRYNCH_CONFIG__: { supabaseUrl: string; supabaseAnonKey: string };
+declare const __WRYNCH_CONFIG__: { supabaseUrl: string; supabaseAnonKey: string; appDomain?: string };
 
-const CFG = typeof __WRYNCH_CONFIG__ !== 'undefined' ? __WRYNCH_CONFIG__ : { supabaseUrl: '', supabaseAnonKey: '' };
+const CFG = typeof __WRYNCH_CONFIG__ !== 'undefined' ? __WRYNCH_CONFIG__ : { supabaseUrl: '', supabaseAnonKey: '', appDomain: '' };
+
+// ------------------------------------------------------------------ shop addresses (https://1001.wrynch.app)
+export const APP_DOMAIN = (CFG.appDomain || 'wrynch.app').toLowerCase();
+/** Where the app is running: on the app's own domain (and which shop number), or somewhere else (preview, localhost). */
+export function hostInfo(host = typeof location !== 'undefined' ? location.hostname.toLowerCase() : ''): { onAppDomain: boolean; shopNumber: number | null } {
+  if (host === APP_DOMAIN || host === `www.${APP_DOMAIN}`) return { onAppDomain: true, shopNumber: null };
+  const m = host.match(/^(\d{1,9})\.(.+)$/);
+  if (m && m[2] === APP_DOMAIN) return { onAppDomain: true, shopNumber: Number(m[1]) };
+  return { onAppDomain: false, shopNumber: null };
+}
+/** A shop's own address, keeping the current protocol and port (and optionally a #route). */
+export function shopUrl(number: number, hash = '') {
+  const port = location.port ? `:${location.port}` : '';
+  return `${location.protocol}//${number}.${APP_DOMAIN}${port}/${hash}`;
+}
+
+// ------------------------------------------------------------------ storage shared by every shop address
+// On the app domain, small values live in a cookie for .wrynch.app so signing in once works on every shop's
+// address. Elsewhere (previews, local dev) they stay in this site's local storage.
+export const shared = {
+  get(key: string): string | null {
+    if (hostInfo().onAppDomain) {
+      const hit = document.cookie.split('; ').find((c) => c.startsWith(`${key}=`));
+      return hit ? decodeURIComponent(hit.slice(key.length + 1)) : null;
+    }
+    try { return localStorage.getItem(key); } catch { return null; }
+  },
+  set(key: string, value: string | null) {
+    if (hostInfo().onAppDomain) {
+      const secure = location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = value === null
+        ? `${key}=; Domain=${APP_DOMAIN}; Path=/; Max-Age=0; SameSite=Lax${secure}`
+        : `${key}=${encodeURIComponent(value)}; Domain=${APP_DOMAIN}; Path=/; Max-Age=${60 * 60 * 24 * 30}; SameSite=Lax${secure}`;
+      return;
+    }
+    try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value); } catch { /* ignore */ }
+  },
+};
 export const LIVE = !!(CFG.supabaseUrl && CFG.supabaseAnonKey);
 // Accept the address with or without a pasted API path (e.g. "…supabase.co/rest/v1/").
 const URL_ = CFG.supabaseUrl.trim().replace(/\/+(rest|auth|storage)\/v1\/?$/, '').replace(/\/+$/, '');
@@ -11,13 +49,13 @@ export interface Session { accessToken: string; refreshToken: string; expiresAt:
 const SESSION_KEY = 'wrynch-session';
 
 let session: Session | null = null;
-try { session = JSON.parse(localStorage.getItem(SESSION_KEY) ?? 'null'); } catch { session = null; }
+try { session = JSON.parse(shared.get(SESSION_KEY) ?? 'null'); } catch { session = null; }
 const onChange = new Set<(s: Session | null) => void>();
 export const getSession = () => session;
 export function onSession(fn: (s: Session | null) => void) { onChange.add(fn); return () => onChange.delete(fn); }
 function setSession(s: Session | null) {
   session = s;
-  try { if (s) localStorage.setItem(SESSION_KEY, JSON.stringify(s)); else localStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
+  shared.set(SESSION_KEY, s ? JSON.stringify(s) : null);
   onChange.forEach((f) => f(s));
 }
 

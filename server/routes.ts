@@ -149,8 +149,7 @@ export const sendReport: Handler = route({
     const { inspectionId, channel, to } = await readJson<{ inspectionId: string; channel: 'sms' | 'email' | 'link'; to?: string }>(req);
     const { inspection, vehicle } = await loadAsUser(jwt, inspectionId);
     if (inspection.status !== 'submitted' && inspection.status !== 'sent') throw new HttpError(409, 'Send to advisor first');
-    const base = env('APP_URL') ?? new URL(req.url).origin;
-    const link = `${base.replace(/\/$/, '')}/app/#/r/${inspection.reportToken}`;
+    const link = `${appRoot(req)}#/r/${inspection.reportToken}`;
     const who = `${vehicle.year ?? ''} ${vehicle.make} ${vehicle.model}`.trim();
     let status: 'sent' | 'failed' | 'skipped' = 'skipped';
     let detail = '';
@@ -190,6 +189,18 @@ async function sendEmail(to: string, subject: string, text: string): Promise<{ s
     body: JSON.stringify({ from, to, subject, text }),
   });
   return r.ok ? { status: 'sent', detail: '' } : { status: 'failed', detail: `email service error ${r.status}` };
+}
+
+/**
+ * Where the app lives for links we send out. On the app's own domain that's the shop's address the request came
+ * from (https://1001.wrynch.app/); elsewhere (previews, local) it's the /app/ path of APP_URL or this site.
+ */
+export function appRoot(req: Request): string {
+  const url = new URL(req.url);
+  const domain = (env('APP_DOMAIN') ?? 'wrynch.app').toLowerCase();
+  const host = url.host.toLowerCase().split(':')[0];
+  if (host === domain || host.endsWith(`.${domain}`)) return `https://${url.host}/`;
+  return `${(env('APP_URL') ?? url.origin).replace(/\/$/, '')}/app/`;
 }
 
 // ------------------------------------------------------------------ public marketing-site endpoints
