@@ -3,7 +3,7 @@ import { actions, getPendingLink, jobList, useStore } from '../state/store';
 import { Join, NewInspection, NoShop, Pilot, SetPassword, Settings, SignIn, Team, TemplateEditor } from './account';
 import { AdvisorList, AdvisorResults, DemoReport, LiveReport, Rules, VehicleHistory } from './advisor';
 import { go, useHash } from './hooks';
-import { Logo } from './kit';
+import { Logo, Wordmark } from './kit';
 import { Capture, ComponentView, Finish, History, Jobs, Missing, Overview, PointView, Setup, Sort, Wording } from './tech';
 
 function route(p: string[]) {
@@ -70,7 +70,9 @@ export function App() {
   return (
     <>
       <header className="appbar">
-        <a className="logo" href="#/" aria-label="Wrynch home"><Logo /><span className="hide-sm">{s.workspace?.shop?.name ?? 'WRYNCH'}</span></a>
+        <a className="logo" href="#/" aria-label="Wrynch home">{s.workspace?.shop?.name
+          ? <><Logo /><span className="hide-sm">{s.workspace.shop.name}</span></>
+          : <Wordmark height={22} />}</a>
         <nav className="roles" aria-label="Sections">
           <button aria-pressed={section === 'tech'} onClick={() => go('/')}>{s.mode === 'demo' ? 'Tech' : 'Jobs'}</button>
           {canAdvise && <button aria-pressed={section === 'advisor'} onClick={() => go('/advisor')}>Advisor</button>}

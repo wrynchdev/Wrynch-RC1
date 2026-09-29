@@ -6,7 +6,7 @@ import type { Template, TemplateComponent, VehicleConfig } from '../domain/types
 import { VEHICLES } from '../domain/seed';
 import { actions, isLive, setPendingLink, toast, useStore, type Role } from '../state/store';
 import { go } from './hooks';
-import { Icon, Logo, TopBar } from './kit';
+import { Icon, TopBar, Wordmark } from './kit';
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong');
 
@@ -41,7 +41,7 @@ export function SignIn({ after, allowSignUp = false, startWithSignUp = false, in
   return (
     <div className="phone">
       <div className="body" style={{ gap: 18, paddingTop: 40 }}>
-        <div className="row" style={{ gap: 10 }}><span style={{ color: 'var(--ink)' }}><Logo onDark={false} /></span><span className="display" style={{ fontSize: 28, letterSpacing: '.06em' }}>WRYNCH</span></div>
+        <div style={{ color: 'var(--ink)' }}><Wordmark height={34} /></div>
         <h1 className="display" style={{ margin: 0, fontSize: 36 }}>{mode === 'in' ? 'Sign in' : mode === 'up' ? 'Create your account' : 'Reset your password'}</h1>
         <form className="stack" style={{ gap: 14 }} onSubmit={submit}>
           {mode === 'up' && (
