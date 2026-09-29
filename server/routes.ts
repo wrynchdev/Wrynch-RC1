@@ -1,9 +1,9 @@
 // HTTP endpoints. Each is deployed as its own function under /api/<name> (see scripts/build.mjs).
 import { analyzePhotos, type PhotoAnalysis } from '../src/domain/aiStub';
 import type { Inspection, Template, Vehicle } from '../src/domain/types';
-import { aiMode, analyzePhoto, candidatesFor, model, rewriteNote, validateAnalysis } from './ai';
+import { aiMode, analyzePhoto, candidatesFor, mapTemplatePoints, mapTemplatePointsStub, model, readTemplate, rewriteNote, validateAnalysis, type DraftPoint } from './ai';
 import { decodeVin } from './vin';
-import { bearer, downloadObject, env, HttpError, json, readJson, route, rpc, signUrls, type Handler } from './lib';
+import { bearer, downloadObject, env, HttpError, json, rateLimit, readJson, route, rpc, signUrls, type Handler } from './lib';
 
 interface InspectionBundle { inspection: Inspection; vehicle: Vehicle; template: Template }
 
@@ -163,11 +163,82 @@ async function sendEmail(to: string, subject: string, text: string): Promise<{ s
   return r.ok ? { status: 'sent', detail: '' } : { status: 'failed', detail: `email service error ${r.status}` };
 }
 
+// ------------------------------------------------------------------ public marketing-site endpoints
+
+const text = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+
+// POST /api/pilot { shopName, contactName, email, phone?, location?, techs?, currentTool?, notes?, template?, website? }
+// A shop applies for the pilot program. Stored with the service key; the owner is emailed if email is set up.
+export const pilot: Handler = route({
+  POST: async (req) => {
+    rateLimit(req, 'pilot', 5, 3600_000);
+    const b = await readJson<Record<string, unknown>>(req);
+    if (text(b.website, 200)) return json({ ok: true }); // honeypot field: bots fill it, people don't see it
+    const app = {
+      shopName: text(b.shopName, 120), contactName: text(b.contactName, 120), email: text(b.email, 200).toLowerCase(),
+      phone: text(b.phone, 40), location: text(b.location, 120), currentTool: text(b.currentTool, 120), notes: text(b.notes, 2000),
+      techs: Number.isFinite(Number(b.techs)) && String(b.techs ?? '').trim() !== '' ? Math.max(0, Math.min(500, Math.round(Number(b.techs)))) : '',
+      template: b.template && typeof b.template === 'object' && JSON.stringify(b.template).length < 150_000 ? b.template : null,
+    };
+    if (!app.shopName || !app.contactName) throw new HttpError(400, 'Add your shop name and your name.');
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(app.email)) throw new HttpError(400, 'That email address doesn’t look right.');
+    const id = await rpc<string>('record_pilot_request', { p: app }, 'service');
+    const notify = env('PILOT_NOTIFY_EMAIL');
+    if (notify) {
+      const facts = [
+        `Shop: ${app.shopName}`, `Email: ${app.email}`, app.phone && `Phone: ${app.phone}`, app.location && `Location: ${app.location}`,
+        app.techs !== '' && `Technicians: ${app.techs}`, app.currentTool && `Uses today: ${app.currentTool}`, app.notes && `Notes: ${app.notes}`,
+        app.template && 'They also uploaded their inspection template (saved with the application).',
+      ].filter((x): x is string => typeof x === 'string' && x !== '');
+      const lines = [`${app.contactName} applied for the Wrynch pilot.`, '', ...facts, '',
+        'To approve, run this in the Supabase SQL editor and send them the link it returns:', `select public.approve_pilot_request('${id}');`];
+      await sendEmail(notify, `Pilot application: ${app.shopName}`, lines.join('\n')).catch(() => undefined);
+    }
+    return json({ ok: true });
+  },
+});
+
+// POST /api/template-read (body: the PDF or image) -> { name, points: [{ stage, name, detail }] }
+export const templateRead: Handler = route({
+  POST: async (req) => {
+    const mode = aiMode();
+    if (mode === 'off') throw new HttpError(503, 'Template reading isn’t available right now.');
+    rateLimit(req, 'template-read', 8, 3600_000);
+    const type = (req.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
+    const bytes = new Uint8Array(await req.arrayBuffer());
+    if (!bytes.length) throw new HttpError(400, 'Choose a PDF or photo of your inspection sheet.');
+    if (bytes.length > 4_000_000) throw new HttpError(413, 'That file is over 4 MB. Try a photo of the sheet, or a smaller PDF.');
+    if (mode === 'stub') {
+      if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(type)) throw new HttpError(415, 'Upload a PDF or a photo (JPEG or PNG) of your inspection sheet.');
+      return json({ name: 'Sample sheet (stand-in)', points: ['Brakes', 'Tires', 'Lights', 'Wipers', 'Battery', 'Customer concern'].map((name) => ({ stage: 'Inspection', name })) });
+    }
+    const out = await readTemplate({ bytes, type });
+    if (!out.points.length) throw new HttpError(422, 'We couldn’t find inspection items in that file. Try a clearer photo or the PDF of your sheet.');
+    return json(out);
+  },
+});
+
+// POST /api/template-map { points: [{ stage, name, detail }] } (up to 15) -> { points: MappedPoint[] }
+export const templateMap: Handler = route({
+  POST: async (req) => {
+    const mode = aiMode();
+    if (mode === 'off') throw new HttpError(503, 'Template reading isn’t available right now.');
+    rateLimit(req, 'template-map', 60, 3600_000);
+    const b = await readJson<{ points?: unknown }>(req);
+    const points: DraftPoint[] = (Array.isArray(b.points) ? b.points : []).slice(0, 15).map((p) => {
+      const x = p as Record<string, unknown>;
+      return { stage: text(x.stage, 60) || 'Inspection', name: text(x.name, 120), detail: text(x.detail, 200) || undefined };
+    }).filter((p) => p.name);
+    if (!points.length) throw new HttpError(400, 'No inspection items to map.');
+    return json({ points: mode === 'stub' ? mapTemplatePointsStub(points) : await mapTemplatePoints(points) });
+  },
+});
+
 // GET /api/status: whether AI photo sorting is available (no secrets, no sign-in).
 export const status: Handler = route({
   GET: async () => json({ ai: aiMode() !== 'off', model: aiMode() === 'claude' ? model() : aiMode() }),
 });
 
 export const ROUTES: Record<string, Handler> = {
-  status, 'ai-sort': aiSort, 'ai-wording': aiWording, vin, report, 'send-report': sendReport,
+  status, pilot, 'template-read': templateRead, 'template-map': templateMap, 'ai-sort': aiSort, 'ai-wording': aiWording, vin, report, 'send-report': sendReport,
 };

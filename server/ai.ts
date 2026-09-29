@@ -1,6 +1,6 @@
 // Claude vision for photo sorting, and customer wording. Every AI answer is validated against the ontology
 // and the shop template before it is stored, and everything stored is a pending proposal (rules R4, R10).
-import { cls, compLabel, findingLabel, parseKey, pointComponents } from '../src/domain/ontology';
+import { cls, compLabel, DEFAULT_TEMPLATE, findingLabel, ONTOLOGY, parseKey, pointComponents } from '../src/domain/ontology';
 import { suggestWording, wordingKeepsFacts, type PartReading, type PhotoAnalysis } from '../src/domain/aiStub';
 import type { CompKey, PointNote, Severity, Template, VehicleConfig } from '../src/domain/types';
 import { SIDE_UNSURE_CONFIDENCE } from '../src/domain/types';
@@ -259,4 +259,156 @@ export async function rewriteNote(note: PointNote, context: string): Promise<str
   }
   const s = suggestWording(note);
   return wordingKeepsFacts(note.techText, s) ? s : null;
+}
+
+// ------------------------------------------------------------------ template preview (marketing site)
+
+export interface DraftPoint { stage: string; name: string; detail?: string }
+export interface MappedPart { classId: number; label: string; positions: (string | null)[]; ifEquipped: boolean }
+export interface MappedPoint { stage: string; name: string; matched: string[]; parts: MappedPart[]; count: number; note: string }
+
+const TEMPLATE_TYPES = ['application/pdf', ...AI_IMAGE_TYPES];
+const clip = (v: unknown, n: number) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
+
+/** Read a shop's inspection sheet (PDF or photo) into stages and points. Nothing is stored. */
+export async function readTemplate(file: { bytes: Uint8Array; type: string }): Promise<{ name: string; points: DraftPoint[] }> {
+  const type = file.type.split(';')[0].trim().toLowerCase();
+  if (!TEMPLATE_TYPES.includes(type)) throw new HttpError(415, 'Upload a PDF or a photo (JPEG or PNG) of your inspection sheet.');
+  const block = type === 'application/pdf'
+    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64(file.bytes) } }
+    : { type: 'image', source: { type: 'base64', media_type: type, data: b64(file.bytes) } };
+  const res = await claude({
+    max_tokens: 4000,
+    system: 'You read vehicle multi-point inspection (MPI) sheets used by auto repair shops. Transcribe the inspection items exactly as the shop wrote them, grouped under the section headings on the sheet. '
+      + 'Include only items a technician inspects or checks (skip customer details, signatures, legends, pricing and marketing text). If there are no section headings, use one section named "Inspection". '
+      + 'If the document is not an inspection sheet, return an empty list.',
+    tools: [{
+      name: 'record_template',
+      description: 'The inspection sheet as sections and items.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'The title of the sheet, if any' },
+          points: {
+            type: 'array', maxItems: 80,
+            items: {
+              type: 'object',
+              properties: {
+                stage: { type: 'string', description: 'Section heading the item is under' },
+                name: { type: 'string', description: 'The item as written on the sheet' },
+                detail: { type: 'string', description: 'Any sub-items or measurements listed with it (e.g. "LF RF LR RR", "32nds")' },
+              },
+              required: ['stage', 'name'],
+            },
+          },
+        },
+        required: ['points'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'record_template' },
+    messages: [{ role: 'user', content: [block, { type: 'text', text: 'List every inspection item on this sheet under its section.' }] }],
+  });
+  const raw = toolInput(res) as { name?: unknown; points?: unknown } | null;
+  const points = (Array.isArray(raw?.points) ? raw!.points : []).slice(0, 80).map((p) => {
+    const x = p as Record<string, unknown>;
+    return { stage: clip(x.stage, 60) || 'Inspection', name: clip(x.name, 120), detail: clip(x.detail, 200) || undefined };
+  }).filter((p) => p.name);
+  return { name: clip(raw?.name, 120), points };
+}
+
+/** The standard template's points, as the reference for mapping. */
+function standardPointsText(): string {
+  return DEFAULT_TEMPLATE.sections.map((s) => `${s.name}:\n` + s.points.map((p) =>
+    `- ${p.id} "${p.name}": ` + [...new Set(p.components.map((c) => cls(c.classId).label))].join(', ')).join('\n')).join('\n\n');
+}
+function catalogText(): string {
+  return Object.values(ONTOLOGY.classes).map((c) => `${c.id}: ${c.label}${c.positions.length ? ` [${c.positions.join(', ')}]` : ''}`).join('\n');
+}
+
+const POSITION_ORDER = ['left_front', 'right_front', 'left_rear', 'right_rear', 'front', 'rear', 'left', 'right', 'center', 'left_mid', 'right_mid', 'roof', 'bed', 'cargo_area', 'underbody'];
+
+/** Turn the model's choices into parts: standard points bring their parts (with positions and "if equipped"), extras are validated. */
+export function buildMappedPoint(p: DraftPoint, raw: Record<string, unknown> | undefined): MappedPoint {
+  const byId = new Map(DEFAULT_TEMPLATE.sections.flatMap((s) => s.points).map((x) => [x.id, x]));
+  const comps: { classId: number; position: string | null; when: string }[] = [];
+  const matched: string[] = [];
+  for (const id of Array.isArray(raw?.standard) ? raw!.standard : []) {
+    const sp = typeof id === 'string' ? byId.get(id) : undefined;
+    if (!sp || matched.includes(sp.name)) continue;
+    matched.push(sp.name);
+    comps.push(...sp.components.map((c) => ({ classId: c.classId, position: c.position, when: c.when })));
+  }
+  for (const e of Array.isArray(raw?.extra) ? raw!.extra : []) {
+    const x = e as Record<string, unknown>;
+    const c = ONTOLOGY.classes[Number(x.classId)];
+    if (!c) continue;
+    const asked = (Array.isArray(x.positions) ? x.positions : []).filter((q): q is string => typeof q === 'string' && c.positions.includes(q));
+    const positions: (string | null)[] = !c.positions.length ? [null] : asked.length ? asked : c.positionRule === 'required' ? c.positions : [null];
+    for (const position of positions) comps.push({ classId: c.id, position, when: 'always' });
+  }
+  const groups = new Map<number, MappedPart>();
+  const seen = new Set<string>();
+  for (const c of comps) {
+    const k = `${c.classId}@${c.position ?? ''}`;
+    const g = groups.get(c.classId) ?? { classId: c.classId, label: cls(c.classId).label, positions: [], ifEquipped: true };
+    if (!seen.has(k)) { seen.add(k); g.positions.push(c.position); }
+    g.ifEquipped &&= c.when !== 'always';
+    groups.set(c.classId, g);
+  }
+  const parts = [...groups.values()].map((g) => ({ ...g, positions: g.positions.sort((a, b) => POSITION_ORDER.indexOf(a ?? '') - POSITION_ORDER.indexOf(b ?? '')) }));
+  return { stage: p.stage, name: p.name, matched, parts, count: seen.size, note: clip(raw?.note, 200) };
+}
+
+/** Map a batch of a shop's inspection items to the parts behind them. */
+export async function mapTemplatePoints(points: DraftPoint[]): Promise<MappedPoint[]> {
+  const res = await claude({
+    max_tokens: 6000,
+    system: 'You map a repair shop\'s inspection items to the parts a technician actually checks for each item. '
+      + 'Prefer the standard inspection points (by id): pick every standard point the item covers. Add extra parts from the catalog only for parts the item clearly covers that its standard points do not. '
+      + 'For extra parts give positions from the part\'s allowed list when the item names specific corners or sides (e.g. "LF tire" = left_front); leave positions empty when it covers all of them. '
+      + 'If an item is not about inspecting parts (e.g. "customer concern", "road test notes"), return no standard points and no extras and say so in the note.',
+    tools: [{
+      name: 'record_mapping',
+      description: 'The parts behind each inspection item, in the same order as given.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                index: { type: 'integer', description: 'Index of the item in the list given' },
+                standard: { type: 'array', items: { type: 'string' }, description: 'Ids of standard points this item covers' },
+                extra: { type: 'array', items: { type: 'object', properties: { classId: { type: 'integer' }, positions: { type: 'array', items: { type: 'string' } } }, required: ['classId'] } },
+                note: { type: 'string', description: 'Optional short note, e.g. why nothing maps' },
+              },
+              required: ['index', 'standard', 'extra'],
+            },
+          },
+        },
+        required: ['items'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'record_mapping' },
+    messages: [{
+      role: 'user',
+      content: `Standard inspection points (id "name": parts):\n\n${standardPointsText()}\n\nPart catalog (id: name [allowed positions]):\n${catalogText()}\n\n`
+        + `Shop's inspection items:\n${points.map((p, i) => `${i}. [${p.stage}] ${p.name}${p.detail ? ` (${p.detail})` : ''}`).join('\n')}`,
+    }],
+  });
+  const raw = toolInput(res) as { items?: unknown } | null;
+  const items = Array.isArray(raw?.items) ? (raw!.items as Record<string, unknown>[]) : [];
+  return points.map((p, i) => buildMappedPoint(p, items.find((x) => Number(x?.index) === i)));
+}
+
+/** Test and local-demo stand-in: match items to standard points by shared words. */
+export function mapTemplatePointsStub(points: DraftPoint[]): MappedPoint[] {
+  const std = DEFAULT_TEMPLATE.sections.flatMap((s) => s.points);
+  const words = (t: string) => new Set(t.toLowerCase().split(/[^a-z]+/).filter((w) => w.length > 2));
+  return points.map((p) => {
+    const w = words(p.name);
+    const best = std.map((s) => ({ s, n: [...words(s.name)].filter((x) => w.has(x)).length })).sort((a, b) => b.n - a.n)[0];
+    return buildMappedPoint(p, best && best.n > 0 ? { standard: [best.s.id], extra: [] } : { standard: [], extra: [], note: 'No match in the stand-in.' });
+  });
 }

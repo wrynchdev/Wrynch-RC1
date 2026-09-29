@@ -14,7 +14,7 @@ import { analyzePhotos, applyAnalysis, suggestWording, wordingKeepsFacts } from 
 import type {
   CompKey, EstimateLine, Inspection, NotInspectedReason, Rating, Severity, Template, Vehicle, VehicleConfig,
 } from '../domain/types';
-import { ApiError, auth, fn, getSession, LIVE, onSession, rpc, shrinkPhoto, signPhotos, upload, type Session } from './remote';
+import { ApiError, auth, fn, getSession, LIVE, onSession, rpc, rpcAnon, shrinkPhoto, signPhotos, upload, type Session } from './remote';
 
 export type Role = 'owner' | 'advisor' | 'technician';
 export interface Member { userId: string; name: string; role: Role }
@@ -97,6 +97,16 @@ export const isLive = () => state.mode === 'live';
 export const photoSrc = (url: string) => (state.mode === 'demo' ? url : state.photoUrls[url] ?? '');
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
+// An invite or pilot link survives the email-confirmation round trip (which lands back on the app's home).
+export interface PendingLink { kind: 'join' | 'pilot'; token: string }
+const PENDING_KEY = 'wrynch-pending-link';
+export function getPendingLink(): PendingLink | null {
+  try { return JSON.parse(localStorage.getItem(PENDING_KEY) ?? 'null'); } catch { return null; }
+}
+export function setPendingLink(l: PendingLink | null) {
+  try { if (l) localStorage.setItem(PENDING_KEY, JSON.stringify(l)); else localStorage.removeItem(PENDING_KEY); } catch { /* ignore */ }
+}
+
 export function toast(text: string, kind: 'error' | 'info' = 'info') {
   clearTimeout(toastTimer);
   set({ toast: { text, kind } });
@@ -325,14 +335,18 @@ export const actions = {
       await reload(inspId).catch(() => undefined);
     }
   },
-  async createShop(name: string, displayName: string) {
-    const id = await rpc<string>('create_shop', { p_name: name, p_display_name: displayName, p_template: DEFAULT_TEMPLATE });
+  async createShop(name: string, displayName: string, pilotToken?: string) {
+    const id = await rpc<string>('create_shop', { p_name: name, p_display_name: displayName, p_template: DEFAULT_TEMPLATE, p_pilot_token: pilotToken ?? null });
+    setPendingLink(null);
     await actions.loadWorkspace(id);
   },
   async acceptInvite(token: string, displayName: string) {
     const id = await rpc<string>('accept_invite', { p_token: token, p_display_name: displayName });
+    setPendingLink(null);
     await actions.loadWorkspace(id);
   },
+  /** An approved pilot link: who it's for, or null if it's no longer valid. */
+  pilotInvite: (token: string) => rpcAnon<{ shopName: string; contactName: string; email: string } | null>('pilot_invite', { p_token: token }),
   async invite(email: string, role: Role): Promise<string> {
     const token = await rpc<string>('invite_member', { p_shop: state.workspace!.shop!.id, p_email: email, p_role: role });
     await actions.loadWorkspace();
