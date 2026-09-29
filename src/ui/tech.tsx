@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   cls, compLabel, findingLabel, ONTOLOGY, parseKey, point as getPoint, pointComponents, positionLabel, sections,
   sectionOfPoint, vehicleComponents,
@@ -6,7 +6,7 @@ import {
 import { completionGate, componentState, findingRating, isPendingAi, mediaPending, photosOf, summarize } from '../domain/rating';
 import type { CompKey, Finding, Inspection, Media, NotInspectedReason, Rating, Severity, Vehicle, VehicleConfig } from '../domain/types';
 import { SEVERITIES, SIDE_UNSURE_CONFIDENCE } from '../domain/types';
-import { actions, isLive, jobList, photoSrc, useStore } from '../state/store';
+import { actions, isLive, jobList, photoSrc, toast, useStore, type NoteDraft } from '../state/store';
 import { AiChip, fmtDate, fmtMi, Icon, Sheet, StateChip, Tile, TopBar } from './kit';
 import { enc, go, pointStatus, useInspection, useVehicleHistory } from './hooks';
 
@@ -456,6 +456,13 @@ function PlaceSheet({ insp, vehicle, media, onClose }: { insp: Inspection; vehic
 export function PointView({ id, pointId }: { id: string; pointId: string }) {
   const data = useInspection(id);
   const [note, setNote] = useState<string | null>(null);
+  const [draft, setDraft] = useState<NoteDraft | null>(null);
+  const [drafting, setDrafting] = useState(false);
+  useEffect(() => { setDraft(null); setNote(null); }, [id, pointId]); // a draft belongs to one point
+  const makeDraft = async () => {
+    setDrafting(true);
+    try { setDraft(await actions.draftNote(id, pointId)); } catch (e) { toast(e instanceof Error ? e.message : 'Couldn’t write a draft', 'error'); } finally { setDrafting(false); }
+  };
   if (!data) return <Missing />;
   const { insp, vehicle } = data;
   let p;
@@ -562,6 +569,34 @@ export function PointView({ id, pointId }: { id: string; pointId: string }) {
           <span className="small muted" style={{ marginTop: -6 }}>The customer sees this note as written, unless you approve a reworded version.</span>
           <textarea id="note" className="input" rows={2} value={noteText} disabled={locked}
             onChange={(e) => setNote(e.target.value)} onBlur={() => note !== null && actions.setNote(id, pointId, note)} />
+          {!locked && !draft && (
+            <button type="button" className="ai-draft" disabled={drafting} onClick={makeDraft}
+              aria-label="Write this note with AI from the confirmed ratings and photos">
+              <span className="ic"><Icon name="ai" size={18} /></span>
+              <span>{drafting ? 'Writing a draft…' : noteText.trim() ? 'Redraft with AI' : 'Draft note with AI'}</span>
+              <span className="small muted hide-sm">From your ratings and confirmed photos</span>
+            </button>
+          )}
+          {draft && (
+            <div className="ai-card stack" role="region" aria-label="AI draft note">
+              <div className="row between">
+                <span className="row" style={{ gap: 6, fontWeight: 700, color: 'var(--ai)' }}><Icon name="ai" />{draft.source === 'ai' ? 'AI draft' : 'Draft from your ratings'}</span>
+                <span className="chip ai">Not your note yet</span>
+              </div>
+              <label className="sr" htmlFor="draft">Edit the draft</label>
+              <textarea id="draft" className="input" rows={4} value={draft.text} onChange={(e) => setDraft({ ...draft, text: e.target.value })} />
+              <span className="small muted">
+                Based on {draft.basis.parts} rated {draft.basis.parts === 1 ? 'part' : 'parts'}{draft.basis.photos ? ` and ${draft.basis.photos} confirmed ${draft.basis.photos === 1 ? 'photo' : 'photos'}` : ''}.
+                {draft.source === 'rules' && isLive() ? ' The AI wasn’t available, so this was written from your ratings.' : ''} Check it and edit anything before you use it.
+              </span>
+              <div className="row">
+                <button className="btn primary grow" disabled={!draft.text.trim()} onClick={() => {
+                  actions.setNote(id, pointId, draft.text.trim()); setNote(draft.text.trim()); setDraft(null);
+                }}><Icon name="check" size={18} />{noteText.trim() ? 'Replace my note' : 'Use this note'}</button>
+                <button className="btn quiet" onClick={() => setDraft(null)}>Discard</button>
+              </div>
+            </div>
+          )}
           {!locked && noteText.trim() && (
             <a className="row small" style={{ fontWeight: 700, color: 'var(--ai)' }} href={`#/insp/${id}/wording/${pointId}`}
               onClick={() => { if (note !== null) actions.setNote(id, pointId, note); }}>

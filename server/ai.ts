@@ -2,6 +2,7 @@
 // and the shop template before it is stored, and everything stored is a pending proposal (rules R4, R10).
 import { cls, compLabel, DEFAULT_TEMPLATE, findingLabel, ONTOLOGY, parseKey, pointComponents } from '../src/domain/ontology';
 import { suggestWording, wordingKeepsFacts, type PartReading, type PhotoAnalysis } from '../src/domain/aiStub';
+import { draftKeepsFacts, factsText, type PointFacts } from '../src/domain/noteDraft';
 import type { CompKey, PointNote, Severity, Template, VehicleConfig } from '../src/domain/types';
 import { SIDE_UNSURE_CONFIDENCE } from '../src/domain/types';
 import { env, HttpError } from './lib';
@@ -411,4 +412,30 @@ export function mapTemplatePointsStub(points: DraftPoint[]): MappedPoint[] {
     const best = std.map((s) => ({ s, n: [...words(s.name)].filter((x) => w.has(x)).length })).sort((a, b) => b.n - a.n)[0];
     return buildMappedPoint(p, best && best.n > 0 ? { standard: [best.s.id], extra: [] } : { standard: [], extra: [], note: 'No match in the stand-in.' });
   });
+}
+
+// ------------------------------------------------------------------ technician note drafts
+
+/**
+ * Draft a technician note for one inspection point from its confirmed facts and confirmed photos.
+ * Returns null if the model's draft uses a number that isn't in the facts (the caller falls back to the rules draft).
+ */
+export async function writePointNote(facts: PointFacts, photos: { bytes: Uint8Array; type: string }[]): Promise<string | null> {
+  const images = photos.filter((p) => AI_IMAGE_TYPES.includes(p.type.split(';')[0].trim().toLowerCase()) && p.bytes.length * 4 / 3 <= AI_IMAGE_MAX).slice(0, 3)
+    .map((p) => ({ type: 'image', source: { type: 'base64', media_type: p.type.split(';')[0].trim().toLowerCase(), data: b64(p.bytes) } }));
+  const res = await claude({
+    max_tokens: 800,
+    system: 'You write the note an automotive technician leaves on one inspection point. The customer and service advisor read it. '
+      + 'Write 1–3 short, plain sentences. Lead with anything rated immediate attention or monitor, then briefly say the rest checked OK. '
+      + 'Use ONLY the confirmed facts given: do not add parts, findings, causes, repairs, prices or urgency that are not in them, and never change a rating. '
+      + 'Use every measurement exactly as written (same numbers and units) and no other numbers. '
+      + 'The photos are the technician\'s confirmed photos of these parts: you may use them only to describe what the facts already say (for example where the wear is), never to add a new problem.',
+    tools: [{ name: 'note', description: 'The drafted note', input_schema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] } }],
+    tool_choice: { type: 'tool', name: 'note' },
+    messages: [{ role: 'user', content: [...images, { type: 'text', text: `Inspection point: ${facts.point}\nConfirmed facts:\n${factsText(facts)}\n\nWrite the technician's note.` }] }],
+  });
+  const text = (toolInput(res) as { text?: unknown } | null)?.text;
+  if (typeof text !== 'string' || !text.trim()) return null;
+  const out = text.trim().slice(0, 600);
+  return draftKeepsFacts(facts, out) ? out : null;
 }

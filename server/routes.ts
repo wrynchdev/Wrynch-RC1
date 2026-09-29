@@ -1,7 +1,8 @@
 // HTTP endpoints. Each is deployed as its own function under /api/<name> (see scripts/build.mjs).
 import { analyzePhotos, type PhotoAnalysis } from '../src/domain/aiStub';
 import type { Inspection, Template, Vehicle } from '../src/domain/types';
-import { aiMode, analyzePhoto, candidatesFor, mapTemplatePoints, mapTemplatePointsStub, model, readTemplate, rewriteNote, validateAnalysis, type DraftPoint } from './ai';
+import { aiMode, analyzePhoto, candidatesFor, mapTemplatePoints, mapTemplatePointsStub, model, readTemplate, rewriteNote, validateAnalysis, writePointNote, type DraftPoint } from './ai';
+import { draftNote, pointFacts } from '../src/domain/noteDraft';
 import { decodeVin } from './vin';
 import { bearer, downloadObject, env, HttpError, json, rateLimit, readJson, route, rpc, signUrls, type Handler } from './lib';
 
@@ -82,6 +83,34 @@ export const aiWording: Handler = route({
     if (!text) throw new HttpError(422, "Couldn't reword this note without changing its numbers; keep yours");
     await rpc('ai_record_wording', { p_inspection: inspectionId, p_point: pointId, p_text: text }, 'service');
     return json({ text });
+  },
+});
+
+// POST /api/ai-note { inspectionId, pointId } -> { text, source: 'ai' | 'rules', basis: { parts, photos } }
+// A draft technician note from the point's confirmed facts and confirmed photos. Nothing is stored: the draft
+// becomes the note only when the technician approves it (set_note), so it can never reach a customer unapproved.
+export const aiNote: Handler = route({
+  POST: async (req) => {
+    const jwt = bearer(req);
+    const { inspectionId, pointId } = await readJson<{ inspectionId: string; pointId: string }>(req);
+    const { inspection, vehicle, template } = await loadAsUser(jwt, inspectionId);
+    if (inspection.status !== 'in_progress') throw new HttpError(409, 'This inspection is no longer open');
+    const point = template.sections.flatMap((s) => s.points).find((p) => p.id === pointId);
+    if (!point) throw new HttpError(404, 'Unknown inspection point');
+    const facts = pointFacts(inspection, vehicle, point);
+    if (!facts.parts.some((p) => p.state !== 'unrated')) throw new HttpError(400, 'Rate a part or confirm a photo on this point first');
+    const basis = { parts: facts.parts.filter((p) => p.state !== 'unrated').length, photos: facts.photoIds.length };
+    if (aiMode() === 'claude') {
+      try {
+        const media = inspection.media.filter((m) => facts.photoIds.includes(m.id)).slice(0, 3);
+        const photos = (await Promise.all(media.map((m) => downloadObject(m.url).catch(() => null)))).filter((x): x is { bytes: Uint8Array; type: string } => !!x);
+        const text = await writePointNote(facts, photos);
+        if (text) return json({ text, source: 'ai', basis });
+      } catch (e) {
+        console.error('ai-note', e);
+      }
+    }
+    return json({ text: draftNote(facts), source: 'rules', basis });
   },
 });
 
@@ -240,5 +269,5 @@ export const status: Handler = route({
 });
 
 export const ROUTES: Record<string, Handler> = {
-  status, pilot, 'template-read': templateRead, 'template-map': templateMap, 'ai-sort': aiSort, 'ai-wording': aiWording, vin, report, 'send-report': sendReport,
+  status, pilot, 'ai-note': aiNote, 'template-read': templateRead, 'template-map': templateMap, 'ai-sort': aiSort, 'ai-wording': aiWording, vin, report, 'send-report': sendReport,
 };

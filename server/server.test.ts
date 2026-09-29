@@ -2,7 +2,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildMappedPoint, candidatesFor, explainAiError, resetAiState, validateAnalysis } from './ai';
 import { mapVpic } from './vin';
-import { aiSort, aiWording, pilot, report, sendReport, status, templateMap, templateRead } from './routes';
+import { aiNote, aiSort, aiWording, pilot, report, sendReport, status, templateMap, templateRead } from './routes';
 import { resetRateLimits } from './lib';
 import { DEFAULT_TEMPLATE, clsByName, compKey } from '../src/domain/ontology';
 import { seedInspections, vehicle } from '../src/domain/seed';
@@ -340,4 +340,42 @@ test('template-map calls the model and returns mapped points', async () => {
   assert.equal(out.length, 2);
   assert.ok(out[0].count > 0);
   assert.deepEqual([out[1].count, out[1].note], [0, 'Not a part']);
+});
+
+// ---------------------------------------------------------------- AI note drafts
+test('ai-note drafts from confirmed facts, sends confirmed photos, and is never stored', async () => {
+  process.env.ANTHROPIC_API_KEY = 'k';
+  let reply = 'Brake fluid copper content is 210 ppm and needs attention now; the reservoir checked OK.';
+  respond = (url) => {
+    if (url.endsWith('/get_inspection')) return bundle((i) => {
+      i.media = [{ id: 'm1', sectionId: 'under_hood', url: 's/i/m1.jpg', label: 'a.jpg', excluded: false, customerVisible: true, analyzed: true,
+        links: [{ compKey: compKey(clsByName('brake_fluid').id, null), status: 'confirmed', confidence: 0.9 }] }];
+    });
+    if (url.includes('/storage/v1/object/inspection-media/')) return new Response(new Uint8Array([255, 216, 255]), { headers: { 'content-type': 'image/jpeg' } });
+    if (url.startsWith('https://api.anthropic.com')) return { content: [{ type: 'tool_use', input: { text: reply } }] };
+    return null;
+  };
+  const r = await aiNote(post('ai-note', { inspectionId: 'i-4r-now', pointId: 'S14' }));
+  const body = await r.json();
+  assert.deepEqual([body.source, body.text], ['ai', reply]);
+  assert.equal(body.basis.photos, 1);
+  const ai = calls.find((c) => c.url.startsWith('https://api.anthropic.com'))!.body as { messages: { content: { type: string; text?: string }[] }[] };
+  assert.equal(ai.messages[0].content[0].type, 'image', 'confirmed photo sent to the model');
+  assert.match(ai.messages[0].content.at(-1)!.text!, /210 ppm/);
+  assert.ok(!calls.some((c) => /set_note|ai_record/.test(c.url)), 'draft is not saved');
+
+  calls = []; reply = 'Brake fluid copper is 350 ppm, flush it.';
+  const r2 = await (await aiNote(post('ai-note', { inspectionId: 'i-4r-now', pointId: 'S14' }))).json();
+  assert.equal(r2.source, 'rules', 'an invented number falls back to the rules draft');
+  assert.match(r2.text, /210 ppm/);
+});
+
+test('ai-note needs something rated on the point and an open inspection', async () => {
+  respond = (url) => (url.endsWith('/get_inspection') ? bundle((i) => { i.results = []; i.findings = []; i.statuses = []; i.media = []; }) : null);
+  assert.equal((await aiNote(post('ai-note', { inspectionId: 'i-4r-now', pointId: 'S14' }))).status, 400);
+  respond = (url) => (url.endsWith('/get_inspection') ? bundle((i) => { i.status = 'submitted'; }) : null);
+  assert.equal((await aiNote(post('ai-note', { inspectionId: 'i-4r-now', pointId: 'S14' }))).status, 409);
+  respond = (url) => (url.endsWith('/get_inspection') ? bundle() : null);
+  const r = await (await aiNote(post('ai-note', { inspectionId: 'i-4r-now', pointId: 'S14' }))).json();
+  assert.equal(r.source, 'rules', 'without an AI key the rules draft is used');
 });
