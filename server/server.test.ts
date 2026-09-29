@@ -2,9 +2,10 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { candidatesFor, validateAnalysis } from './ai';
 import { mapVpic } from './vin';
-import { aiSort, aiWording, report, sendReport } from './routes';
+import { aiSort, aiWording, report, sendReport, status } from './routes';
 import { DEFAULT_TEMPLATE, clsByName, compKey } from '../src/domain/ontology';
 import { seedInspections, vehicle } from '../src/domain/seed';
+import { SIDE_UNSURE_CONFIDENCE } from '../src/domain/types';
 
 const runner = vehicle('v-4runner');
 
@@ -70,6 +71,7 @@ beforeEach(() => {
   process.env.SUPABASE_ANON_KEY = 'anon';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'service';
   delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.AI_STUB;
   delete process.env.TWILIO_ACCOUNT_SID;
   calls = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -92,7 +94,18 @@ function bundle(mut?: (i: ReturnType<typeof seedInspections>[number]) => void) {
 const post = (path: string, body: unknown, jwt = 'user-jwt') =>
   new Request(`https://app.test/api/${path}`, { method: 'POST', headers: { authorization: `Bearer ${jwt}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
+test('without an AI key, ai-sort refuses instead of guessing, and status says AI is off', async () => {
+  respond = (url) => (url.endsWith('/get_inspection') ? bundle() : null);
+  const r = await aiSort(post('ai-sort', { inspectionId: 'i-4r-now', mediaIds: ['m1'] }));
+  assert.equal(r.status, 503);
+  assert.ok(!calls.some((c) => c.url.endsWith('/ai_record_sort')), 'nothing recorded');
+  assert.deepEqual(await (await status(new Request('https://app.test/api/status'))).json(), { ai: false, model: 'off' });
+  process.env.ANTHROPIC_API_KEY = 'k';
+  assert.equal((await (await status(new Request('https://app.test/api/status'))).json()).ai, true);
+});
+
 test('ai-sort requires sign-in and records proposals with the service key only', async () => {
+  process.env.AI_STUB = '1';
   assert.equal((await aiSort(new Request('https://app.test/api/ai-sort', { method: 'POST', body: '{}' }))).status, 401);
   respond = (url) => (url.endsWith('/get_inspection') ? bundle((i) => {
     i.media = [1, 2, 3].map((n) => ({ id: `m${n}`, sectionId: 'under_car', url: `s/i/m${n}.jpg`, label: `IMG_${n}.jpg`,
@@ -120,7 +133,7 @@ test('ai-sort with Claude: model output is validated before it is stored', async
     if (url.includes('/storage/v1/object/inspection-media/')) return new Response(new Uint8Array([255, 216, 255]), { headers: { 'content-type': 'image/jpeg' } });
     if (url.startsWith('https://api.anthropic.com')) return { content: [{ type: 'tool_use', input: { parts: [
       { part: rotor, confidence: 0.92, condition: 'concern', note: 'crack at a vent', findings: [{ key: 'crack', severity: 'minor', confidence: 0.7, rationale: 'hairline crack' }] },
-      { part: caliper, confidence: 0.88, condition: 'looks_ok', note: 'dry', findings: [] }] } }] };
+      { part: caliper, confidence: 0.88, position_certain: true, condition: 'looks_ok', note: 'dry', findings: [] }] } }] };
     return null;
   };
   const r = await aiSort(post('ai-sort', { inspectionId: 'i-4r-now', mediaIds: ['m1'] }));
@@ -132,6 +145,29 @@ test('ai-sort with Claude: model output is validated before it is stored', async
   const items = (calls.find((c) => c.url.endsWith('/ai_record_sort'))!.body as { p_items: { parts: { key: string; condition: string; findings: { key: string }[] }[] }[] }).p_items;
   assert.deepEqual(items[0].parts.map((p) => [p.key, p.condition]), [[rotor, 'concern'], [caliper, 'looks_ok']], 'one photo, two parts');
   assert.equal(items[0].parts[0].findings[0].key, 'crack');
+});
+
+test('ai-sort: a part on an uncertain side is a hint only; a failed AI call leaves the photo retryable', async () => {
+  process.env.ANTHROPIC_API_KEY = 'k';
+  const rotor = compKey(clsByName('brake_rotor').id, 'left_front');
+  let fail = false;
+  respond = (url) => {
+    if (url.endsWith('/get_inspection')) return bundle((i) => {
+      i.media = [{ id: 'm1', sectionId: 'under_car', url: 's/i/m1.jpg', label: 'a.jpg', excluded: false, customerVisible: true, analyzed: false, links: [] }];
+    });
+    if (url.includes('/storage/v1/object/inspection-media/')) return new Response(new Uint8Array([255, 216, 255]), { headers: { 'content-type': 'image/jpeg' } });
+    if (url.startsWith('https://api.anthropic.com')) return fail ? new Response('overloaded', { status: 529 }) : { content: [{ type: 'tool_use', input: { view: 'close-up of a front brake', parts: [
+      { part: rotor, confidence: 0.9, position_certain: false, condition: 'concern', note: 'grooved', findings: [{ key: 'crack', severity: 'minor', confidence: 0.7, rationale: 'x' }] }] } }] };
+    return null;
+  };
+  await aiSort(post('ai-sort', { inspectionId: 'i-4r-now', mediaIds: ['m1'] }));
+  const part = (calls.find((c) => c.url.endsWith('/ai_record_sort'))!.body as { p_items: { parts: { key: string; confidence: number; condition: string; findings: unknown[] }[] }[] }).p_items[0].parts[0];
+  assert.deepEqual([part.key, part.confidence, part.condition, part.findings.length], [rotor, SIDE_UNSURE_CONFIDENCE, 'unclear', 0], 'no condition claims on a guessed side');
+
+  calls = []; fail = true;
+  const r = await aiSort(post('ai-sort', { inspectionId: 'i-4r-now', mediaIds: ['m1'] }));
+  assert.equal(r.status, 502);
+  assert.ok(!calls.some((c) => c.url.endsWith('/ai_record_sort')), 'failed photo not marked as analysed');
 });
 
 test('ai-wording rejects a model rewrite that changes numbers and falls back safely', async () => {

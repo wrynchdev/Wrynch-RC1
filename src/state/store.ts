@@ -44,6 +44,8 @@ export interface State {
   busy: string | null;
   toast: { text: string; kind: 'error' | 'info' } | null;
   photoUrls: Record<string, string>;
+  /** Live mode: whether real AI photo sorting is available (null until checked). */
+  ai: { on: boolean; model: string } | null;
 }
 
 const STORAGE_KEY = 'wrynch-demo-v3'; // bumped when the saved demo data shape changes
@@ -54,7 +56,7 @@ const uid = (p: string) => `${p}-${(seq++).toString(36)}`;
 function demoInitial(): State {
   return {
     mode: 'demo', vehicles: structuredClone(VEHICLES), inspections: seedInspections(), role: 'tech',
-    session: null, workspace: null, jobs: [], loading: 0, busy: null, toast: null, photoUrls: {},
+    session: null, workspace: null, jobs: [], loading: 0, busy: null, toast: null, photoUrls: {}, ai: null,
   };
 }
 function liveInitial(): State {
@@ -253,6 +255,17 @@ export interface NewInspection {
 }
 
 // ------------------------------------------------------------------ actions
+/** Sort photos with the AI in batches; reports photos it couldn't read (they stay unsorted and can be retried). */
+async function runAiSort(inspId: string, ids: string[]) {
+  let failed = 0;
+  for (let k = 0; k < ids.length; k += 12) {
+    set({ busy: `AI is sorting photos ${k + 1}–${Math.min(k + 12, ids.length)} of ${ids.length}…` });
+    const r = await fn<{ failed?: number }>('ai-sort', { inspectionId: inspId, mediaIds: ids.slice(k, k + 12) });
+    failed += r?.failed ?? 0;
+  }
+  if (failed) toast(`The AI couldn’t read ${failed} ${failed === 1 ? 'photo' : 'photos'}. Try “Sort with AI” again or place them by hand.`, 'error');
+}
+
 export const actions = {
   // ---- session & workspace (live)
   async signIn(email: string, password: string) { await auth.signIn(email, password); await actions.loadWorkspace(); },
@@ -275,6 +288,28 @@ export const actions = {
     setTemplate(full.template?.data ?? structuredClone(DEFAULT_TEMPLATE));
     setThresholds(full.rules?.thresholds ?? []);
     set({ workspace: full, jobs: ws.jobs ?? [], session: getSession() });
+    if (!state.ai) void actions.checkAi();
+  },
+  async checkAi() {
+    try {
+      const r = await fn<{ ai: boolean; model: string }>('status', undefined, 'GET', false);
+      set({ ai: { on: !!r.ai, model: String(r.model ?? '') } });
+    } catch { /* unknown: sorting is still attempted and reports its own error */ }
+  },
+  /** Ask the AI to sort photos that haven't been analysed yet (after a failure, or photos added while AI was off). */
+  async sortWithAi(inspId: string, sectionId: string) {
+    const i = state.inspections.find((x) => x.id === inspId);
+    if (!i || state.mode !== 'live') return;
+    const ids = i.media.filter((m) => m.sectionId === sectionId && !m.excluded && !m.analyzed && m.links.length === 0).map((m) => m.id);
+    if (!ids.length) return;
+    try {
+      await runAiSort(inspId, ids);
+    } catch (e) {
+      toast(errText(e), 'error');
+    } finally {
+      set({ busy: null });
+      await reload(inspId).catch(() => undefined);
+    }
   },
   async createShop(name: string, displayName: string) {
     const id = await rpc<string>('create_shop', { p_name: name, p_display_name: displayName, p_template: DEFAULT_TEMPLATE });
@@ -396,12 +431,10 @@ export const actions = {
         await rpc('add_media', { p_inspection: inspId, p_media: id, p_section: sectionId, p_path: path, p_label: f.name });
         ids.push(id);
       }
-      for (let k = 0; k < ids.length; k += 12) {
-        set({ busy: `AI is sorting photos ${k + 1}–${Math.min(k + 12, ids.length)} of ${ids.length}…` });
-        await fn('ai-sort', { inspectionId: inspId, mediaIds: ids.slice(k, k + 12) });
-      }
+      if (state.ai && !state.ai.on) toast(`${ids.length} ${ids.length === 1 ? 'photo' : 'photos'} saved. AI sorting isn’t set up, so place them by hand.`);
+      else await runAiSort(inspId, ids);
     } catch (e) {
-      toast(`${errText(e)}${ids.length ? ` (${ids.length} photos saved; place any unsorted ones by hand)` : ''}`, 'error');
+      toast(`${errText(e)}${ids.length && !/saved/.test(errText(e)) ? ` (${ids.length} photos saved; place any unsorted ones by hand)` : ''}`, 'error');
     } finally {
       set({ busy: null });
       await reload(inspId).catch(() => undefined);

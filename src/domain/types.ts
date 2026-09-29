@@ -200,3 +200,6 @@ export interface Inspection {
   /** Secret token for the customer's report link (server-issued). */
   reportToken?: string | null;
 }
+
+/** Confidence stored on an AI photo link when the AI recognised the part but not which side of the car it is on. */
+export const SIDE_UNSURE_CONFIDENCE = 0.5;
