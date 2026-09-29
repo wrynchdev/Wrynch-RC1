@@ -15,6 +15,7 @@ import type {
   CompKey, EstimateLine, Inspection, NotInspectedReason, Rating, Severity, Template, Vehicle, VehicleConfig,
 } from '../domain/types';
 import { ApiError, auth, fn, getSession, LIVE, onSession, rpc, rpcAnon, shrinkPhoto, signPhotos, upload, type Session } from './remote';
+import { dashFromInspections, type DashData } from '../domain/dashboard';
 
 export type Role = 'owner' | 'advisor' | 'technician';
 export interface Member { userId: string; name: string; role: Role }
@@ -46,6 +47,8 @@ export interface State {
   photoUrls: Record<string, string>;
   /** Live mode: whether real AI photo sorting is available (null until checked). */
   ai: { on: boolean; model: string } | null;
+  /** Shop dashboard for the chosen range (live: from the server; demo: from the inspections here). */
+  dashboard: DashData | null;
 }
 
 const STORAGE_KEY = 'wrynch-demo-v3'; // bumped when the saved demo data shape changes
@@ -56,7 +59,7 @@ const uid = (p: string) => `${p}-${(seq++).toString(36)}`;
 function demoInitial(): State {
   return {
     mode: 'demo', vehicles: structuredClone(VEHICLES), inspections: seedInspections(), role: 'tech',
-    session: null, workspace: null, jobs: [], loading: 0, busy: null, toast: null, photoUrls: {}, ai: null,
+    session: null, workspace: null, jobs: [], loading: 0, busy: null, toast: null, photoUrls: {}, ai: null, dashboard: null,
   };
 }
 function liveInitial(): State {
@@ -313,6 +316,15 @@ export const actions = {
     setThresholds(full.rules?.thresholds ?? []);
     set({ workspace: full, jobs: ws.jobs ?? [], session: getSession() });
     if (!state.ai) void actions.checkAi();
+  },
+  async loadDashboard(days: number) {
+    if (state.mode === 'demo') { set({ dashboard: { ...dashFromInspections(state.inspections, state.vehicles), days } }); return; }
+    const shop = state.workspace?.shop?.id;
+    if (!shop) return;
+    try {
+      const d = await rpc<DashData>('shop_dashboard', { p_shop: shop, p_days: days });
+      set({ dashboard: { days: d.days, money: !!d.money, rows: d.rows ?? [], events: d.events ?? [] } });
+    } catch (e) { toast(errText(e), 'error'); }
   },
   async checkAi() {
     try {

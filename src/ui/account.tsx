@@ -224,7 +224,7 @@ export function NewInspection() {
   };
   return (
     <div className="phone">
-      <TopBar title="New inspection" back="#/" />
+      <TopBar title="New inspection" back="#/jobs" />
       <form className="body" onSubmit={create}>
         <div className="card pad stack">
           <div className="field"><label htmlFor="vin">VIN</label>
@@ -397,7 +397,7 @@ export function TemplateEditor() {
       {!canEdit && <div className="card pad small">Only the shop owner can change the template.</div>}
       {t.sections.map((s, si) => (
         <section key={s.id} className="card">
-          <div className="row" style={{ padding: '10px 14px', borderBottom: '1px solid var(--line2)', background: '#FAF8F4', borderRadius: '14px 14px 0 0' }}>
+          <div className="row" style={{ padding: '10px 14px', borderBottom: '1px solid var(--line2)', background: 'var(--card2)', borderRadius: '14px 14px 0 0' }}>
             <label className="sr" htmlFor={`sec-${s.id}`}>Stage name</label>
             <input id={`sec-${s.id}`} className="input grow" style={{ fontWeight: 700, height: 40 }} value={s.name} disabled={!canEdit} onChange={(e) => change((x) => { x.sections[si].name = e.target.value; })} />
             {canEdit && <button className="linkbtn" onClick={() => change((x) => { x.sections[si].points.push({ id: `P${Date.now().toString(36)}`, name: 'New point', note: null, components: [] }); })}>+ Point</button>}

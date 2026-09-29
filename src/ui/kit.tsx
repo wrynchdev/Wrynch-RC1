@@ -21,6 +21,20 @@ const P: Record<string, ReactNode> = {
   clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
   trash: <path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13" />,
   move: <><path d="M7 7h11l-3-3" /><path d="M17 17H6l3 3" /></>,
+  dashboard: <><rect x="3.5" y="3.5" width="7" height="8" rx="1.5" /><rect x="13.5" y="3.5" width="7" height="5" rx="1.5" /><rect x="13.5" y="11.5" width="7" height="9" rx="1.5" /><rect x="3.5" y="14.5" width="7" height="6" rx="1.5" /></>,
+  clipboard: <><rect x="5" y="4.5" width="14" height="16" rx="2" /><path d="M9 4.5V3.5h6v1M9 10h6M9 14h6M9 18h3" /></>,
+  review: <><path d="M4 5h16v11H9l-5 4z" /><path d="M8.5 10.5l2 2 4-4" /></>,
+  send: <path d="M4 12l16-8-6 16-3-6z" />,
+  dollar: <><circle cx="12" cy="12" r="9" /><path d="M14.5 9.2c-.5-.9-1.5-1.4-2.6-1.4-1.5 0-2.6.8-2.6 2s1.1 1.7 2.6 2c1.6.3 2.8.9 2.8 2.2s-1.2 2.1-2.8 2.1c-1.2 0-2.3-.5-2.8-1.5M12 6.5v11" /></>,
+  approve: <><circle cx="12" cy="12" r="9" /><path d="M8 12.5l2.5 2.5L16 9.5" /></>,
+  sliders: <><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>,
+  layers: <><path d="M12 3l9 5-9 5-9-5z" /><path d="M3 13l9 5 9-5" /></>,
+  users: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" /><path d="M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.8c1.9.8 3.1 2.6 3.5 5.2" /></>,
+  gear: <><circle cx="12" cy="12" r="3" /><path d="M12 2.8v2.4M12 18.8v2.4M4.4 4.4l1.7 1.7M17.9 17.9l1.7 1.7M2.8 12h2.4M18.8 12h2.4M4.4 19.6l1.7-1.7M17.9 6.1l1.7-1.7" /></>,
+  logout: <><path d="M15 4h4v16h-4" /><path d="M10 8l-4 4 4 4M6 12h10" /></>,
+  menu: <path d="M4 7h16M4 12h16M4 17h16" />,
+  eye: <><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" /><circle cx="12" cy="12" r="3" /></>,
+  car: <><path d="M5 16h14v-4l-2-5H7l-2 5z" /><circle cx="8" cy="16.5" r="1.8" /><circle cx="16" cy="16.5" r="1.8" /><path d="M5 12h14" /></>,
 };
 
 export function Icon({ name, size = 18, label, stroke = 2.2 }: { name: keyof typeof P | string; size?: number; label?: string; stroke?: number }) {

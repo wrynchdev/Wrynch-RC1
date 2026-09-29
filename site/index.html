@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Wrynch · Vehicle Condition Intelligence</title>
   <meta name="description" content="Wrynch is digital vehicle inspection for independent shops. AI sorts your techs' photos down to the part, your tech signs off, and every part keeps its own history.">
-  <meta name="theme-color" content="#15171A">
+  <meta name="theme-color" content="#0A1020">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <script>
@@ -23,25 +23,25 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Saira:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
-    /* Same tokens as the app (src/ui/styles.css). Dark surfaces use the app's ink, like its header bar. */
+    /* Same theme as the app (src/ui/styles.css): dark navy surfaces, one blue, status colors tuned for dark.
+       Here --ink is the deepest background and --paper the light text on it. */
     :root {
-      --paper: #F4F2ED; --card: #FFFFFF; --ink: #15171A;
-      --bg: var(--paper); --bg2: var(--card); --panel: var(--card); --panel2: var(--paper);
-      --line: #DDD8CD; --line2: #DDD8CD;
-      --text: var(--ink); --text2: #3F434A; --muted: #585D64;
-      --blue: #1D44C4; --blue2: #1D44C4; --blue-hover: #15318F; --blue-dim: #E6ECFB; --blue-line: rgba(29,68,196,.35);
-      --ok: #146B40; --ok-bg: #DCF1E4; --ok-bar: #3E9B68;
-      --mon: #7A4A00; --mon-bg: #FBEBC8; --mon-bar: #E3A42B;
-      --imm: #A11F1F; --imm-bg: #FADCDA; --imm-bar: #D9483F;
-      --ai: #4F2AAE; --ai-bg: #EEE8FB; --ai-line: #7C55E0;
+      color-scheme: dark;
+      --ink: #0A1020; --paper: #E8EEF8;
+      --bg: #0A1020; --bg2: #0D1526; --panel: #111A2C; --panel2: #16223A; --card: var(--panel);
+      --line: #22314D; --line2: #1A2740;
+      --text: #E8EEF8; --text2: #B3BFD2; --muted: #8C9AB1;
+      --blue: #2F6BFF; --blue2: #86A8FF; --blue-hover: #4A7DFF; --blue-dim: rgba(47,107,255,.16); --blue-line: rgba(134,168,255,.45);
+      --ok: #4CC38A; --ok-bg: rgba(76,195,138,.14); --ok-bar: #34B37A;
+      --mon: #F2B84B; --mon-bg: rgba(242,184,75,.14); --mon-bar: #E3A42B;
+      --imm: #F47C75; --imm-bg: rgba(244,124,117,.15); --imm-bar: #E5534B;
+      --ai: #BBA8FF; --ai-bg: rgba(139,108,240,.14); --ai-line: #8B6CF0;
       --display: Saira, 'Arial Narrow', system-ui, sans-serif;
       --body: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
       --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
       --r: 8px;
     }
-    /* Ink surfaces: hero, closing call to action, footer. */
-    .on-ink { --bg: var(--ink); --panel: #1E2126; --panel2: #25292F; --line: #2C3036; --line2: #3A3F46;
-      --text: var(--paper); --text2: #C5C8CE; --muted: #9A9FA7; --blue2: #8FA6F2; --blue-line: rgba(143,166,242,.5); color: var(--text); }
+    .on-ink { color: var(--text); }
     * { box-sizing: border-box; }
     [hidden] { display: none !important; }
     html { scroll-behavior: smooth; }
@@ -60,11 +60,11 @@
 
     .btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px; padding: 0 28px; border-radius: 6px;
       font: 600 16px/1 var(--body); text-decoration: none; border: 1.5px solid transparent; white-space: nowrap; cursor: pointer; transition: background .15s, border-color .15s, color .15s; }
-    .btn.primary { background: var(--blue); color: #fff; box-shadow: 0 10px 24px -12px rgba(29,68,196,.7); }
+    .btn.primary { background: var(--blue); color: #fff; box-shadow: 0 10px 24px -12px rgba(47,107,255,.7); }
     .btn.primary:hover { background: var(--blue-hover); }
     .btn.outline { border-color: var(--blue-line); color: var(--text); background: transparent; }
-    .on-ink .btn.outline { background: rgba(21,23,26,.35); }
-    .btn.outline:hover { border-color: var(--blue2); background: rgba(29,68,196,.1); }
+    .on-ink .btn.outline { background: rgba(10,16,32,.35); }
+    .btn.outline:hover { border-color: var(--blue2); background: rgba(47,107,255,.1); }
     .btn:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--blue2); outline-offset: 3px; }
 
     /* ------------------------------------------------------------------ hero (from the mockup) */
@@ -74,11 +74,11 @@
       background: url('/hero.jpg') 70% 38% / cover no-repeat; }
     .hero .photo::after { content: ''; position: absolute; inset: 0;
       background:
-        linear-gradient(rgba(21,23,26,.12), rgba(21,23,26,.12)),
-        linear-gradient(90deg, var(--ink) 0%, rgba(21,23,26,.82) 16%, rgba(21,23,26,.25) 44%, rgba(21,23,26,0) 70%),
-        linear-gradient(0deg, rgba(21,23,26,.92) 0%, rgba(21,23,26,.35) 26%, rgba(21,23,26,0) 50%),
-        linear-gradient(180deg, rgba(21,23,26,.65) 0%, rgba(21,23,26,0) 22%); }
-    .hero .glow { position: absolute; left: -12%; top: 12%; width: 56%; height: 76%; background: radial-gradient(closest-side, rgba(29,68,196,.18), transparent); z-index: -1; pointer-events: none; }
+        linear-gradient(rgba(10,16,32,.12), rgba(10,16,32,.12)),
+        linear-gradient(90deg, var(--ink) 0%, rgba(10,16,32,.82) 16%, rgba(10,16,32,.25) 44%, rgba(10,16,32,0) 70%),
+        linear-gradient(0deg, rgba(10,16,32,.92) 0%, rgba(10,16,32,.35) 26%, rgba(10,16,32,0) 50%),
+        linear-gradient(180deg, rgba(10,16,32,.65) 0%, rgba(10,16,32,0) 22%); }
+    .hero .glow { position: absolute; left: -12%; top: 12%; width: 56%; height: 76%; background: radial-gradient(closest-side, rgba(47,107,255,.18), transparent); z-index: -1; pointer-events: none; }
 
     .hero > .wrap { width: 100%; }
     .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding-top: 28px; }
@@ -90,7 +90,7 @@
     nav.links a.nl { text-decoration: none; font: 500 15px var(--body); color: #DCDDE0; }
     nav.links a.nl:hover { color: #fff; }
     nav.links .btn { min-height: 42px; padding: 0 20px; font-size: 15px; }
-    nav.links .btn.login { border-color: rgba(244,242,237,.35); background: rgba(21,23,26,.55); }
+    nav.links .btn.login { border-color: rgba(244,242,237,.35); background: rgba(10,16,32,.55); }
     nav.links .btn.login:hover { border-color: #fff; }
 
     .hero-body { flex: 1; display: flex; align-items: center; padding-top: 48px; padding-bottom: 40px; }
@@ -108,11 +108,11 @@
     .strap p { white-space: nowrap; font: 600 14px/1 var(--display); letter-spacing: .2em; text-transform: uppercase; color: #D2D0CA; }
     .feats { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(120px, 170px)); gap: 20px; }
     .feats li { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; font: 600 17px/1.2 var(--body); color: var(--paper); text-shadow: 0 1px 10px rgba(0,0,0,.7); }
-    .feats svg { width: 46px; height: 46px; color: var(--blue2); filter: drop-shadow(0 0 10px rgba(29,68,196,.7)); }
+    .feats svg { width: 46px; height: 46px; color: var(--blue2); filter: drop-shadow(0 0 10px rgba(47,107,255,.7)); }
 
     /* ------------------------------------------------------------------ sections */
     section.s { padding: 112px 0; border-top: 1px solid var(--line); }
-    .alt { background: var(--card); }
+    .alt { background: var(--bg2); border-top-color: var(--line2); }
     .head { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: end; margin-bottom: 56px; }
     .head .lead { justify-self: end; }
 
@@ -123,12 +123,12 @@
     .stat .n .u { color: var(--blue2); }
     .stat .l { margin-top: 10px; font: 500 14px/1.45 var(--body); color: var(--text2); }
 
-    .card { background: var(--panel); border: 1px solid var(--line2); border-radius: 12px; box-shadow: 0 1px 2px rgba(21,23,26,.04); }
-    .alt .card, .alt .stats { background: var(--paper); }
+    .card { background: var(--panel); border: 1px solid var(--line2); border-radius: 12px; box-shadow: 0 1px 2px rgba(10,16,32,.04); }
+    .alt .card, .alt .stats { background: var(--panel); }
     .phead { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 13px 18px; border-bottom: 1px solid var(--line2);
       font: 600 12px var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--text2); }
     .pbody { padding: 18px; }
-    .rowx { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; padding: 11px 14px; border: 1px solid var(--line); background: var(--paper); border-radius: 8px; margin-bottom: 7px; font-size: 15px; }
+    .rowx { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; padding: 11px 14px; border: 1px solid var(--line); background: var(--panel2); border-radius: 8px; margin-bottom: 7px; font-size: 15px; }
     .rowx .pn { font: 12px var(--mono); color: var(--muted); }
     .rowx .v { font-family: var(--mono); font-size: 13px; color: var(--text2); margin-left: 4px; }
     .rowx.ai { border: 1.5px dashed var(--ai-line); background: var(--ai-bg); }
@@ -179,7 +179,7 @@
 
     .map { display: grid; grid-template-columns: 1fr 56px 1.2fr; align-items: center; }
     .pt { padding: 14px 16px; border-radius: 8px; border: 1px solid var(--line2); font: 600 13px var(--display); letter-spacing: .1em; color: var(--text2); margin-bottom: 8px; background: var(--panel); }
-    .pt.on { background: var(--blue); color: #fff; border-color: var(--blue); box-shadow: 0 10px 24px -12px rgba(29,68,196,.7); }
+    .pt.on { background: var(--blue); color: #fff; border-color: var(--blue); box-shadow: 0 10px 24px -12px rgba(47,107,255,.7); }
     .wire { height: 2px; background: repeating-linear-gradient(90deg, var(--blue2) 0 6px, transparent 6px 10px); position: relative; }
     .wire::after { content: ''; position: absolute; right: -2px; top: -5px; border: 6px solid transparent; border-left-color: var(--blue2); }
     .parts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
@@ -204,13 +204,13 @@
     details p { padding: 0 0 22px; color: var(--text2); }
 
     .final .box { position: relative; overflow: hidden; border-radius: 16px; border: 0; padding: 72px 56px; display: grid; grid-template-columns: 1.3fr .7fr; gap: 40px; align-items: center;
-      background: radial-gradient(ellipse 60% 120% at 100% 50%, rgba(29,68,196,.45), transparent 70%), var(--ink); }
+      background: radial-gradient(ellipse 60% 120% at 100% 50%, rgba(47,107,255,.35), transparent 70%), var(--panel); border: 1px solid var(--line); }
     .final .cta { display: flex; flex-direction: column; gap: 12px; }
     .final .lead { margin-top: 18px; }
 
     /* template preview */
     .tryer { padding: 24px; }
-    .drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 40px 20px; border: 2px dashed var(--line); border-radius: 12px; cursor: pointer; color: var(--text2); background: var(--paper); transition: border-color .15s, background .15s; }
+    .drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 40px 20px; border: 2px dashed var(--line); border-radius: 12px; cursor: pointer; color: var(--text2); background: var(--panel2); transition: border-color .15s, background .15s; }
     .drop svg { color: var(--blue); }
     .drop strong { color: var(--text); font-size: 18px; }
     .drop:hover, .drop.over { border-color: var(--blue); background: var(--blue-dim); }
@@ -226,7 +226,7 @@
     .tpt .nm { font-weight: 600; }
     .tpt .nm small { display: block; color: var(--muted); font-weight: 400; font-size: 13px; margin-top: 2px; }
     .tparts { display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start; }
-    .tparts span { padding: 5px 10px; border-radius: 99px; background: var(--paper); border: 1px solid var(--line); font-size: 14px; }
+    .tparts span { padding: 5px 10px; border-radius: 99px; background: var(--panel2); border: 1px solid var(--line); font-size: 14px; }
     .tparts span i { font-style: normal; color: var(--muted); font-family: var(--mono); font-size: 12px; margin-left: 4px; }
     .tparts span.eq { border-style: dashed; color: var(--text2); }
     .tparts .none { color: var(--muted); font-size: 14px; border: 0; background: none; padding: 5px 0; }
@@ -243,7 +243,7 @@
     .perr { color: #FFB4AE; font-weight: 600; margin: 0; }
     .pnote { margin-top: 16px; color: var(--blue2); font-weight: 600; font-size: 15px; }
     .pdone h3 { font-size: 28px; margin-bottom: 10px; }
-    footer { background: var(--ink); padding: 32px 0 44px; color: var(--muted); font-size: 14px; }
+    footer { background: var(--bg2); border-top: 1px solid var(--line2); padding: 32px 0 44px; color: var(--muted); font-size: 14px; }
     footer .wrap { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
     footer .f-brand { display: flex; align-items: center; gap: 10px; font: 800 18px var(--display); letter-spacing: .08em; color: var(--text); }
     footer .f-brand .wm { height: 22px; width: auto; aspect-ratio: 2827 / 575; color: var(--paper); }
@@ -279,7 +279,7 @@
       .hero { min-height: 0; }
       .hero .photo { width: 100%; background-position: 71% 30%; }
       .hero .photo::after { background:
-        linear-gradient(180deg, rgba(21,23,26,.8) 0%, rgba(21,23,26,.5) 30%, rgba(21,23,26,.72) 60%, var(--ink) 100%); }
+        linear-gradient(180deg, rgba(10,16,32,.8) 0%, rgba(10,16,32,.5) 30%, rgba(10,16,32,.72) 60%, var(--ink) 100%); }
       .hero-body { padding-top: 72px; padding-bottom: 32px; }
       .hero .cta .btn { flex: 1 1 100%; }
       .feats { grid-template-columns: 1fr 1fr; gap: 26px 12px; }
@@ -507,20 +507,20 @@
           <div class="phead"><span>Brake fluid · copper · ppm</span><span class="st imm">■ Immediate</span></div>
           <div class="pbody">
             <svg viewBox="0 0 420 230" role="img" aria-label="Example chart: brake fluid copper rising from 60 to 210 parts per million over four visits, crossing the 200 ppm Immediate line">
-              <g stroke="#ECE8DF"><line x1="44" y1="20" x2="410" y2="20"/><line x1="44" y1="80" x2="410" y2="80"/><line x1="44" y1="140" x2="410" y2="140"/><line x1="44" y1="190" x2="410" y2="190"/></g>
-              <rect x="44" y="20" width="366" height="60" fill="#FADCDA" fill-opacity=".6"/>
-              <rect x="44" y="80" width="366" height="60" fill="#FBEBC8" fill-opacity=".6"/>
-              <line x1="44" y1="80" x2="410" y2="80" stroke="#D9483F" stroke-dasharray="5 4"/>
+              <g stroke="#1E2B44"><line x1="44" y1="20" x2="410" y2="20"/><line x1="44" y1="80" x2="410" y2="80"/><line x1="44" y1="140" x2="410" y2="140"/><line x1="44" y1="190" x2="410" y2="190"/></g>
+              <rect x="44" y="20" width="366" height="60" fill="rgba(244,124,117,.10)"/>
+              <rect x="44" y="80" width="366" height="60" fill="rgba(242,184,75,.08)"/>
+              <line x1="44" y1="80" x2="410" y2="80" stroke="#E5534B" stroke-dasharray="5 4"/>
               <line x1="44" y1="140" x2="410" y2="140" stroke="#E3A42B" stroke-dasharray="5 4"/>
-              <g font-family="IBM Plex Mono, monospace" font-size="11" fill="#585D64" text-anchor="end"><text x="36" y="84">200</text><text x="36" y="144">100</text><text x="36" y="194">0</text></g>
-              <polyline points="72,164 184,128 296,98 400,74" fill="none" stroke="#1D44C4" stroke-width="2.5" stroke-linejoin="round"/>
-              <g font-family="IBM Plex Mono, monospace" font-size="11" fill="#15171A">
-                <circle cx="72" cy="164" r="5" fill="#FFFFFF" stroke="#1D44C4" stroke-width="2"/><text x="72" y="152" text-anchor="middle">60</text>
-                <circle cx="184" cy="128" r="5" fill="#FFFFFF" stroke="#1D44C4" stroke-width="2"/><text x="184" y="116" text-anchor="middle">120</text>
-                <circle cx="296" cy="98" r="5" fill="#FFFFFF" stroke="#1D44C4" stroke-width="2"/><text x="296" y="86" text-anchor="middle">170</text>
-                <circle cx="400" cy="74" r="6" fill="#A11F1F"/><text x="390" y="62" text-anchor="end" fill="#A11F1F">210</text>
+              <g font-family="IBM Plex Mono, monospace" font-size="11" fill="#8C9AB1" text-anchor="end"><text x="36" y="84">200</text><text x="36" y="144">100</text><text x="36" y="194">0</text></g>
+              <polyline points="72,164 184,128 296,98 400,74" fill="none" stroke="#3987e5" stroke-width="2.5" stroke-linejoin="round"/>
+              <g font-family="IBM Plex Mono, monospace" font-size="11" fill="#E8EEF8">
+                <circle cx="72" cy="164" r="5" fill="#111A2C" stroke="#3987e5" stroke-width="2"/><text x="72" y="152" text-anchor="middle">60</text>
+                <circle cx="184" cy="128" r="5" fill="#111A2C" stroke="#3987e5" stroke-width="2"/><text x="184" y="116" text-anchor="middle">120</text>
+                <circle cx="296" cy="98" r="5" fill="#111A2C" stroke="#3987e5" stroke-width="2"/><text x="296" y="86" text-anchor="middle">170</text>
+                <circle cx="400" cy="74" r="6" fill="#F47C75"/><text x="390" y="62" text-anchor="end" fill="#F47C75">210</text>
               </g>
-              <g font-family="Inter, sans-serif" font-size="11" fill="#585D64" text-anchor="middle">
+              <g font-family="Inter, sans-serif" font-size="11" fill="#8C9AB1" text-anchor="middle">
                 <text x="72" y="214">Visit 1</text><text x="184" y="214">Visit 2</text><text x="296" y="214">Visit 3</text><text x="400" y="214" text-anchor="end">Today</text>
               </g>
             </svg>

@@ -17,7 +17,7 @@ const compHref = (inspId: string, key: CompKey, pointId?: string) => `#/insp/${i
 export function Missing() {
   const loading = useStore((x) => x.loading > 0);
   if (loading) return <div className="phone"><div className="body"><p className="muted" role="status">Loading…</p></div></div>;
-  return <div className="phone"><TopBar title="Not found" back="#/" /><div className="body"><p>That page doesn't exist, or you don't have access to it.</p></div></div>;
+  return <div className="phone"><TopBar title="Not found" back="#/jobs" /><div className="body"><p>That page doesn't exist, or you don't have access to it.</p></div></div>;
 }
 
 /** Stages with something to do on this vehicle (the EV stage disappears on a gas car). */
@@ -51,7 +51,7 @@ export function Jobs() {
             <a key={j.id} className="card pad stack" href={href} style={{ color: 'inherit' }}>
               <div className="row between">
                 <span className="mono small muted">{j.ro ? `RO ${j.ro}` : fmtDate(j.date)}</span>
-                <span className={`chip ${j.status === 'in_progress' ? 'na' : 'ok'}`} style={j.status === 'not_started' ? { background: 'var(--blue-tint)', color: 'var(--blue)' } : undefined}>
+                <span className={`chip ${j.status === 'in_progress' ? 'na' : 'ok'}`} style={j.status === 'not_started' ? { background: 'var(--blue-tint)', color: 'var(--blue-text)' } : undefined}>
                   {STATUS_LABEL[j.status]}
                 </span>
               </div>
@@ -109,7 +109,7 @@ export function Setup({ id }: { id: string }) {
   const pointCount = sections().reduce((a, x) => a + x.points.length, 0);
   return (
     <div className="phone">
-      <TopBar title="Set up vehicle" sub="Before the first photo" back="#/" right={insp.ro ? <span className="mono small muted">RO {insp.ro}</span> : undefined} />
+      <TopBar title="Set up vehicle" sub="Before the first photo" back="#/jobs" right={insp.ro ? <span className="mono small muted">RO {insp.ro}</span> : undefined} />
       <div className="body">
         <div className="card pad stack">
           <span className="small muted">VIN</span>
@@ -153,9 +153,9 @@ export function Setup({ id }: { id: string }) {
           </div>
         </fieldset>
         <div className="dark stack" style={{ gap: 4 }}>
-          <span className="small" style={{ color: '#B9BDC3' }}>{ONTOLOGY.template.name} · {pointCount} points</span>
+          <span className="small" style={{ color: 'var(--text2)' }}>{ONTOLOGY.template.name} · {pointCount} points</span>
           <span className="display" style={{ fontSize: 28 }}>{vc.applies.length} parts to rate on this {vehicle.model || 'vehicle'}</span>
-          <span className="small" style={{ color: '#D6D9DD' }}>{vc.na.length} don't apply to this configuration</span>
+          <span className="small" style={{ color: 'var(--text2)' }}>{vc.na.length} don't apply to this configuration</span>
         </div>
       </div>
       <div className="footer">
@@ -180,7 +180,7 @@ export function Overview({ id }: { id: string }) {
   const isDemo = !isLive();
   return (
     <div className="phone">
-      <TopBar title={`${vehicle.year} ${vehicle.model} ${vehicle.trim}`.trim()} sub={`${insp.ro ? `RO ${insp.ro} · ` : ''}${fmtMi(insp.odometer)}`} back="#/"
+      <TopBar title={`${vehicle.year} ${vehicle.model} ${vehicle.trim}`.trim()} sub={`${insp.ro ? `RO ${insp.ro} · ` : ''}${fmtMi(insp.odometer)}`} back="#/jobs"
         right={<a className="linkbtn" href={`#/setup/${id}`}>Vehicle</a>} />
       <div className="body">
         {locked && <div className="card pad row"><Icon name="lock" /><span className="grow">Submitted. Changes are locked.</span><a href={`#/advisor/${id}`}>Advisor view</a></div>}
@@ -206,7 +206,7 @@ export function Overview({ id }: { id: string }) {
           const photos = insp.media.filter((m) => m.sectionId === s.id && !m.excluded).length;
           const complete = done === s.points.length && pend === 0;
           return (
-            <section key={s.id} className="card" style={complete ? undefined : { borderColor: 'var(--ink)' }}>
+            <section key={s.id} className="card" style={complete ? undefined : { borderColor: 'var(--line)' }}>
               <div className="pad row">
                 <span className={`chip ${complete ? 'ok' : 'na'}`}>{complete ? <Icon name="check" size={14} stroke={2.6} /> : null}{done}/{s.points.length}</span>
                 <div className="grow"><div className="t" style={{ fontWeight: 700 }}>{s.name}</div><div className="small muted">{photos} photos</div></div>
@@ -258,23 +258,23 @@ export function Capture({ id, sectionId }: { id: string; sectionId: string }) {
     void actions.addPhotos(id, sectionId, files);
   };
   return (
-    <div className="phone" style={{ background: '#0E0F11', color: 'var(--paper)' }}>
-      <div className="topbar" style={{ background: '#0E0F11', borderColor: '#26292E' }}>
-        <a className="iconbtn" style={{ color: 'var(--paper)' }} href={`#/insp/${id}`} aria-label="Close"><Icon name="close" size={22} /></a>
-        <div className="grow"><h1>{section.name}</h1><div className="sub" style={{ color: '#B9BDC3' }}>Burst capture · shoot in any order</div></div>
+    <div className="phone" style={{ background: 'var(--paper)', color: 'var(--ink)' }}>
+      <div className="topbar" style={{ background: 'var(--paper)', borderColor: 'var(--card2)' }}>
+        <a className="iconbtn" style={{ color: 'var(--ink)' }} href={`#/insp/${id}`} aria-label="Close"><Icon name="close" size={22} /></a>
+        <div className="grow"><h1>{section.name}</h1><div className="sub" style={{ color: 'var(--text2)' }}>Burst capture · shoot in any order</div></div>
       </div>
       <div className="body">
-        <div className="dropzone" style={{ background: '#1A1C1F', borderColor: '#4A4E55', color: 'var(--paper)', minHeight: 300, justifyContent: 'center' }}>
+        <div className="dropzone" style={{ background: 'var(--card)', borderColor: 'var(--line)', color: 'var(--ink)', minHeight: 300, justifyContent: 'center' }}>
           <Icon name="camera" size={40} />
           <strong style={{ fontSize: 18 }}>Shoot or pick every photo for this stage</strong>
-          <span className="small" style={{ color: '#B9BDC3', maxWidth: 320 }}>Shoot with your camera app, then pick them all here at once. Wrynch sorts them onto parts; nothing it suggests counts until you confirm.</span>
+          <span className="small" style={{ color: 'var(--text2)', maxWidth: 320 }}>Shoot with your camera app, then pick them all here at once. Wrynch sorts them onto parts; nothing it suggests counts until you confirm.</span>
           <input ref={fileRef} className="sr" id="files" type="file" accept="image/*" multiple
             onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ''; void add(fs.map((f) => ({ url: URL.createObjectURL(f), name: f.name, file: f }))); }} />
           <label htmlFor="files" className="btn primary" style={{ cursor: 'pointer' }}>Take or choose photos</label>
-          {!isLive() && <button className="btn sm" style={{ background: '#26292E', color: 'var(--paper)' }} onClick={() => add(actions.samplePhotos(sectionId, 12))}>No photos handy? Use 12 sample photos</button>}
+          {!isLive() && <button className="btn sm" style={{ background: 'var(--card2)', color: 'var(--ink)' }} onClick={() => add(actions.samplePhotos(sectionId, 12))}>No photos handy? Use 12 sample photos</button>}
         </div>
-        <div className="small" style={{ color: '#B9BDC3' }}>What to capture in {section.name.toLowerCase()}:</div>
-        <ul className="small" style={{ color: '#D6D9DD', margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
+        <div className="small" style={{ color: 'var(--text2)' }}>What to capture in {section.name.toLowerCase()}:</div>
+        <ul className="small" style={{ color: 'var(--text2)', margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
           {section.points.slice(0, 8).map((p) => <li key={p.id}>{p.name}</li>)}
           {section.points.length > 8 && <li>+ {section.points.length - 8} more</li>}
         </ul>
@@ -865,19 +865,19 @@ export function Finish({ id }: { id: string }) {
         {gate.length > 0 ? (
           <div className="dark stack">
             <div className="row" style={{ alignItems: 'flex-start' }}><Icon name="lock" size={22} />
-              <div><strong style={{ fontSize: 18 }}>{gate.length} {gate.length === 1 ? 'thing needs' : 'things need'} you first</strong><div className="small" style={{ color: '#C9CDD3' }}>Nothing unconfirmed can reach the advisor or the customer.</div></div>
+              <div><strong style={{ fontSize: 18 }}>{gate.length} {gate.length === 1 ? 'thing needs' : 'things need'} you first</strong><div className="small" style={{ color: 'var(--text2)' }}>Nothing unconfirmed can reach the advisor or the customer.</div></div>
             </div>
             {[...ai, ...req].slice(0, 30).map((g) => {
               const [a, b] = labelFor(g);
               return (
-                <a key={g.kind + g.id} href={hrefFor(g)} className="row" style={{ minHeight: 50, padding: '6px 12px', borderRadius: 10, background: '#26292E', color: 'var(--paper)' }}>
+                <a key={g.kind + g.id} href={hrefFor(g)} className="row" style={{ minHeight: 50, padding: '6px 12px', borderRadius: 10, background: 'var(--card2)', color: 'var(--ink)' }}>
                   <Icon name={g.kind === 'ai_finding' ? 'ai' : g.kind === 'photo' ? 'image' : g.kind === 'wording' ? 'text' : 'na'} />
-                  <span className="grow"><span style={{ display: 'block', fontWeight: 600 }}>{a}</span><span className="small" style={{ color: '#B9BDC3' }}>{b}</span></span>
-                  <span className="small" style={{ fontWeight: 700, color: '#A9BCF5' }}>Open</span>
+                  <span className="grow"><span style={{ display: 'block', fontWeight: 600 }}>{a}</span><span className="small" style={{ color: 'var(--text2)' }}>{b}</span></span>
+                  <span className="small" style={{ fontWeight: 700, color: 'var(--blue-text)' }}>Open</span>
                 </a>
               );
             })}
-            {gate.length > 30 && <span className="small" style={{ color: '#C9CDD3' }}>+ {gate.length - 30} more</span>}
+            {gate.length > 30 && <span className="small" style={{ color: 'var(--text2)' }}>+ {gate.length - 30} more</span>}
           </div>
         ) : (
           <div className="card pad row"><span className="chip ok"><Icon name="check" size={14} />Ready</span><span>Every required part is rated and every AI item is resolved.</span></div>

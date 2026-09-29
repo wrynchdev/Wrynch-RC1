@@ -395,7 +395,7 @@ export function Rules() {
               const diff = JSON.stringify([t.ok, t.immediate]) !== JSON.stringify([d.ok, d.immediate]);
               return (
                 <tr key={c.key} className={draft[c.key] ? 'sel' : undefined}>
-                  <td>{cls(c.classId).label}</td><td>{c.name}{diff && <div className="small" style={{ color: 'var(--blue)' }}>Changed from default</div>}</td><td>{c.unit}</td>
+                  <td>{cls(c.classId).label}</td><td>{c.name}{diff && <div className="small" style={{ color: 'var(--blue-text)' }}>Changed from default</div>}</td><td>{c.unit}</td>
                   <td><Pair t={t.ok} edit={canEdit} label={`${c.name} OK`} onOp={(v) => setPart(c.key, 'ok', 0, v)} onVal={(v) => setPart(c.key, 'ok', 1, v)} /></td>
                   <td>{t.immediate ? <Pair t={t.immediate} edit={canEdit} label={`${c.name} immediate`} onOp={(v) => setPart(c.key, 'immediate', 0, v)} onVal={(v) => setPart(c.key, 'immediate', 1, v)} /> : <span className="muted small">Technician decides</span>}</td>
                   <td className="small muted">{c.basis}</td>
