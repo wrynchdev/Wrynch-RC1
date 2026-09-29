@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { candidatesFor, explainAiError, validateAnalysis } from './ai';
+import { candidatesFor, explainAiError, resetAiState, validateAnalysis } from './ai';
 import { mapVpic } from './vin';
 import { aiSort, aiWording, report, sendReport, status } from './routes';
 import { DEFAULT_TEMPLATE, clsByName, compKey } from '../src/domain/ontology';
@@ -73,6 +73,7 @@ beforeEach(() => {
   delete process.env.ANTHROPIC_API_KEY;
   delete process.env.AI_STUB;
   delete process.env.ANTHROPIC_WORKSPACE_ID;
+  resetAiState();
   delete process.env.TWILIO_ACCOUNT_SID;
   calls = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -251,4 +252,28 @@ test('ai-sort reports why a photo could not be read (unsupported format)', async
   assert.equal(r.status, 502);
   assert.match((await r.json()).error, /image\/heic; the AI reads JPEG/);
   assert.ok(!calls.some((c) => c.url.startsWith('https://api.anthropic.com')), 'unsupported photo never sent');
+});
+
+test('a model that refuses a forced tool choice is asked again with auto and still recorded', async () => {
+  process.env.ANTHROPIC_API_KEY = 'k';
+  const caliper = compKey(clsByName('brake_caliper').id, 'left_front');
+  const aiBodies: { tool_choice: { type: string } }[] = [];
+  respond = (url, body) => {
+    if (url.endsWith('/get_inspection')) return bundle((i) => {
+      i.media = [{ id: 'm1', sectionId: 'under_car', url: 's/i/m1.jpg', label: 'a.jpg', excluded: false, customerVisible: true, analyzed: false, links: [] }];
+    });
+    if (url.includes('/storage/v1/object/inspection-media/')) return new Response(new Uint8Array([255, 216, 255]), { headers: { 'content-type': 'image/jpeg' } });
+    if (url.startsWith('https://api.anthropic.com')) {
+      const b = body as { tool_choice: { type: string } };
+      aiBodies.push(b);
+      if (b.tool_choice.type === 'tool') return new Response(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'tool_choice: type "tool" and "any" are not supported for this model.' } }), { status: 400 });
+      return { content: [{ type: 'thinking', thinking: '…' }, { type: 'text', text: 'Here you go: {"view":"wheel","parts":[{"part":"' + caliper + '","confidence":0.9,"position_certain":true,"condition":"looks_ok","note":"dry","findings":[]}]}' }] };
+    }
+    return null;
+  };
+  const r = await aiSort(post('ai-sort', { inspectionId: 'i-4r-now', mediaIds: ['m1'] }));
+  assert.equal(r.status, 200);
+  assert.deepEqual(aiBodies.map((b) => b.tool_choice.type), ['tool', 'auto']);
+  const items = (calls.find((c) => c.url.endsWith('/ai_record_sort'))!.body as { p_items: { parts: { key: string }[] }[] }).p_items;
+  assert.equal(items[0].parts[0].key, caliper, 'JSON in a text answer is used when no tool call comes back');
 });
