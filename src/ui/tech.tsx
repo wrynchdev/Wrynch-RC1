@@ -5,7 +5,7 @@ import {
 } from '../domain/ontology';
 import { completionGate, componentState, findingRating, isPendingAi, mediaPending, photosOf, summarize } from '../domain/rating';
 import type { CompKey, Finding, Inspection, Media, NotInspectedReason, Rating, Severity, Vehicle, VehicleConfig } from '../domain/types';
-import { SEVERITIES } from '../domain/types';
+import { SEVERITIES, SIDE_UNSURE_CONFIDENCE } from '../domain/types';
 import { actions, isLive, jobList, photoSrc, useStore } from '../state/store';
 import { AiChip, fmtDate, fmtMi, Icon, Sheet, StateChip, Tile, TopBar } from './kit';
 import { enc, go, pointStatus, useInspection, useVehicleHistory } from './hooks';
@@ -285,6 +285,7 @@ export function Capture({ id, sectionId }: { id: string; sectionId: string }) {
 
 // ------------------------------------------------------------------ Sort photos
 const pct = (n: number | null) => `${Math.round((n ?? 0) * 100)}%`;
+const sideUnsure = (l: Media['links'][number]) => l.status === 'ai_proposed' && l.confidence !== null && l.confidence <= SIDE_UNSURE_CONFIDENCE;
 function linkSummary(m: Media): string {
   if (!m.links.length) return m.analyzed ? 'AI couldn’t identify a part' : 'Not placed yet';
   const names = m.links.map((l) => compLabel(l.compKey, true));
@@ -294,12 +295,16 @@ function linkSummary(m: Media): string {
 export function Sort({ id, sectionId }: { id: string; sectionId: string }) {
   const data = useInspection(id);
   const busy = useStore((x) => x.busy);
+  const ai = useStore((x) => x.ai);
+  const mode = useStore((x) => x.mode);
   const [placing, setPlacing] = useState<string | null>(null);
   const section = sections().find((s) => s.id === sectionId);
   if (!data || !section) return <Missing />;
   const { insp, vehicle } = data;
   const media = insp.media.filter((m) => m.sectionId === sectionId && !m.excluded);
   const needs = media.filter((m) => m.links.length === 0);
+  const unread = needs.filter((m) => !m.analyzed).length;
+  const aiOff = mode === 'live' && ai !== null && !ai.on;
   const proposedLinks = media.reduce((n, m) => n + m.links.filter((l) => l.status === 'ai_proposed').length, 0);
   const partsSeen = media.reduce((n, m) => n + m.links.length, 0);
   // A photo appears under every point whose parts it shows, including points in other stages.
@@ -317,16 +322,26 @@ export function Sort({ id, sectionId }: { id: string; sectionId: string }) {
             <strong>{busy ? 'Working on your photos…' : 'No photos yet'}</strong>
             {!busy && <a className="btn primary" href={`#/insp/${id}/capture/${sectionId}`}><Icon name="camera" />Capture this stage</a>}
           </div>
+        ) : aiOff ? (
+          <div className="card pad small" role="status">
+            <strong>AI photo sorting isn’t set up for this shop yet.</strong> Tap <em>Place</em> on each photo to pick the parts it shows.
+          </div>
         ) : (
           <div className="ai-box row" style={{ alignItems: 'flex-start' }}>
             <Icon name="ai" />
             <span className="small"><strong>AI found {partsSeen} parts in {media.length - needs.length} of {media.length} photos</strong> and noted the condition of each.
-              A photo can show several parts and counts for each of their points. Dashed = not confirmed yet. Tap a photo to change its parts.</span>
+              A photo can show several parts and counts for each of their points. Dashed = not confirmed yet; “check side” = right part, side not certain. Tap a photo to change its parts.
+              {mode === 'demo' && ' (Demo: suggestions are simulated, not read from the photo.)'}</span>
           </div>
         )}
         {needs.length > 0 && (
           <section className="stack">
-            <h2 className="h2">Needs you · {needs.length}</h2>
+            <div className="row between">
+              <h2 className="h2">Needs you · {needs.length}</h2>
+              {mode === 'live' && !aiOff && unread > 0 && !busy && (
+                <button className="btn sm secondary" onClick={() => actions.sortWithAi(id, sectionId)}><Icon name="ai" size={16} />Sort {unread} with AI</button>
+              )}
+            </div>
             {needs.map((m) => (
               <div key={m.id} className="card row" style={{ padding: 10 }}>
                 <img src={photoSrc(m.url)} alt="" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8 }} />
@@ -343,11 +358,12 @@ export function Sort({ id, sectionId }: { id: string; sectionId: string }) {
             <div className="thumbs">
               {items.map((m) => {
                 const pending = m.links.some((l) => l.status === 'ai_proposed');
+                const checkSide = m.links.some(sideUnsure);
                 return (
                   <button key={m.id} className={`thumb${pending ? ' pending' : ''}`} onClick={() => setPlacing(m.id)} aria-label={`Photo showing ${linkSummary(m)}. Tap to change.`}>
                     <img src={photoSrc(m.url)} alt="" />
                     <span className="t">{linkSummary(m)}</span>
-                    <span className="c" style={pending ? undefined : { color: 'var(--ok)' }}>{pending ? `AI · ${pct(Math.max(...m.links.map((l) => l.confidence ?? 0)))} sure` : 'Confirmed'}</span>
+                    <span className="c" style={pending ? undefined : { color: 'var(--ok)' }}>{checkSide ? 'AI · check side' : pending ? `AI · ${pct(Math.max(...m.links.map((l) => l.confidence ?? 0)))} sure` : 'Confirmed'}</span>
                   </button>
                 );
               })}
@@ -398,7 +414,7 @@ function PlaceSheet({ insp, vehicle, media, onClose }: { insp: Inspection; vehic
               <div key={l.compKey} className="small row" style={{ alignItems: 'flex-start' }}>
                 <Icon name="ai" size={14} />
                 <span><strong>{compLabel(l.compKey, true)}</strong> · {fs.length ? fs.map((f) => `${findingLabel(f.key).toLowerCase()} (${f.severity})`).join(', ') : o ? 'looks OK' : 'condition unclear'}
-                  {l.status === 'ai_proposed' && l.confidence !== null ? ` · ${pct(l.confidence)} sure it’s this part` : ''}</span>
+                  {sideUnsure(l) ? ' · side not certain, pick the right one below' : l.status === 'ai_proposed' && l.confidence !== null ? ` · ${pct(l.confidence)} sure it’s this part` : ''}</span>
               </div>
             );
           })}

@@ -38,7 +38,7 @@ export function writeIndex() {
   cpSync('index.html', 'dist/app/index.html');
 }
 
-const ROUTE_NAMES = ['ai-sort', 'ai-wording', 'vin', 'report', 'send-report'];
+const ROUTE_NAMES = ['status', 'ai-sort', 'ai-wording', 'vin', 'report', 'send-report'];
 
 async function buildFunctions() {
   const out = '.vercel/output';

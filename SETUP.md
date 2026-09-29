@@ -37,6 +37,10 @@ Nothing secret ever goes in the code or in chat: keys go only into Supabase's an
    | `APP_URL` | the app's address, e.g. `https://wrynch-rc1.vercel.app` | yes |
    | `ANTHROPIC_API_KEY` | from console.anthropic.com | for real AI photo sorting and wording |
    | `ANTHROPIC_MODEL` | defaults to `claude-sonnet-5` | optional |
+
+   Without `ANTHROPIC_API_KEY` the app does not guess: photos stay unsorted and techs place them by hand.
+   To check, open `https://<your-app>/api/status`: `{"ai":true,…}` means real AI sorting is on.
+   For the most accurate photo reading, set `ANTHROPIC_MODEL` to `claude-opus-5-5` (higher cost per photo).
    | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` | from Twilio | to text reports |
    | `RESEND_API_KEY`, `EMAIL_FROM` | from Resend (e.g. `Reyes Auto <reports@yourshop.com>`) | to email reports |
 

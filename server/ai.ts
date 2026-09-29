@@ -3,6 +3,7 @@
 import { cls, compLabel, findingLabel, parseKey, pointComponents } from '../src/domain/ontology';
 import { suggestWording, wordingKeepsFacts, type PartReading, type PhotoAnalysis } from '../src/domain/aiStub';
 import type { CompKey, PointNote, Severity, Template, VehicleConfig } from '../src/domain/types';
+import { SIDE_UNSURE_CONFIDENCE } from '../src/domain/types';
 import { env, HttpError } from './lib';
 
 export interface Candidate { key: CompKey; stage: string; label: string; findings: string[] }
@@ -36,8 +37,10 @@ const clamp01 = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) ? M
  * Turn raw model output into safe suggestions. A part not on the candidate list, a finding the ontology doesn't
  * allow for that part, or a low-confidence identification is dropped. "Looks OK" is kept only when there are no
  * findings; a concern with no valid finding becomes "unclear" (the photo is linked, nothing is claimed).
+ * When the model knows the part but not which corner of the car it is on, the photo is linked as a hint with
+ * confidence SIDE_UNSURE_CONFIDENCE and no condition claims: the technician picks the side.
  */
-export function validateAnalysis(mediaId: string, raw: unknown, candidates: Candidate[], minConfidence = 0.55): PhotoAnalysis {
+export function validateAnalysis(mediaId: string, raw: unknown, candidates: Candidate[], minConfidence = 0.6): PhotoAnalysis {
   const out: PhotoAnalysis = { mediaId, parts: [] };
   const list = (raw as { parts?: unknown } | null)?.parts;
   if (!Array.isArray(list)) return out;
@@ -47,6 +50,14 @@ export function validateAnalysis(mediaId: string, raw: unknown, candidates: Cand
     const cand = candidates.find((c) => c.key === r.part);
     const confidence = clamp01(r.confidence);
     if (!cand || confidence < minConfidence || out.parts.some((p) => p.key === cand.key)) continue;
+    const classId = parseKey(cand.key).classId;
+    const otherSides = candidates.some((c) => c.key !== cand.key && parseKey(c.key).classId === classId);
+    if (r.position_certain === false && otherSides) {
+      if (out.parts.some((p) => parseKey(p.key).classId === classId)) continue;
+      out.parts.push({ key: cand.key, confidence: SIDE_UNSURE_CONFIDENCE, condition: 'unclear', note: 'Side not certain from this photo.', findings: [] });
+      if (out.parts.length >= 8) break;
+      continue;
+    }
     const findings: PartReading['findings'] = [];
     for (const f of Array.isArray(r.findings) ? r.findings : []) {
       const x = f as Record<string, unknown>;
@@ -65,7 +76,9 @@ export function validateAnalysis(mediaId: string, raw: unknown, candidates: Cand
   return out;
 }
 
-const model = () => env('ANTHROPIC_MODEL') ?? 'claude-sonnet-5';
+export const model = () => env('ANTHROPIC_MODEL') ?? 'claude-sonnet-5';
+/** Real AI when a key is set; the rule-based stand-in only when explicitly asked for (tests, local demos). */
+export const aiMode = (): 'claude' | 'stub' | 'off' => (env('ANTHROPIC_API_KEY') ? 'claude' : env('AI_STUB') === '1' ? 'stub' : 'off');
 
 async function claude(body: Record<string, unknown>): Promise<Record<string, unknown>> {
   const key = env('ANTHROPIC_API_KEY');
@@ -91,26 +104,30 @@ function toolInput(res: Record<string, unknown>): unknown {
 const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64');
 
 /** Ask Claude which parts one photo shows and the visible condition of each. */
-export async function analyzePhoto(image: { bytes: Uint8Array; type: string }, candidates: Candidate[], stageName: string): Promise<unknown> {
+export async function analyzePhoto(image: { bytes: Uint8Array; type: string }, candidates: Candidate[], stageName: string, vehicleText = ''): Promise<unknown> {
   const findingKeys = [...new Set(candidates.flatMap((c) => c.findings))];
   const byStage = new Map<string, Candidate[]>();
   for (const c of candidates) byStage.set(c.stage, [...(byStage.get(c.stage) ?? []), c]);
   const list = [...byStage.entries()].map(([stage, cs]) => `${stage}:\n` + cs.map((c) =>
     `- ${c.key}: ${c.label} (findings: ${c.findings.map((k) => findingLabel(k).toLowerCase()).join(', ')})`).join('\n')).join('\n\n');
   const res = await claude({
-    max_tokens: 1500,
-    system: 'You help automotive technicians inspect vehicles from photos. You only suggest; a technician confirms everything. '
-      + 'Identify every listed part that is clearly visible in the photo (a photo often shows several) and judge the visible condition of each. '
-      + 'Say "looks_ok" only when enough of the part is visible to see it is free of damage, leaks, corrosion and abnormal wear; '
-      + 'say "concern" with at least one finding when you can see a problem; otherwise "unclear". '
-      + 'Be conservative with positions (left = driver side in the US) and give low confidence when unsure. '
-      + 'Never estimate measurements such as tread depth or pad thickness. Only report findings you can actually see.',
+    max_tokens: 2000,
+    system: [
+      'You help automotive technicians inspect vehicles from photos. You only suggest; a technician confirms everything.',
+      'Work in this order: first describe what the photo shows and where the camera is (engine bay, under the car looking up, a wheel well, the interior, etc.). Then list the parts from the list that are clearly visible, and judge the condition of each.',
+      'Only list a part if you can actually see it well enough to recognise it. Do not list parts that are merely likely to be nearby or that are hidden behind other parts. Fewer, correct parts are better than many guesses.',
+      'Positions: left = driver side, right = passenger side (US vehicles). Decide the corner only from evidence in the photo: steering rack or tie rods (front), axle or differential (rear), exhaust routing, fuel tank or filler, a visible fender, bumper or door, or the engine layout. A close-up of one wheel, brake or suspension part usually does not show which corner it is: then set position_certain to false and pick your best guess.',
+      'Condition: "looks_ok" only when enough of the part is visible to see it is free of damage, leaks, corrosion and abnormal wear. "concern" with at least one finding when you can see a problem. Otherwise "unclear". Surface rust and road grime on underbody parts are normal.',
+      'Never estimate measurements such as tread depth, pad thickness or rotor thickness. Only report findings you can actually see.',
+      'Confidence is how sure you are that it is this part; use 0.9+ only when it is unmistakable.',
+    ].join(' '),
     tools: [{
       name: 'record_photo',
-      description: 'Record each visible part and its condition.',
+      description: 'Record what the photo shows, each visible part and its condition.',
       input_schema: {
         type: 'object',
         properties: {
+          view: { type: 'string', description: 'One or two sentences: what the photo shows, where the camera is, and any clues about front/rear and left/right.' },
           parts: {
             type: 'array',
             maxItems: 8,
@@ -118,7 +135,8 @@ export async function analyzePhoto(image: { bytes: Uint8Array; type: string }, c
               type: 'object',
               properties: {
                 part: { type: 'string', enum: candidates.map((c) => c.key), description: 'Part key from the list' },
-                confidence: { type: 'number', minimum: 0, maximum: 1, description: 'How sure you are this is that part at that position' },
+                confidence: { type: 'number', minimum: 0, maximum: 1, description: 'How sure you are this is that part' },
+                position_certain: { type: 'boolean', description: 'True only if the photo itself shows which corner/side this part is on' },
                 condition: { type: 'string', enum: CONDITIONS },
                 note: { type: 'string', description: 'One short sentence on what is visible' },
                 findings: {
@@ -135,11 +153,11 @@ export async function analyzePhoto(image: { bytes: Uint8Array; type: string }, c
                   },
                 },
               },
-              required: ['part', 'confidence', 'condition', 'note', 'findings'],
+              required: ['part', 'confidence', 'position_certain', 'condition', 'note', 'findings'],
             },
           },
         },
-        required: ['parts'],
+        required: ['view', 'parts'],
       },
     }],
     tool_choice: { type: 'tool', name: 'record_photo' },
@@ -147,9 +165,9 @@ export async function analyzePhoto(image: { bytes: Uint8Array; type: string }, c
       role: 'user',
       content: [
         { type: 'image', source: { type: 'base64', media_type: image.type.startsWith('image/') ? image.type : 'image/jpeg', data: b64(image.bytes) } },
-        { type: 'text', text: `Taken during the "${stageName}" stage of a vehicle inspection. Part keys look like "classId@position". `
+        { type: 'text', text: `${vehicleText ? `Vehicle: ${vehicleText}. ` : ''}Taken during the "${stageName}" stage of a vehicle inspection. Part keys look like "classId@position". `
           + `Parts on this vehicle, by stage (the photo's own stage first; it may also show parts from other stages):\n\n${list}\n\n`
-          + 'List every visible part and its condition. Use an empty list if no listed part is identifiable.' },
+          + 'Describe the view, then list only the parts you can clearly see, with their condition. Use an empty list if no listed part is identifiable.' },
       ],
     }],
   });

@@ -1,7 +1,7 @@
 // HTTP endpoints. Each is deployed as its own function under /api/<name> (see scripts/build.mjs).
 import { analyzePhotos, type PhotoAnalysis } from '../src/domain/aiStub';
 import type { Inspection, Template, Vehicle } from '../src/domain/types';
-import { analyzePhoto, candidatesFor, rewriteNote, validateAnalysis } from './ai';
+import { aiMode, analyzePhoto, candidatesFor, model, rewriteNote, validateAnalysis } from './ai';
 import { decodeVin } from './vin';
 import { bearer, downloadObject, env, HttpError, json, readJson, route, rpc, signUrls, type Handler } from './lib';
 
@@ -25,6 +25,9 @@ export const aiSort: Handler = route({
     const jwt = bearer(req);
     const { inspectionId, mediaIds } = await readJson<{ inspectionId: string; mediaIds: string[] }>(req);
     if (!inspectionId || !Array.isArray(mediaIds) || mediaIds.length > 60) throw new HttpError(400, 'Send an inspection and up to 60 photos');
+    const mode = aiMode();
+    // Never pass off guesses as AI: without a key, photos stay unsorted for the technician to place.
+    if (mode === 'off') throw new HttpError(503, 'AI photo sorting isn’t set up yet. Your photos are saved; place them by hand.');
     const { inspection, vehicle, template } = await loadAsUser(jwt, inspectionId);
     if (inspection.status !== 'in_progress') throw new HttpError(409, 'This inspection is no longer open');
     const todo = inspection.media.filter((m) => mediaIds.includes(m.id) && !m.excluded && !m.analyzed && m.links.length === 0);
@@ -32,28 +35,33 @@ export const aiSort: Handler = route({
     for (const m of todo) bySection.set(m.sectionId, [...(bySection.get(m.sectionId) ?? []), m]);
 
     const analyses: PhotoAnalysis[] = [];
-    const useModel = !!env('ANTHROPIC_API_KEY');
+    let failed = 0;
+    const vehicleText = [vehicle.year || '', vehicle.make, vehicle.model, vehicle.trim].filter(Boolean).join(' ');
     for (const [sectionId, items] of bySection) {
-      if (useModel) {
+      if (mode === 'claude') {
         const candidates = candidatesFor(template, sectionId, vehicle.config);
         const stage = template.sections.find((s) => s.id === sectionId)?.name ?? sectionId;
-        analyses.push(...await pool(items, 4, async (m) => {
+        const results = await pool(items, 4, async (m) => {
           try {
-            return validateAnalysis(m.id, await analyzePhoto(await downloadObject(m.url), candidates, stage), candidates);
+            return validateAnalysis(m.id, await analyzePhoto(await downloadObject(m.url), candidates, stage, vehicleText), candidates);
           } catch (e) {
+            // Not recorded, so the photo stays "not sorted" and can be retried.
             console.error('photo', m.id, e);
-            return { mediaId: m.id, parts: [] };
+            failed++;
+            return null;
           }
-        }));
+        });
+        analyses.push(...results.filter((a): a is PhotoAnalysis => a !== null));
       } else {
-        // No AI key configured: the deterministic stand-in keeps the workflow usable.
+        // AI_STUB=1 (tests and local demos only): the rule-based stand-in.
         analyses.push(...analyzePhotos(sectionId, items.map((m) => ({ id: m.id, name: m.label })), vehicle.config, template));
       }
     }
-    await rpc('ai_record_sort', { p_inspection: inspectionId, p_items: analyses }, 'service');
+    if (todo.length && !analyses.length) throw new HttpError(502, 'The AI couldn’t read these photos right now. They’re saved; try “Sort with AI” again or place them by hand.');
+    if (analyses.length) await rpc('ai_record_sort', { p_inspection: inspectionId, p_items: analyses }, 'service');
     return json({
       photos: analyses.length, identified: analyses.filter((a) => a.parts.length).length,
-      parts: analyses.reduce((n, a) => n + a.parts.length, 0), model: useModel ? 'claude' : 'stub',
+      parts: analyses.reduce((n, a) => n + a.parts.length, 0), failed, model: mode === 'claude' ? model() : 'stub',
     });
   },
 });
@@ -153,6 +161,11 @@ async function sendEmail(to: string, subject: string, text: string): Promise<{ s
   return r.ok ? { status: 'sent', detail: '' } : { status: 'failed', detail: `email service error ${r.status}` };
 }
 
+// GET /api/status: whether AI photo sorting is available (no secrets, no sign-in).
+export const status: Handler = route({
+  GET: async () => json({ ai: aiMode() !== 'off', model: aiMode() === 'claude' ? model() : aiMode() }),
+});
+
 export const ROUTES: Record<string, Handler> = {
-  'ai-sort': aiSort, 'ai-wording': aiWording, vin, report, 'send-report': sendReport,
+  status, 'ai-sort': aiSort, 'ai-wording': aiWording, vin, report, 'send-report': sendReport,
 };
