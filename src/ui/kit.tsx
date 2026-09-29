@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { ComponentState } from '../domain/types';
+import { MARK, WORDMARK } from './logoPaths';
 
 const P: Record<string, ReactNode> = {
   back: <path d="M15 6l-6 6 6 6" />,
@@ -31,11 +32,20 @@ export function Icon({ name, size = 18, label, stroke = 2.2 }: { name: keyof typ
   );
 }
 
-export function Logo({ onDark = true }: { onDark?: boolean }) {
+/** The Wrynch wrench (from the official logo). Takes the text color. */
+export function Logo({ size = 28 }: { size?: number }) {
   return (
-    <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true">
-      <path d="M16 2l12 7v14l-12 7-12-7V9z" fill={onDark ? '#F4F2ED' : '#15171A'} />
-      <circle cx="16" cy="16" r="5.5" fill="none" stroke={onDark ? '#15171A' : '#F4F2ED'} strokeWidth="3" />
+    <svg height={size} width={(size * MARK.w) / MARK.h} viewBox={`0 0 ${MARK.w} ${MARK.h}`} aria-hidden="true">
+      <path fill="currentColor" fillRule="evenodd" d={MARK.d} />
+    </svg>
+  );
+}
+
+/** The full WRYNCH wordmark (official logo). Takes the text color. */
+export function Wordmark({ height = 32 }: { height?: number }) {
+  return (
+    <svg height={height} width={(height * WORDMARK.w) / WORDMARK.h} viewBox={`0 0 ${WORDMARK.w} ${WORDMARK.h}`} role="img" aria-label="Wrynch">
+      <path fill="currentColor" fillRule="evenodd" d={WORDMARK.d} />
     </svg>
   );
 }
