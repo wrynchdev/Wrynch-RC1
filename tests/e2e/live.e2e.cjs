@@ -212,6 +212,10 @@ const B = `${ROOT}/app/`;
   if (db !== '4wd|true') errs.push('vehicle config in database: ' + db);
   const real = errs.filter((e) => !/ERR_TUNNEL_CONNECTION_FAILED|fonts\.g/.test(e));
   await b.close();
-  if (real.length) { console.error('E2E FAILED', JSON.stringify(real, null, 1), `screenshots: ${SHOTS}`); process.exit(1); }
+  if (real.length) {
+    // In GitHub Actions, also report each failure as an annotation so it shows on the check without opening logs.
+    if (process.env.GITHUB_ACTIONS) for (const e of real) console.log(`::error title=E2E::${String(e).replace(/\r?\n/g, ' ').slice(0, 900)}`);
+    console.error('E2E FAILED', JSON.stringify(real, null, 1), `screenshots: ${SHOTS}`); process.exit(1);
+  }
   console.log('E2E PASSED: sign-up, shop, invite, new inspection, upload + AI sort, measurement, finish, estimate, send, customer approval');
 })();
