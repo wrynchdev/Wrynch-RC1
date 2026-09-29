@@ -98,12 +98,20 @@ export const model = () => env('ANTHROPIC_MODEL') ?? 'claude-sonnet-5';
 /** Real AI when a key is set; the rule-based stand-in only when explicitly asked for (tests, local demos). */
 export const aiMode = (): 'claude' | 'stub' | 'off' => (env('ANTHROPIC_API_KEY') ? 'claude' : env('AI_STUB') === '1' ? 'stub' : 'off');
 
-async function claude(body: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const key = env('ANTHROPIC_API_KEY');
-  if (!key) throw new HttpError(503, 'AI is not configured');
-  let r: Response;
+// Some models don't accept a forced tool choice. After the first refusal we ask with tool_choice "auto" and an
+// instruction to call the tool instead (per server instance).
+let forcedToolUnsupported = false;
+
+function withAutoToolChoice(body: Record<string, unknown>): Record<string, unknown> {
+  const choice = body.tool_choice as { type?: string; name?: string } | undefined;
+  if (!choice || (choice.type !== 'tool' && choice.type !== 'any')) return body;
+  const name = choice.name ?? 'the tool';
+  return { ...body, tool_choice: { type: 'auto' }, system: `${body.system ?? ''}\n\nAlways answer by calling the ${name} tool exactly once. Do not answer in plain text.` };
+}
+
+async function send(key: string, body: Record<string, unknown>): Promise<Response> {
   try {
-    r = await fetch('https://api.anthropic.com/v1/messages', {
+    return await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json',
@@ -118,18 +126,41 @@ async function claude(body: Record<string, unknown>): Promise<Record<string, unk
     const timedOut = e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError');
     throw new HttpError(504, timedOut ? 'The AI took too long on this photo. Try again.' : 'Couldn’t reach the AI service. Try again.');
   }
+}
+
+async function claude(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const key = env('ANTHROPIC_API_KEY');
+  if (!key) throw new HttpError(503, 'AI is not configured');
+  let r = await send(key, forcedToolUnsupported ? withAutoToolChoice(body) : body);
   if (!r.ok) {
     const t = await r.text();
+    if (r.status === 400 && /tool_choice/i.test(t) && !forcedToolUnsupported) {
+      forcedToolUnsupported = true;
+      r = await send(key, withAutoToolChoice(body));
+      if (r.ok) return (await r.json()) as Record<string, unknown>;
+      const t2 = await r.text();
+      console.error('Anthropic API error', r.status, t2.slice(0, 500));
+      throw new HttpError(502, explainAiError(r.status, t2));
+    }
     console.error('Anthropic API error', r.status, t.slice(0, 500));
     throw new HttpError(502, explainAiError(r.status, t));
   }
   return (await r.json()) as Record<string, unknown>;
 }
 
+/** The tool call's input; if the model answered in text instead, the first JSON object in that text. */
 function toolInput(res: Record<string, unknown>): unknown {
-  const content = (res.content as { type: string; input?: unknown }[] | undefined) ?? [];
-  return content.find((c) => c.type === 'tool_use')?.input ?? null;
+  const content = (res.content as { type: string; input?: unknown; text?: string }[] | undefined) ?? [];
+  const call = content.find((c) => c.type === 'tool_use');
+  if (call) return call.input ?? null;
+  const text = content.filter((c) => c.type === 'text').map((c) => c.text ?? '').join('\n');
+  const a = text.indexOf('{'), b = text.lastIndexOf('}');
+  if (a >= 0 && b > a) { try { return JSON.parse(text.slice(a, b + 1)); } catch { /* not JSON */ } }
+  return null;
 }
+
+/** Test hook: forget what we learned about forced tool choice. */
+export function resetAiState() { forcedToolUnsupported = false; }
 
 const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64');
 
@@ -144,7 +175,7 @@ export async function analyzePhoto(image: { bytes: Uint8Array; type: string }, c
   const list = [...byStage.entries()].map(([stage, cs]) => `${stage}:\n` + cs.map((c) =>
     `- ${c.key}: ${c.label} (findings: ${c.findings.map((k) => findingLabel(k).toLowerCase()).join(', ')})`).join('\n')).join('\n\n');
   const res = await claude({
-    max_tokens: 2000,
+    max_tokens: 4000,
     system: [
       'You help automotive technicians inspect vehicles from photos. You only suggest; a technician confirms everything.',
       'Work in this order: first describe what the photo shows and where the camera is (engine bay, under the car looking up, a wheel well, the interior, etc.). Then list the parts from the list that are clearly visible, and judge the condition of each.',
