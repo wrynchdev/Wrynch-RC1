@@ -186,14 +186,20 @@
     .parts span { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line2); background: var(--panel); font-size: 14px; display: flex; justify-content: space-between; gap: 8px; }
     .parts span i { font-style: normal; color: var(--muted); font-family: var(--mono); font-size: 12.5px; }
 
-    .plans { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-    .plan { padding: 32px; display: flex; flex-direction: column; gap: 16px; }
-    .plan.main { border: 2px solid var(--blue); background: linear-gradient(180deg, var(--blue-dim), var(--panel) 55%); }
-    .plan ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; color: var(--text2); }
-    .plan li { padding-left: 28px; position: relative; }
-    .plan li::before { content: ''; position: absolute; left: 2px; top: 6px; width: 12px; height: 7px; border-left: 2px solid var(--blue2); border-bottom: 2px solid var(--blue2); transform: rotate(-45deg); }
-    .plan .btn { align-self: flex-start; margin-top: auto; }
 
+    .pgrid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 20px; }
+    .pcard { padding: 28px; }
+    .pcard h3 { margin-bottom: 18px; }
+    .plist { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; color: var(--text2); }
+    .plist li { padding-left: 30px; position: relative; }
+    .plist li::before { content: ''; position: absolute; left: 3px; top: 7px; width: 12px; height: 7px; border-left: 2px solid var(--blue2); border-bottom: 2px solid var(--blue2); transform: rotate(-45deg); }
+    .plist b { color: var(--text); font-weight: 600; }
+    .steps4 { list-style: none; padding: 0; margin: 20px 0 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+    .steps4 li { background: var(--panel); border: 1px solid var(--line2); border-radius: 14px; padding: 22px; }
+    .steps4 .n { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--blue-dim); border: 1px solid var(--blue-line); color: var(--blue2); font: 800 16px var(--display); }
+    .steps4 h3 { margin: 14px 0 8px; font-size: 19px; }
+    .steps4 p { color: var(--text2); font-size: 15.5px; }
+    .pcta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 28px; }
     .faq { display: grid; grid-template-columns: .8fr 1.2fr; gap: 72px; }
     details { border-top: 1px solid var(--line2); }
     details:last-child { border-bottom: 1px solid var(--line2); }
@@ -262,6 +268,8 @@
       .head .lead { justify-self: start; }
       .two { gap: 48px; }
       .steps { grid-template-columns: 1fr 1fr; }
+      .steps4 { grid-template-columns: 1fr 1fr; }
+      .pgrid { grid-template-columns: 1fr; }
       .stats { grid-template-columns: 1fr 1fr; }
       .stat:nth-child(2) { border-right: 0; }
       .stat:nth-child(-n+2) { border-bottom: 1px solid var(--line2); }
@@ -286,7 +294,7 @@
       .feats li { font-size: 15px; }
       .strap p { white-space: normal; line-height: 1.5; }
       .feats svg { width: 38px; height: 38px; }
-      .compare, .plans { grid-template-columns: 1fr; }
+      .compare, .pgrid, .steps4 { grid-template-columns: 1fr; }
       .steps { grid-template-columns: 1fr; }
       .stat { padding: 20px 16px; }
       .map { grid-template-columns: 1fr; gap: 16px; }
@@ -296,7 +304,7 @@
       .pform .f2, .tpt { grid-template-columns: 1fr; }
       .tryer { padding: 16px; }
       .tpt { gap: 8px; }
-      .plan { padding: 24px; }
+      .pcard { padding: 22px; }
     }
     @media (max-width: 440px) {
       .brand .wm { height: 30px; }
@@ -326,7 +334,7 @@
         <nav class="links" aria-label="Main">
           <a class="nl" href="#product">Product</a>
           <a class="nl" href="#solutions">Solutions</a>
-          <a class="nl" href="#pricing">Pricing</a>
+          <a class="nl" href="#program">Pilot Program</a>
           <a class="nl" href="#faq">Resources</a>
           <a class="btn outline login" href="/app/">Log In</a>
           <a class="btn primary" href="#pilot">Join the Pilot</a>
@@ -554,36 +562,41 @@
       </div>
     </section>
 
-    <section id="pricing" class="s">
+    <section id="program" class="s">
       <div class="wrap">
         <div class="head">
-          <div><p class="kicker">Pricing</p><h2>One plan per <span class="hl">location.</span></h2></div>
-          <p class="lead">No per-tech seats and no per-photo fees. Every feature is in the one plan.</p>
+          <div><p class="kicker">Pilot program</p><h2>Build Wrynch <span class="hl">with us.</span></h2></div>
+          <p class="lead">We’re rolling Wrynch out to a small group of independent shops first. Pilot shops use the full product on real inspections, work directly with the people building it, and help decide what comes next.</p>
         </div>
-        <div class="plans">
-          <div class="card plan main">
-            <h3>Shop</h3>
-            <p class="lead" style="font-size:16px">For a single location.</p>
-            <ul>
-              <li>Unlimited techs, inspections and photos</li>
-              <li>AI photo sorting and customer wording</li>
-              <li>Part history across every visit</li>
-              <li>Your own template and rating rules</li>
-              <li>Customer reports with estimates and approvals</li>
+        <div class="pgrid">
+          <div class="card pcard">
+            <h3>What pilot shops get</h3>
+            <ul class="plist">
+              <li><b>The full product.</b> Part-by-part inspections, AI photo sorting and AI note drafts, part history, estimates and customer reports with approvals.</li>
+              <li><b>Unlimited techs, inspections and photos</b> for your location.</li>
+              <li><b>Your own inspection sheet.</b> We map the template you use today to the parts behind it and set it up with you.</li>
+              <li><b>Rating rules that fit your shop.</b> Start from federal minimums and industry limits, then set your own.</li>
+              <li><b>A direct line to the team.</b> Questions and problems go straight to the people building Wrynch.</li>
+              <li><b>A say in the roadmap.</b> What pilot shops need shapes what gets built next.</li>
             </ul>
-            <a class="btn primary" href="#pilot">Join the Pilot</a>
           </div>
-          <div class="card plan">
-            <h3>Groups</h3>
-            <p class="lead" style="font-size:16px">For several locations.</p>
-            <ul>
-              <li>Everything in Shop, at each location</li>
-              <li>Each location with its own team and template</li>
-              <li>Switch between locations from one account</li>
+          <div class="card pcard">
+            <h3>What we ask</h3>
+            <ul class="plist">
+              <li><b>Use it on real inspections.</b> Run Wrynch on the cars coming through your bays.</li>
+              <li><b>Tell us what works and what doesn’t.</b> Short check-ins with your techs and advisors.</li>
+              <li><b>Be patient with a new product.</b> We move fast and fix things quickly; some features will still be rough.</li>
             </ul>
-            <a class="btn outline" href="#pilot">Join the Pilot</a>
+            <p class="note" style="margin-top:18px">Pilot spots are limited so we can work closely with every shop.</p>
           </div>
         </div>
+        <ol class="steps4">
+          <li><span class="n">1</span><h3>Apply</h3><p>Tell us about your shop below. You can include the inspection sheet you use today.</p></li>
+          <li><span class="n">2</span><h3>Get your sign-up link</h3><p>We review every application and email accepted shops a personal sign-up link.</p></li>
+          <li><span class="n">3</span><h3>Set up your shop</h3><p>Create your account, get your shop’s own Wrynch address, set your template and rating rules, and invite your team.</p></li>
+          <li><span class="n">4</span><h3>Run real inspections</h3><p>Your techs shoot, confirm and send. Your advisors price and send reports. We check in along the way.</p></li>
+        </ol>
+        <div class="pcta"><a class="btn primary" href="#pilot">Apply for the pilot</a><a class="btn outline" href="#try">Try your inspection sheet first</a></div>
       </div>
     </section>
 
@@ -644,7 +657,7 @@
     <div class="wrap">
       <span class="f-brand"><svg class="wm" viewBox="0 0 2827 575" role="img" aria-label="Wrynch"><use href="#wordmark"/></svg></span>
       <nav aria-label="Footer">
-        <a href="#try">Try your template</a><a href="#pilot">Pilot program</a><a href="#pricing">Pricing</a><a href="#faq">Resources</a><a href="/app/">Log In</a>
+        <a href="#try">Try your template</a><a href="#program">Pilot program</a><a href="#pilot">Apply</a><a href="#faq">Resources</a><a href="/app/">Log In</a>
       </nav>
       <span>© <span id="yr">2026</span> Wrynch</span>
     </div>
