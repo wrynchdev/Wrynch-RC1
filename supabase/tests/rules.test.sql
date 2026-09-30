@@ -142,6 +142,27 @@ select t.expect_error($$ select public.submit_inspection((select v::uuid from t.
 select t.eq(public.confirm_placements((select v::uuid from t.ids where k = 'insp'), 'under_car'), 1, 'one AI link confirmed');
 select public.exclude_photo('00000000-0000-0000-0000-0000000000f3');
 select public.set_note((select v::uuid from t.ids where k = 'insp'), 'S24', 'fronts 4mm rotors grooved');
+-- Automatic notes: an AI note for a point with a blank tech note is a suggestion that blocks sending until resolved.
+select t.act('service_role', null);
+select public.ai_record_wording((select v::uuid from t.ids where k = 'insp'), 'S14', 'Brake fluid needs attention now.');
+select public.ai_record_wording((select v::uuid from t.ids where k = 'insp'), 'S24', 'Front pads at 4 mm and the rotors are grooved; keep an eye on them.');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
+select t.eq((select tech_text || '|' || status from public.point_note where point_id = 'S14'), '|ai_suggested', 'blank note gets a suggestion row');
+select t.expect_error($$ select public.submit_inspection((select v::uuid from t.ids where k = 'insp'), '{}') $$, '%and 2 wording suggestions%');
+select t.expect_error($$ select public.ai_record_wording((select v::uuid from t.ids where k = 'insp'), 'S14', 'x') $$, '%permission denied%');
+select public.resolve_wording((select v::uuid from t.ids where k = 'insp'), 'S14', 'accept');
+select public.resolve_wording((select v::uuid from t.ids where k = 'insp'), 'S24', 'reject');
+select t.eq((select customer_text from public.point_note where point_id = 'S14'), 'Brake fluid needs attention now.', 'accepted note is what the customer sees');
+select t.eq((select customer_text from public.point_note where point_id = 'S24'), 'fronts 4mm rotors grooved', 'rejected keeps the tech note');
+select t.eq(public.note_style_for((select v::uuid from t.ids where k = 'insp')), 'customer', 'default note style');
+select t.expect_error($$ select public.set_note_style((select v::uuid from t.ids where k = 'shop'), 'technical') $$, '%permission%');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
+select public.set_note_style((select v::uuid from t.ids where k = 'shop'), 'technical');
+select t.eq(public.my_shop_list() -> 0 ->> 'noteStyle', 'technical', 'owner switched to technical notes');
+select t.expect_error($$ select public.set_note_style((select v::uuid from t.ids where k = 'shop'), 'poetic') $$, '%Unknown note style%');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000c');
+select t.eq(public.note_style_for((select v::uuid from t.ids where k = 'insp')) is null, true, 'strangers get no style');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
 select public.submit_inspection((select v::uuid from t.ids where k = 'insp'), '{"immediate":0,"monitor":2,"ok":0}');
 select t.expect_error($$ select public.set_check((select v::uuid from t.ids where k = 'insp'), '73@left_front', 'brake_pad.lining_thickness', 9, null) $$, '%submitted and can''t be changed%');
 select t.expect_error($$ select public.mark_sent((select v::uuid from t.ids where k = 'insp'), 'link', null, 'sent', null) $$, '%permission%');

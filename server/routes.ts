@@ -2,7 +2,7 @@
 import { analyzePhotos, type PhotoAnalysis } from '../src/domain/aiStub';
 import type { Inspection, Template, Vehicle } from '../src/domain/types';
 import { aiMode, analyzePhoto, candidatesFor, mapTemplatePoints, mapTemplatePointsStub, model, readTemplate, rewriteNote, validateAnalysis, writePointNote, type DraftPoint } from './ai';
-import { draftNote, pointFacts } from '../src/domain/noteDraft';
+import { draftNote, pointFacts, type NoteStyle } from '../src/domain/noteDraft';
 import { decodeVin } from './vin';
 import { bearer, downloadObject, env, HttpError, json, rateLimit, readJson, route, rpc, signUrls, type Handler } from './lib';
 
@@ -69,20 +69,42 @@ export const aiSort: Handler = route({
   },
 });
 
-// POST /api/ai-wording { inspectionId, pointId }
+// POST /api/ai-wording { inspectionId, pointId } -> { text, style }
+// Rewrites the technician note in the shop's note style, or drafts one from confirmed facts when the note is blank.
+// Stored as an ai_suggested note: it reaches the customer only after the technician approves it.
 export const aiWording: Handler = route({
   POST: async (req) => {
     const jwt = bearer(req);
     const { inspectionId, pointId } = await readJson<{ inspectionId: string; pointId: string }>(req);
-    const { inspection, template } = await loadAsUser(jwt, inspectionId);
+    const { inspection, vehicle, template } = await loadAsUser(jwt, inspectionId);
     if (inspection.status !== 'in_progress') throw new HttpError(409, 'This inspection is no longer open');
+    const point = template.sections.flatMap((s) => s.points).find((p) => p.id === pointId);
+    if (!point) throw new HttpError(404, 'Unknown inspection point');
+    const style: NoteStyle = (await rpc<string | null>('note_style_for', { p_inspection: inspectionId }, jwt).catch(() => null)) === 'technical' ? 'technical' : 'customer';
     const note = inspection.notes.find((n) => n.pointId === pointId);
-    if (!note || !note.techText.trim()) throw new HttpError(400, 'Write a note first');
-    const pointName = template.sections.flatMap((s) => s.points).find((p) => p.id === pointId)?.name ?? pointId;
-    const text = await rewriteNote(note, pointName);
-    if (!text) throw new HttpError(422, "Couldn't reword this note without changing its numbers; keep yours");
+    let text: string | null;
+    if (note?.techText.trim()) {
+      // The technician wrote a note: reword it in the shop's style, keeping every number.
+      text = await rewriteNote(note, point.name, style);
+      if (!text) throw new HttpError(422, "Couldn't reword this note without changing its numbers; keep yours");
+    } else {
+      // Blank note: draft one from the point's confirmed facts only.
+      const facts = pointFacts(inspection, vehicle, point);
+      if (!facts.parts.some((p) => p.state !== 'unrated')) throw new HttpError(400, 'Nothing confirmed on this point to write about');
+      text = null;
+      if (aiMode() === 'claude') {
+        try {
+          const media = inspection.media.filter((m) => facts.photoIds.includes(m.id)).slice(0, 3);
+          const photos = (await Promise.all(media.map((m) => downloadObject(m.url).catch(() => null)))).filter((x): x is { bytes: Uint8Array; type: string } => !!x);
+          text = await writePointNote(facts, photos, style);
+        } catch (e) {
+          console.error('ai-wording draft', e);
+        }
+      }
+      text ??= draftNote(facts, style);
+    }
     await rpc('ai_record_wording', { p_inspection: inspectionId, p_point: pointId, p_text: text }, 'service');
-    return json({ text });
+    return json({ text, style });
   },
 });
 

@@ -4,7 +4,8 @@ import {
 } from '../domain/ontology';
 import type { Template, TemplateComponent, VehicleConfig } from '../domain/types';
 import { VEHICLES } from '../domain/seed';
-import { actions, isLive, setPendingLink, toast, useStore, type Role } from '../state/store';
+import { actions, isLive, noteStyle, setPendingLink, toast, useStore, type Role } from '../state/store';
+import { NOTE_STYLES, type NoteStyle } from '../domain/noteDraft';
 import { go } from './hooks';
 import { Icon, TopBar, Wordmark } from './kit';
 
@@ -270,9 +271,25 @@ export function Settings() {
   const role = useStore((s) => s.workspace?.role);
   const shop = useStore((s) => s.workspace?.shop);
   const email = useStore((s) => s.session?.email);
+  const style = useStore(() => noteStyle());
+  const canSetStyle = role === 'owner' || !isLive();
   return (
     <div className="wide stack" style={{ gap: 16, maxWidth: 760 }}>
       <h1 className="display" style={{ margin: 0, fontSize: 36 }}>Settings</h1>
+      <section className="card pad stack" aria-labelledby="note-style-h">
+        <div className="row between" style={{ flexWrap: 'wrap', gap: 12 }}>
+          <div className="grow" style={{ minWidth: 220 }}>
+            <h2 id="note-style-h" className="h2" style={{ margin: 0 }}>Automatic notes</h2>
+            <div className="small muted">When an inspection is finished, AI rewords technician notes and drafts blank ones from confirmed ratings and photos. Technicians approve every note.</div>
+          </div>
+          <div className="seg" role="group" aria-label="Automatic note style">
+            {(Object.keys(NOTE_STYLES) as NoteStyle[]).map((k) => (
+              <button key={k} aria-pressed={style === k} disabled={!canSetStyle} onClick={() => { if (k !== style) void actions.setNoteStyle(k); }}>{NOTE_STYLES[k]}</button>
+            ))}
+          </div>
+        </div>
+        <div className="small muted">{style === 'customer' ? 'Plain, everyday language written for the vehicle owner.' : 'Concise shop terminology for the advisor and knowledgeable customers.'}{!canSetStyle && ' Only the shop owner can change this.'}</div>
+      </section>
       <div className="card list">
         {(role === 'owner' || !isLive()) && <a className="item" href="#/settings/team"><div className="grow"><div className="t">Team</div><div className="d">Invite technicians and advisors; change roles</div></div><Icon name="next" /></a>}
         <a className="item" href="#/settings/template"><div className="grow"><div className="t">Inspection template</div><div className="d">Stages, points and the parts behind each point</div></div><Icon name="next" /></a>

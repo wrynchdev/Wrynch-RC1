@@ -6,7 +6,8 @@ import {
 import { completionGate, componentState, findingRating, isPendingAi, mediaPending, photosOf, summarize } from '../domain/rating';
 import type { CompKey, Finding, Inspection, Media, NotInspectedReason, Rating, Severity, Vehicle, VehicleConfig } from '../domain/types';
 import { SEVERITIES, SIDE_UNSURE_CONFIDENCE } from '../domain/types';
-import { actions, isLive, jobList, photoSrc, toast, useStore, type NoteDraft } from '../state/store';
+import { actions, isLive, jobList, noteStyle, photoSrc, toast, useStore, type NoteDraft } from '../state/store';
+import { autoNotePoints, NOTE_STYLES } from '../domain/noteDraft';
 import { AiChip, fmtDate, fmtMi, Icon, Sheet, StateChip, Tile, TopBar } from './kit';
 import { enc, go, pointStatus, useInspection, useVehicleHistory } from './hooks';
 
@@ -858,7 +859,7 @@ export function Wording({ id, pointId }: { id: string; pointId: string }) {
         {n && n.status !== 'ai_suggested' && insp.status === 'in_progress' && (
           <button className="btn secondary" onClick={() => actions.requestWording(id, pointId)}><Icon name="ai" />Suggest customer wording</button>
         )}
-        <p className="small muted" style={{ margin: 0 }}>AI (demo stub) may only reword your note. The customer sees nothing until you approve it.</p>
+        <p className="small muted" style={{ margin: 0 }}>AI may only reword your note, or draft one from your confirmed ratings when it's blank. The customer sees nothing until you approve it.</p>
       </div>
       {n?.status === 'ai_suggested' && (
         <div className="footer">
@@ -875,12 +876,29 @@ export function Wording({ id, pointId }: { id: string; pointId: string }) {
 // ------------------------------------------------------------------ Finish
 export function Finish({ id }: { id: string }) {
   const data = useInspection(id);
+  const role = useStore((x) => x.workspace?.role ?? null);
+  const style = useStore(() => noteStyle());
+  const [tried] = useState(() => new Set<string>());
+  const [writing, setWriting] = useState<{ done: number; total: number; failed: number } | null>(null);
+  const ready = !!data && data.insp.status === 'in_progress' && !completionGate(data.insp, data.vehicle).some((g) => g.kind === 'required');
+  const todo = ready ? autoNotePoints(data!.insp, data!.vehicle, sections().flatMap((s) => s.points)).filter((x) => !tried.has(x.pointId)) : [];
+  const todoKey = todo.map((x) => x.pointId).join(',');
+  // Once every required part is rated, write the automatic notes: reword the tech's notes, draft the blank ones.
+  useEffect(() => {
+    if (!todoKey || writing) return;
+    const ids = todoKey.split(',');
+    ids.forEach((x) => tried.add(x));
+    setWriting({ done: 0, total: ids.length, failed: 0 });
+    void actions.autoNotes(id, ids, (done) => setWriting((w) => (w ? { ...w, done } : w)))
+      .then((failed) => { setWriting(null); if (failed) toast(`${failed} note${failed === 1 ? '' : 's'} couldn’t be written automatically; the technician’s own note stays.`, 'error'); });
+  }, [todoKey, writing, id]);
   if (!data) return <Missing />;
   const { insp, vehicle } = data;
   const gate = completionGate(insp, vehicle);
   const sum = summarize(insp, vehicle);
-  const ai = gate.filter((g) => g.kind !== 'required');
+  const ai = gate.filter((g) => g.kind !== 'required' && g.kind !== 'wording');
   const req = gate.filter((g) => g.kind === 'required');
+  const notes = insp.notes.filter((n) => n.status === 'ai_suggested' && n.aiText);
   const hrefFor = (g: (typeof gate)[number]) => {
     if (g.kind === 'ai_finding') { const f = insp.findings.find((x) => x.id === g.id)!; return compHref(id, f.compKey); }
     if (g.kind === 'photo') return `#/insp/${id}/sort/${insp.media.find((m) => m.id === g.id)!.sectionId}`;
@@ -890,9 +908,10 @@ export function Finish({ id }: { id: string }) {
   const labelFor = (g: (typeof gate)[number]) => {
     if (g.kind === 'ai_finding') { const f = insp.findings.find((x) => x.id === g.id)!; return [`AI finding`, `${compLabel(f.compKey, true)} · ${findingLabel(f.key).toLowerCase()}`]; }
     if (g.kind === 'photo') return ['Photo not confirmed', insp.media.find((m) => m.id === g.id)!.label];
-    if (g.kind === 'wording') return ['Wording suggestion', getPoint(g.id).name];
+    if (g.kind === 'wording') return ['Note to approve', getPoint(g.id).name];
     return ['Required part not rated', compLabel(g.id, true)];
   };
+  const others = [...ai, ...req];
   return (
     <div className="phone">
       <TopBar title="Finish inspection" sub={`${vehicle.year} ${vehicle.model} · RO ${insp.ro}`} back={`#/insp/${id}`} />
@@ -902,7 +921,8 @@ export function Finish({ id }: { id: string }) {
             <div className="row" style={{ alignItems: 'flex-start' }}><Icon name="lock" size={22} />
               <div><strong style={{ fontSize: 18 }}>{gate.length} {gate.length === 1 ? 'thing needs' : 'things need'} you first</strong><div className="small" style={{ color: 'var(--text2)' }}>Nothing unconfirmed can reach the advisor or the customer.</div></div>
             </div>
-            {[...ai, ...req].slice(0, 30).map((g) => {
+            {notes.length > 0 && <span className="small" style={{ color: 'var(--text2)' }}>{notes.length} automatic note{notes.length === 1 ? '' : 's'} to approve below.</span>}
+            {others.slice(0, 30).map((g) => {
               const [a, b] = labelFor(g);
               return (
                 <a key={g.kind + g.id} href={hrefFor(g)} className="row" style={{ minHeight: 50, padding: '6px 12px', borderRadius: 10, background: 'var(--card2)', color: 'var(--ink)' }}>
@@ -912,7 +932,7 @@ export function Finish({ id }: { id: string }) {
                 </a>
               );
             })}
-            {gate.length > 30 && <span className="small" style={{ color: 'var(--text2)' }}>+ {gate.length - 30} more</span>}
+            {others.length > 30 && <span className="small" style={{ color: 'var(--text2)' }}>+ {others.length - 30} more</span>}
           </div>
         ) : (
           <div className="card pad row"><span className="chip ok"><Icon name="check" size={14} />Ready</span><span>Every required part is rated and every AI item is resolved.</span></div>
@@ -924,8 +944,20 @@ export function Finish({ id }: { id: string }) {
           <Tile kind="ok" n={sum.ok} label="OK" />
           <Tile kind="na" n={sum.notChecked} label="Not checked" />
           <Tile kind="na" n={sum.unrated} label="Not rated yet" />
-          <Tile kind="ai" n={ai.length} label="AI to review" />
+          <Tile kind="ai" n={ai.length + notes.length} label="AI to review" />
         </div>
+        {(writing || notes.length > 0 || (insp.status === 'in_progress' && ready)) && (
+          <section className="card pad stack auto-notes" aria-label="Automatic notes">
+            <div className="row between" style={{ flexWrap: 'wrap' }}>
+              <h2 className="h2" style={{ margin: 0 }}><Icon name="ai" /> Automatic notes</h2>
+              <span className="small muted">Style: <strong>{NOTE_STYLES[style]}</strong>{role === 'owner' && <> · <a href="#/settings">Change</a></>}</span>
+            </div>
+            {writing ? <p className="small muted" style={{ margin: 0 }} role="status">Writing notes… {writing.done} of {writing.total}</p>
+              : notes.length ? <p className="small muted" style={{ margin: 0 }}>Blank notes were drafted from your confirmed ratings and photos; your notes were reworded, keeping every measurement. Nothing reaches the advisor or the customer until you approve it.</p>
+              : <p className="small muted" style={{ margin: 0 }}>All notes are reviewed.</p>}
+            {notes.map((n) => <NoteReview key={n.pointId} inspId={id} note={n} />)}
+          </section>
+        )}
       </div>
       <div className="footer">
         {insp.status === 'in_progress' ? (
@@ -933,6 +965,24 @@ export function Finish({ id }: { id: string }) {
             {gate.length ? <><Icon name="lock" />Send to advisor</> : 'Send to advisor'}
           </button>
         ) : <a className="btn primary block" href={`#/advisor/${id}`}>Open advisor view</a>}
+      </div>
+    </div>
+  );
+}
+
+function NoteReview({ inspId, note }: { inspId: string; note: Inspection['notes'][number] }) {
+  const [text, setText] = useState(note.aiText ?? '');
+  useEffect(() => setText(note.aiText ?? ''), [note.aiText]);
+  const changed = text.trim() !== (note.aiText ?? '').trim();
+  const p = getPoint(note.pointId);
+  return (
+    <div className="ai-card stack note-review" data-point={note.pointId}>
+      <div className="row between"><strong>{p.name}</strong><span className="chip ai">{note.techText.trim() ? 'Reworded' : 'Drafted'} · not approved</span></div>
+      {note.techText.trim() && <p className="small muted mono" style={{ margin: 0 }}>Your note: {note.techText}</p>}
+      <textarea className="input" rows={3} value={text} onChange={(e) => setText(e.target.value)} aria-label={`Automatic note for ${p.name}`} />
+      <div className="row">
+        <button className="btn quiet" onClick={() => actions.resolveWording(inspId, note.pointId, 'reject')}>{note.techText.trim() ? 'Keep mine' : 'Skip'}</button>
+        <button className="btn primary grow" disabled={!text.trim()} onClick={() => actions.resolveWording(inspId, note.pointId, changed ? { text: text.trim() } : 'accept')}>{changed ? 'Approve edit' : 'Approve'}</button>
       </div>
     </div>
   );
