@@ -135,6 +135,8 @@ export interface Media {
   excluded: boolean;
   customerVisible: boolean;
   analyzed: boolean;   // the AI has looked at it
+  /** Taken from one inspection point's camera button: AI only considers that point's parts. */
+  pointId?: string | null;
   links: MediaLink[];
 }
 

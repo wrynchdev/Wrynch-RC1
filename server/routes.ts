@@ -32,17 +32,21 @@ export const aiSort: Handler = route({
     const { inspection, vehicle, template } = await loadAsUser(jwt, inspectionId);
     if (inspection.status !== 'in_progress') throw new HttpError(409, 'This inspection is no longer open');
     const todo = inspection.media.filter((m) => mediaIds.includes(m.id) && !m.excluded && !m.analyzed && m.links.length === 0);
+    // Group by stage, and by point for photos taken from one point's camera button (only that point's parts are considered).
     const bySection = new Map<string, typeof todo>();
-    for (const m of todo) bySection.set(m.sectionId, [...(bySection.get(m.sectionId) ?? []), m]);
+    for (const m of todo) { const g = `${m.sectionId}|${m.pointId ?? ''}`; bySection.set(g, [...(bySection.get(g) ?? []), m]); }
 
     const analyses: PhotoAnalysis[] = [];
     let failed = 0;
     let reason = '';
     const vehicleText = [vehicle.year || '', vehicle.make, vehicle.model, vehicle.trim].filter(Boolean).join(' ');
-    for (const [sectionId, items] of bySection) {
+    for (const [group, items] of bySection) {
+      const [sectionId, pointId] = [group.slice(0, group.indexOf('|')), group.slice(group.indexOf('|') + 1) || null];
       if (mode === 'claude') {
-        const candidates = candidatesFor(template, sectionId, vehicle.config);
-        const stage = template.sections.find((s) => s.id === sectionId)?.name ?? sectionId;
+        const candidates = candidatesFor(template, sectionId, vehicle.config, pointId);
+        const sec = template.sections.find((s) => s.id === sectionId);
+        const pointName = pointId ? sec?.points.find((p) => p.id === pointId)?.name : undefined;
+        const stage = `${sec?.name ?? sectionId}${pointName ? ` (taken for the inspection point "${pointName}")` : ''}`;
         const results = await pool(items, 4, async (m) => {
           try {
             return validateAnalysis(m.id, await analyzePhoto(await downloadObject(m.url), candidates, stage, vehicleText), candidates);
@@ -57,7 +61,7 @@ export const aiSort: Handler = route({
         analyses.push(...results.filter((a): a is PhotoAnalysis => a !== null));
       } else {
         // AI_STUB=1 (tests and local demos only): the rule-based stand-in.
-        analyses.push(...analyzePhotos(sectionId, items.map((m) => ({ id: m.id, name: m.label })), vehicle.config, template));
+        analyses.push(...analyzePhotos(sectionId, items.map((m) => ({ id: m.id, name: m.label })), vehicle.config, template, pointId));
       }
     }
     if (todo.length && !analyses.length) throw new HttpError(502, `${reason || 'The AI couldn’t read these photos right now.'} Photos are saved; try “Sort with AI” again or place them by hand.`);

@@ -34,11 +34,11 @@ export interface PartReading {
 export interface PhotoAnalysis { mediaId: string; parts: PartReading[] }
 
 /** Parts a photo from this stage could show on this vehicle (photo-capable parts only). */
-export function stageTargets(sectionId: string, config: VehicleConfig, template?: Template): CompKey[] {
+export function stageTargets(sectionId: string, config: VehicleConfig, template?: Template, pointId?: string | null): CompKey[] {
   const section = (template ? template.sections : sections()).find((s) => s.id === sectionId);
   if (!section) throw new Error(`Unknown section ${sectionId}`);
   const out: CompKey[] = [];
-  for (const p of section.points) {
+  for (const p of section.points.filter((x) => !pointId || x.id === pointId)) {
     for (const c of pointComponents(p, config)) {
       if (c.applies && !out.includes(c.key) && cls(parseKey(c.key).classId).aiPhoto !== 'no') out.push(c.key);
     }
@@ -50,8 +50,8 @@ export function stageTargets(sectionId: string, config: VehicleConfig, template?
  * Deterministic stand-in for the vision model: each photo "shows" one to three neighbouring parts at the same
  * position, most look OK, some get a typical finding, and about one in six can't be identified.
  */
-export function analyzePhotos(sectionId: string, files: { id: string; name: string }[], config: VehicleConfig, template?: Template): PhotoAnalysis[] {
-  const targets = stageTargets(sectionId, config, template);
+export function analyzePhotos(sectionId: string, files: { id: string; name: string }[], config: VehicleConfig, template?: Template, pointId?: string | null): PhotoAnalysis[] {
+  const targets = stageTargets(sectionId, config, template, pointId);
   return files.map((f, i) => {
     const h = hash(`${f.name}:${i}`);
     const confidence = 0.5 + ((h >>> 3) % 50) / 100; // 0.50–0.99

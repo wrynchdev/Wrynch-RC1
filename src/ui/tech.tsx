@@ -479,7 +479,9 @@ export function PointView({ id, pointId }: { id: string; pointId: string }) {
     const g = pos && ['left_front', 'right_front', 'left_rear', 'right_rear'].includes(pos) ? positionLabel(pos) : 'Whole vehicle';
     groups.set(g, [...(groups.get(g) ?? []), c]);
   }
-  const photos = insp.media.filter((m) => !m.excluded && m.links.some((l) => st.keys.includes(l.compKey)));
+  const photos = insp.media.filter((m) => !m.excluded && (m.links.some((l) => st.keys.includes(l.compKey)) || m.pointId === pointId));
+  const pendingHere = photos.some((m) => m.links.some((l) => st.keys.includes(l.compKey) && l.status === 'ai_proposed'));
+  const addHere = (fs: File[]) => { if (fs.length) void actions.addPhotos(id, section.id, fs.map((f) => ({ url: URL.createObjectURL(f), name: f.name, file: f })), pointId); };
   const okPending = insp.observations.filter((o) => o.status === 'pending' && st.keys.includes(o.compKey) && componentState(insp, o.compKey) === 'unrated');
   const n = insp.notes.find((x) => x.pointId === pointId);
   const noteText = note ?? n?.techText ?? '';
@@ -489,7 +491,16 @@ export function PointView({ id, pointId }: { id: string; pointId: string }) {
   const unrated = comps.filter((c) => componentState(insp, c.key) === 'unrated').length;
   return (
     <div className="phone">
-      <TopBar title={p.name} sub={`${section.name} · ${comps.length} parts`} back={`#/insp/${id}`} />
+      <TopBar title={p.name} sub={`${section.name} · ${comps.length} parts`} back={`#/insp/${id}`}
+        right={!locked && comps.length > 0 ? (
+          <label className="iconbtn" htmlFor="point-files" title="Add photos for this point" aria-label={`Add photos for ${p.name}`} style={{ cursor: 'pointer' }}>
+            <Icon name="camera" size={22} />
+          </label>
+        ) : undefined} />
+      {!locked && comps.length > 0 && (
+        <input id="point-files" className="sr" type="file" accept="image/*" multiple
+          onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ''; addHere(fs); }} />
+      )}
       <div className="body">
         {comps.length === 0 && (
           <div className="card pad small">{p.note ?? 'This point has no parts on this vehicle.'}</div>
@@ -547,22 +558,29 @@ export function PointView({ id, pointId }: { id: string; pointId: string }) {
             <Icon name="check" />Nothing found on the other {unrated} {unrated === 1 ? 'part' : 'parts'}
           </button>
         )}
-        {photos.length > 0 && (
+        {(photos.length > 0 || (!locked && comps.length > 0)) && (
           <section className="stack">
-            <h2 className="h2">Photos · {photos.length}</h2>
-            <div className="thumbs">
+            <div className="row between">
+              <h2 className="h2">Photos · {photos.length}</h2>
+              {!locked && comps.length > 0 && (
+                <label htmlFor="point-files" className="btn sm secondary" style={{ cursor: 'pointer' }}><Icon name="camera" size={18} />Add photos</label>
+              )}
+            </div>
+            {!photos.length && <p className="small muted" style={{ margin: 0 }}>Photos added here are matched only to this point's parts.</p>}
+            {pendingHere && <a className="small" href={`#/insp/${id}/sort/${section.id}`}>Review the AI's photo matches</a>}
+            {photos.length > 0 && <div className="thumbs">
               {photos.map((m) => {
                 const here = m.links.filter((l) => st.keys.includes(l.compKey));
                 const names = here.map((l) => compLabel(l.compKey, true));
                 return (
-                  <a key={m.id} className={`thumb${here.some((l) => l.status === 'ai_proposed') ? ' pending' : ''}`} href={compHref(id, here[0].compKey, pointId)}>
-                    <img src={photoSrc(m.url)} alt={`Photo of ${names.join(', ')}`} />
-                    <span className="t">{names.length <= 2 ? names.join(' + ') : `${names[0]} + ${names.length - 1} more`}</span>
+                  <a key={m.id} className={`thumb${here.some((l) => l.status === 'ai_proposed') ? ' pending' : ''}`} href={here.length ? compHref(id, here[0].compKey, pointId) : `#/insp/${id}/sort/${section.id}`}>
+                    <img src={photoSrc(m.url)} alt={names.length ? `Photo of ${names.join(', ')}` : `Photo for ${p.name}, not matched to a part yet`} />
+                    <span className="t">{!names.length ? 'Not matched yet' : names.length <= 2 ? names.join(' + ') : `${names[0]} + ${names.length - 1} more`}</span>
                     {m.links.length > here.length && <span className="c">Also used in {m.links.length - here.length} other {m.links.length - here.length === 1 ? 'part' : 'parts'}</span>}
                   </a>
                 );
               })}
-            </div>
+            </div>}
           </section>
         )}
         <section className="card pad stack">
@@ -955,6 +973,11 @@ export function Finish({ id }: { id: string }) {
             {writing ? <p className="small muted" style={{ margin: 0 }} role="status">Writing notes… {writing.done} of {writing.total}</p>
               : notes.length ? <p className="small muted" style={{ margin: 0 }}>Blank notes were drafted from your confirmed ratings and photos; your notes were reworded, keeping every measurement. Nothing reaches the advisor or the customer until you approve it.</p>
               : <p className="small muted" style={{ margin: 0 }}>All notes are reviewed.</p>}
+            {!writing && notes.length > 1 && (
+              <button className="btn secondary" onClick={() => { for (const n of notes) actions.resolveWording(id, n.pointId, 'accept'); }}>
+                <Icon name="check" size={18} />Approve all {notes.length} as written
+              </button>
+            )}
             {notes.map((n) => <NoteReview key={n.pointId} inspId={id} note={n} />)}
           </section>
         )}

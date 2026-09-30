@@ -13,11 +13,12 @@ export interface Candidate { key: CompKey; stage: string; point: string; label: 
  * Parts a photo could show: the photo-capable parts of the inspection points in the stage the photo was taken in.
  * A part shared by several points in that stage is listed once, under the first point.
  */
-export function candidatesFor(template: Template, sectionId: string, config: VehicleConfig): Candidate[] {
+export function candidatesFor(template: Template, sectionId: string, config: VehicleConfig, pointId?: string | null): Candidate[] {
   const section = template.sections.find((s) => s.id === sectionId);
   if (!section) throw new HttpError(400, `Unknown stage ${sectionId}`);
   const out = new Map<CompKey, Candidate>();
-  for (const p of section.points) {
+  const points = pointId ? section.points.filter((p) => p.id === pointId) : section.points;
+  for (const p of points.length ? points : section.points) {
     for (const c of pointComponents(p, config)) {
       if (!c.applies || out.has(c.key)) continue;
       const k = cls(parseKey(c.key).classId);

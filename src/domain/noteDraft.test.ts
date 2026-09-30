@@ -66,6 +66,8 @@ test('automatic notes: reword written notes, draft blank points with something t
   assert.deepEqual(todo.find((x) => x.pointId === 'S24'), { pointId: 'S24', kind: 'reword' });
   assert.ok(!todo.some((x) => x.pointId === 'S14'), 'a note the tech already dealt with is skipped');
   for (const t of todo.filter((x) => x.kind === 'draft')) assert.ok(worthANote(pointFacts(i, vehicle, points.find((p) => p.id === t.pointId)!)));
-  const allOk = points.filter((p) => !todo.some((x) => x.pointId === p.id));
-  assert.ok(allOk.length > 0, 'points with nothing to report get no automatic note');
+  const unrated = points.filter((p) => !todo.some((x) => x.pointId === p.id) && p.id !== 'S14');
+  for (const p of unrated) assert.ok(!worthANote(pointFacts(i, vehicle, p)), `${p.id} has ratings but got no note`);
+  const okOnly = points.find((p) => { const f = pointFacts(i, vehicle, p); return f.parts.length && f.parts.every((x) => x.state === 'ok'); });
+  assert.ok(okOnly && todo.some((x) => x.pointId === okOnly.id && x.kind === 'draft'), 'an all-OK point gets a drafted note too');
 });
