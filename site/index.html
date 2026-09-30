@@ -188,6 +188,14 @@
 
 
     .pgrid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 20px; }
+    .ptiers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-top: 20px; }
+    .ptier { padding: 24px 26px; position: relative; }
+    .ptier.now { border-color: var(--blue-line); background: linear-gradient(180deg, var(--blue-dim), transparent 70%), var(--panel); }
+    .ptier .when { font: 600 12.5px/1 var(--display); letter-spacing: .2em; text-transform: uppercase; color: var(--blue2); }
+    .ptier .price { font: 800 44px/1 var(--display); color: var(--text); margin: 14px 0 4px; letter-spacing: .005em; }
+    .ptier .price small { font: 600 16px var(--body, inherit); color: var(--muted); letter-spacing: 0; margin-left: 4px; }
+    .ptier p { margin: 8px 0 0; color: var(--text2); font-size: 15px; }
+    .pfine { margin-top: 14px; color: var(--muted); font-size: 13.5px; }
     .pcard { padding: 28px; }
     .pcard h3 { margin-bottom: 18px; }
     .plist { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; color: var(--text2); }
@@ -294,7 +302,7 @@
       .feats li { font-size: 15px; }
       .strap p { white-space: normal; line-height: 1.5; }
       .feats svg { width: 38px; height: 38px; }
-      .compare, .pgrid, .steps4 { grid-template-columns: 1fr; }
+      .compare, .pgrid, .steps4, .ptiers { grid-template-columns: 1fr; }
       .steps { grid-template-columns: 1fr; }
       .stat { padding: 20px 16px; }
       .map { grid-template-columns: 1fr; gap: 16px; }
@@ -566,7 +574,7 @@
       <div class="wrap">
         <div class="head">
           <div><p class="kicker">Pilot program</p><h2>Build Wrynch <span class="hl">with us.</span></h2></div>
-          <p class="lead">We’re rolling Wrynch out to a small group of independent shops first. Pilot shops use the full product on real inspections, work directly with the people building it, and help decide what comes next.</p>
+          <p class="lead">We’re rolling Wrynch out to a small group of independent shops first. Pilot shops use the full product free for 90 days on real inspections, work directly with the people building it, and help decide what comes next.</p>
         </div>
         <div class="pgrid">
           <div class="card pcard">
@@ -590,6 +598,12 @@
             <p class="note" style="margin-top:18px">Pilot spots are limited so we can work closely with every shop.</p>
           </div>
         </div>
+        <div class="ptiers" aria-label="Pilot pricing">
+          <div class="card ptier now"><span class="when">The pilot</span><div class="price">Free</div><p>90 days of the full product for your location. No card needed to start.</p></div>
+          <div class="card ptier"><span class="when">If you stay</span><div class="price">$99<small>/month</small></div><p>Founding-shop rate for pilot shops, locked for your first 12 months.</p></div>
+          <div class="card ptier"><span class="when">After that</span><div class="price">$179<small>/month</small></div><p>Per location, or $1,790 a year. Unlimited techs, inspections and photos.</p></div>
+        </div>
+        <p class="pfine">At the end of the pilot you decide. Stay at the founding rate, or walk away and owe nothing. Additional locations get 15–20% off.</p>
         <ol class="steps4">
           <li><span class="n">1</span><h3>Apply</h3><p>Tell us about your shop below. You can include the inspection sheet you use today.</p></li>
           <li><span class="n">2</span><h3>Get your sign-up link</h3><p>We review every application and email accepted shops a personal sign-up link.</p></li>
@@ -604,6 +618,7 @@
       <div class="wrap faq">
         <div><p class="kicker">Resources</p><h2>Questions shops ask</h2></div>
         <div>
+          <details><summary>What does it cost?</summary><p>The pilot is free for 90 days. Pilot shops that stay pay a founding rate of $99 a month for their first 12 months. After that it’s $179 a month per location, or $1,790 a year, with unlimited techs, inspections and photos. Additional locations get 15–20% off.</p></details>
           <details><summary>Do my techs have to change how they inspect?</summary><p>No. They keep your points and shoot each stage in one go. The part-by-part detail comes from how the photos are sorted, not from extra taps.</p></details>
           <details><summary>Can one photo count for several parts?</summary><p>Yes. A shot of a front wheel can show the tire, pad, rotor and caliper. The AI notes each part it can see from that stage, and the photo shows up under every point it covers. Your tech can add or remove parts on any photo.</p></details>
           <details><summary>What if the AI gets it wrong?</summary><p>Your tech changes the parts on the photo or rejects the finding. Until they confirm, nothing counts and the customer can’t see it.</p></details>
