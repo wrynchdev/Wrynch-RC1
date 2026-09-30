@@ -664,6 +664,10 @@
   </footer>
   <script>
     document.getElementById('yr').textContent = new Date().getFullYear();
+    // On getwrynch.com, "Log in" goes straight to the app's own domain (no dependence on a server redirect).
+    if (/(^|\.)getwrynch\.com$/i.test(location.hostname)) {
+      document.querySelectorAll('a[href="/app/"]').forEach(function (a) { a.href = 'https://wrynch.app/'; });
+    }
     (function () {
       var $ = function (id) { return document.getElementById(id); };
       var POS = { left_front: 'LF', right_front: 'RF', left_rear: 'LR', right_rear: 'RR', front: 'front', rear: 'rear', left: 'left', right: 'right', center: 'center', left_mid: 'L mid', right_mid: 'R mid', roof: 'roof', bed: 'bed', cargo_area: 'cargo', underbody: 'underbody' };
