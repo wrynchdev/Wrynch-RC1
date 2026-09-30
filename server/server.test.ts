@@ -380,6 +380,55 @@ test('ai-note needs something rated on the point and an open inspection', async 
   assert.equal(r.source, 'rules', 'without an AI key the rules draft is used');
 });
 
+test('ai-wording drafts a blank note from confirmed facts in the shop\'s style and stores it as a suggestion', async () => {
+  process.env.ANTHROPIC_API_KEY = 'k';
+  let style = 'technical';
+  respond = (url) => {
+    if (url.endsWith('/get_inspection')) return bundle((i) => { i.notes = []; });
+    if (url.endsWith('/note_style_for')) return style;
+    if (url.startsWith('https://api.anthropic.com')) return { content: [{ type: 'tool_use', input: { text: 'Brake fluid copper content 210 ppm. Needs attention now.' } }] };
+    return null;
+  };
+  const out = await (await aiWording(post('ai-wording', { inspectionId: 'i-4r-now', pointId: 'S14' }))).json();
+  assert.equal(out.style, 'technical');
+  const ai = calls.find((c) => c.url.startsWith('https://api.anthropic.com'))!.body as { system: string; messages: { content: { text?: string }[] }[] };
+  assert.match(ai.system, /shop terminology/);
+  assert.match(ai.messages[0].content.at(-1)!.text!, /Confirmed facts/);
+  const rec = calls.find((c) => c.url.endsWith('/ai_record_wording'))!;
+  assert.equal(rec.auth, 'Bearer service');
+  assert.deepEqual(rec.body, { p_inspection: 'i-4r-now', p_point: 'S14', p_text: out.text });
+  assert.equal(calls.find((c) => c.url.endsWith('/note_style_for'))!.auth, 'Bearer user-jwt', 'style is read as the user');
+
+  // Customer style, and a model draft with an invented number falls back to the rules draft.
+  calls = []; style = 'customer';
+  respond = (url) => {
+    if (url.endsWith('/get_inspection')) return bundle((i) => { i.notes = []; });
+    if (url.endsWith('/note_style_for')) return style;
+    if (url.startsWith('https://api.anthropic.com')) return { content: [{ type: 'tool_use', input: { text: 'Copper is 999 ppm.' } }] };
+    return null;
+  };
+  const out2 = await (await aiWording(post('ai-wording', { inspectionId: 'i-4r-now', pointId: 'S14' }))).json();
+  assert.ok(!out2.text.includes('999'), out2.text);
+  assert.match((calls.find((c) => c.url.startsWith('https://api.anthropic.com'))!.body as { system: string }).system, /not a mechanic/);
+  assert.ok(calls.some((c) => c.url.endsWith('/ai_record_wording')));
+});
+
+test('ai-wording rewords a written note in the shop\'s style; a blank point with nothing confirmed is refused', async () => {
+  process.env.ANTHROPIC_API_KEY = 'k';
+  respond = (url) => {
+    if (url.endsWith('/get_inspection')) return bundle((i) => { i.notes = [{ pointId: 'S24', techText: 'fronts 5mm rotors grooved', aiText: null, status: 'technician_original', customerText: null }]; });
+    if (url.endsWith('/note_style_for')) return 'technical';
+    if (url.startsWith('https://api.anthropic.com')) return { content: [{ type: 'tool_use', input: { text: 'Front brake pads measure 5 mm; front rotors are grooved.' } }] };
+    return null;
+  };
+  const out = await (await aiWording(post('ai-wording', { inspectionId: 'i-4r-now', pointId: 'S24' }))).json();
+  assert.equal(out.text, 'Front brake pads measure 5 mm; front rotors are grooved.');
+  assert.match((calls.find((c) => c.url.startsWith('https://api.anthropic.com'))!.body as { system: string }).system, /professional technical note/);
+
+  respond = (url) => (url.endsWith('/get_inspection') ? bundle((i) => { i.notes = []; i.results = []; i.findings = []; i.statuses = []; i.media = []; }) : null);
+  assert.equal((await aiWording(post('ai-wording', { inspectionId: 'i-4r-now', pointId: 'S14' }))).status, 400);
+});
+
 test('links we send point at the shop\'s own address on wrynch.app, and at /app/ elsewhere', () => {
   delete process.env.APP_URL; delete process.env.APP_DOMAIN;
   assert.equal(appRoot(new Request('https://1001.wrynch.app/api/send-report')), 'https://1001.wrynch.app/');

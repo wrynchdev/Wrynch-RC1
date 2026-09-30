@@ -16,13 +16,13 @@ import type {
 } from '../domain/types';
 import { ApiError, auth, fn, getSession, hostInfo, LIVE, onSession, rpc, rpcAnon, shared, shrinkPhoto, signPhotos, upload, type Session } from './remote';
 import { dashFromInspections, type DashData } from '../domain/dashboard';
-import { draftNote, pointFacts } from '../domain/noteDraft';
+import { draftNote, pointFacts, type NoteStyle } from '../domain/noteDraft';
 
 export type Role = 'owner' | 'advisor' | 'technician';
 export interface Member { userId: string; name: string; role: Role }
 export interface Workspace {
   shops: { id: string; name: string; role: Role; number?: number }[];
-  shop: { id: string; name: string; phone: string | null; number?: number } | null;
+  shop: { id: string; name: string; phone: string | null; number?: number; noteStyle?: NoteStyle } | null;
   role: Role | null;
   me: { userId: string; name: string } | null;
   members: Member[];
@@ -50,6 +50,8 @@ export interface State {
   ai: { on: boolean; model: string } | null;
   /** Shop dashboard for the chosen range (live: from the server; demo: from the inspections here). */
   dashboard: DashData | null;
+  /** Demo only: the note style (live shops keep theirs on the shop). */
+  demoNoteStyle: NoteStyle;
 }
 
 const STORAGE_KEY = 'wrynch-demo-v3'; // bumped when the saved demo data shape changes
@@ -59,7 +61,7 @@ const uid = (p: string) => `${p}-${(seq++).toString(36)}`;
 
 function demoInitial(): State {
   return {
-    mode: 'demo', vehicles: structuredClone(VEHICLES), inspections: seedInspections(), role: 'tech',
+    mode: 'demo', vehicles: structuredClone(VEHICLES), inspections: seedInspections(), role: 'tech', demoNoteStyle: 'customer',
     session: null, workspace: null, jobs: [], loading: 0, busy: null, toast: null, photoUrls: {}, ai: null, dashboard: null,
   };
 }
@@ -85,8 +87,8 @@ const listeners = new Set<() => void>();
 function save() {
   if (state.mode !== 'demo') return;
   try {
-    const { vehicles, inspections, role } = state;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ vehicles, inspections, role }));
+    const { vehicles, inspections, role, demoNoteStyle } = state;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ vehicles, inspections, role, demoNoteStyle }));
   } catch { /* ignore */ }
 }
 function set(patch: Partial<State>) { state = { ...state, ...patch }; save(); listeners.forEach((l) => l()); }
@@ -295,6 +297,28 @@ async function pool<T>(items: T[], n: number, fn: (x: T) => Promise<void>) {
   await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (next < items.length) await fn(items[next++]); }));
 }
 
+/** The shop's style for automatic notes. */
+export function noteStyle(): NoteStyle {
+  return state.mode === 'demo' ? state.demoNoteStyle ?? 'customer' : state.workspace?.shop?.noteStyle ?? 'customer';
+}
+
+/** Demo stand-in for /api/ai-wording: reword the tech's note, or draft one from confirmed facts when it's blank. */
+const demoWording = (pointId: string) => (i: Inspection) => {
+  const n = i.notes.find((x) => x.pointId === pointId);
+  if (n?.techText.trim()) {
+    const s = suggestWording(n);
+    n.aiText = wordingKeepsFacts(n.techText, s) ? s : null;
+    n.status = n.aiText ? 'ai_suggested' : 'technician_original';
+    return;
+  }
+  const v = state.vehicles.find((x) => x.id === i.vehicleId)!;
+  const f = pointFacts(i, v, getPoint(pointId));
+  if (!f.parts.some((p) => p.state !== 'unrated')) return;
+  const text = draftNote(f, noteStyle());
+  if (n) { n.aiText = text; n.status = 'ai_suggested'; }
+  else i.notes.push({ pointId, techText: '', aiText: text, status: 'ai_suggested', customerText: null });
+};
+
 export const actions = {
   // ---- session & workspace (live)
   async signIn(email: string, password: string) { await auth.signIn(email, password); await actions.loadWorkspace(); },
@@ -310,13 +334,13 @@ export const actions = {
   async loadWorkspace(shopId?: string) {
     if (state.mode !== 'live' || !getSession()) return;
     // Shop numbers give each shop its own address (1001.wrynch.app). On a shop's address, open that shop.
-    const list = await rpc<{ id: string; name: string; number: number; role: Role }[]>('my_shop_list').catch(() => []);
+    const list = await rpc<{ id: string; name: string; number: number; role: Role; noteStyle?: NoteStyle }[]>('my_shop_list').catch(() => []);
     const host = hostInfo();
     const fromAddress = host.shopNumber !== null ? list.find((x) => x.number === host.shopNumber)?.id : undefined;
     const ws = await withLoading(() => rpc<Workspace & { jobs?: JobHeader[] }>('get_workspace', { p_shop: shopId ?? fromAddress ?? state.workspace?.shop?.id ?? null, p_days: 14 }));
     const num = (id?: string) => list.find((x) => x.id === id)?.number;
     const full: Workspace = {
-      shops: (ws.shops ?? []).map((x) => ({ ...x, number: num(x.id) })), shop: ws.shop ? { ...ws.shop, number: num(ws.shop.id) } : null,
+      shops: (ws.shops ?? []).map((x) => ({ ...x, number: num(x.id) })), shop: ws.shop ? { ...ws.shop, number: num(ws.shop.id), noteStyle: list.find((x) => x.id === ws.shop!.id)?.noteStyle ?? 'customer' } : null,
       role: ws.role ?? null, me: ws.me ?? null, members: ws.members ?? [],
       invites: ws.invites ?? [], template: ws.template ?? null, rules: ws.rules ?? null,
     };
@@ -567,18 +591,39 @@ export const actions = {
     return fn<NoteDraft>('ai-note', { inspectionId: inspId, pointId });
   },
   async requestWording(inspId: string, pointId: string) {
-    if (state.mode === 'demo') {
-      return edit(inspId, (i) => {
-        const n = i.notes.find((x) => x.pointId === pointId);
-        if (!n || !n.techText.trim()) return;
-        const s = suggestWording(n);
-        n.aiText = wordingKeepsFacts(n.techText, s) ? s : null;
-        n.status = n.aiText ? 'ai_suggested' : 'technician_original';
-      });
-    }
-    set({ busy: 'Writing a customer version…' });
+    if (state.mode === 'demo') return edit(inspId, demoWording(pointId));
+    set({ busy: noteStyle() === 'customer' ? 'Writing a customer version…' : 'Writing a technical version…' });
     try { await fn('ai-wording', { inspectionId: inspId, pointId }); } catch (e) { toast(errText(e), 'error'); } finally { set({ busy: null }); }
     await reload(inspId).catch(() => undefined);
+  },
+  /**
+   * Finish screen: automatic notes for several points (reworded, or drafted where the note is blank), three at a time.
+   * Each one is stored as a suggestion the technician must approve. Returns how many couldn't be written.
+   */
+  async autoNotes(inspId: string, pointIds: string[], onProgress?: (done: number) => void): Promise<number> {
+    let done = 0; let failed = 0;
+    if (state.mode === 'demo') {
+      edit(inspId, (i) => { for (const p of pointIds) demoWording(p)(i); });
+      onProgress?.(pointIds.length);
+      return 0;
+    }
+    await queues.get(inspId)?.tail.catch(() => undefined); // ratings and notes still on their way go first
+    await pool(pointIds, 3, async (pointId) => {
+      try { await fn('ai-wording', { inspectionId: inspId, pointId }); } catch { failed++; }
+      onProgress?.(++done);
+    });
+    await reload(inspId).catch(() => undefined);
+    return failed;
+  },
+  async setNoteStyle(style: NoteStyle) {
+    if (state.mode === 'demo') { set({ demoNoteStyle: style }); return; }
+    const ws = state.workspace!;
+    const prev = ws.shop!.noteStyle;
+    set({ workspace: { ...ws, shop: { ...ws.shop!, noteStyle: style } } });
+    try { await rpc('set_note_style', { p_shop: ws.shop!.id, p_style: style }); toast(`Automatic notes are now ${style === 'customer' ? 'customer-friendly' : 'technical'}.`); } catch (e) {
+      toast(errText(e), 'error');
+      set({ workspace: { ...state.workspace!, shop: { ...state.workspace!.shop!, noteStyle: prev } } });
+    }
   },
   resolveWording(inspId: string, pointId: string, action: 'accept' | 'reject' | { text: string }) {
     if (state.mode === 'demo') return edit(inspId, local.resolveWording(pointId, action));

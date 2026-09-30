@@ -2,7 +2,7 @@
 // and the shop template before it is stored, and everything stored is a pending proposal (rules R4, R10).
 import { cls, compLabel, DEFAULT_TEMPLATE, findingLabel, ONTOLOGY, parseKey, pointComponents } from '../src/domain/ontology';
 import { suggestWording, wordingKeepsFacts, type PartReading, type PhotoAnalysis } from '../src/domain/aiStub';
-import { draftKeepsFacts, factsText, type PointFacts } from '../src/domain/noteDraft';
+import { draftKeepsFacts, factsText, type NoteStyle, type PointFacts } from '../src/domain/noteDraft';
 import type { CompKey, PointNote, Severity, Template, VehicleConfig } from '../src/domain/types';
 import { SIDE_UNSURE_CONFIDENCE } from '../src/domain/types';
 import { env, HttpError } from './lib';
@@ -241,12 +241,14 @@ export async function analyzePhoto(image: { bytes: Uint8Array; type: string }, c
  * Customer-friendly rewrite of a technician's note. Falls back to the rule-based rewrite if the model output
  * changes, adds or drops any number; returns null if neither passes.
  */
-export async function rewriteNote(note: PointNote, context: string): Promise<string | null> {
+export async function rewriteNote(note: PointNote, context: string, style: NoteStyle = 'customer'): Promise<string | null> {
   if (env('ANTHROPIC_API_KEY')) {
     try {
       const res = await claude({
         max_tokens: 400,
-        system: 'You rewrite a mechanic\'s shorthand note for a vehicle owner. Plain, calm, short (1–3 sentences). '
+        system: (style === 'customer'
+          ? 'You rewrite a mechanic\'s shorthand note for a vehicle owner who is not a mechanic. Plain, calm, everyday words; explain jargon briefly; short (1–3 sentences). '
+          : 'You rewrite a mechanic\'s shorthand note into a clean, professional technical note for the service advisor and a knowledgeable customer. Standard automotive terminology, no slang or shorthand, short (1–3 sentences). ')
           + 'Keep every number and unit exactly as given. Do not add findings, causes, repairs, prices, urgency or advice that is not in the note.',
         tools: [{ name: 'wording', description: 'The rewritten note', input_schema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] } }],
         tool_choice: { type: 'tool', name: 'wording' },
@@ -420,13 +422,16 @@ export function mapTemplatePointsStub(points: DraftPoint[]): MappedPoint[] {
  * Draft a technician note for one inspection point from its confirmed facts and confirmed photos.
  * Returns null if the model's draft uses a number that isn't in the facts (the caller falls back to the rules draft).
  */
-export async function writePointNote(facts: PointFacts, photos: { bytes: Uint8Array; type: string }[]): Promise<string | null> {
+export async function writePointNote(facts: PointFacts, photos: { bytes: Uint8Array; type: string }[], style: NoteStyle = 'technical'): Promise<string | null> {
   const images = photos.filter((p) => AI_IMAGE_TYPES.includes(p.type.split(';')[0].trim().toLowerCase()) && p.bytes.length * 4 / 3 <= AI_IMAGE_MAX).slice(0, 3)
     .map((p) => ({ type: 'image', source: { type: 'base64', media_type: p.type.split(';')[0].trim().toLowerCase(), data: b64(p.bytes) } }));
   const res = await claude({
     max_tokens: 800,
     system: 'You write the note an automotive technician leaves on one inspection point. The customer and service advisor read it. '
-      + 'Write 1–3 short, plain sentences. Lead with anything rated immediate attention or monitor, then briefly say the rest checked OK. '
+      + (style === 'customer'
+        ? 'Write for a vehicle owner who is not a mechanic: 1–3 short sentences in plain, calm, everyday words (say "needs attention now" or "worth keeping an eye on" rather than rating codes).'
+        : 'Write in concise, professional shop terminology for the service advisor: 1–3 short sentences.')
+      + ' Lead with anything rated immediate attention or monitor, then briefly say the rest checked OK. '
       + 'Use ONLY the confirmed facts given: do not add parts, findings, causes, repairs, prices or urgency that are not in them, and never change a rating. '
       + 'Use every measurement exactly as written (same numbers and units) and no other numbers. '
       + 'The photos are the technician\'s confirmed photos of these parts: you may use them only to describe what the facts already say (for example where the wear is), never to add a new problem.',
