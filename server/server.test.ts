@@ -18,6 +18,31 @@ test('candidates for under car on the 4Runner exclude parts that do not apply an
   assert.equal(new Set(keys).size, keys.length, 'no duplicates');
 });
 
+test('photos taken from one point are matched only to that point\'s parts', () => {
+  const all = candidatesFor(DEFAULT_TEMPLATE, 'under_car', runner.config);
+  const point = DEFAULT_TEMPLATE.sections.find((x) => x.id === 'under_car')!.points.find((p) => p.id === 'S24')!;
+  const only = candidatesFor(DEFAULT_TEMPLATE, 'under_car', runner.config, 'S24');
+  assert.ok(only.length > 0 && only.length < all.length, `${only.length} of ${all.length}`);
+  assert.ok(only.every((c) => c.point === point.name));
+  assert.equal(candidatesFor(DEFAULT_TEMPLATE, 'under_car', runner.config, null).length, all.length);
+});
+
+test('ai-sort sends only the point\'s parts to the model for a point photo', async () => {
+  process.env.ANTHROPIC_API_KEY = 'k';
+  respond = (url) => {
+    if (url.endsWith('/get_inspection')) return bundle((i) => {
+      i.media = [{ id: 'm1', sectionId: 'under_car', url: 's/i/m1.jpg', label: 'a.jpg', excluded: false, customerVisible: true, analyzed: false, links: [], pointId: 'S24' }];
+    });
+    if (url.includes('/storage/v1/object/inspection-media/')) return new Response(new Uint8Array([255, 216, 255]), { headers: { 'content-type': 'image/jpeg' } });
+    if (url.startsWith('https://api.anthropic.com')) return { content: [{ type: 'tool_use', input: { parts: [] } }] };
+    return null;
+  };
+  await aiSort(post('ai-sort', { inspectionId: 'i-4r-now', mediaIds: ['m1'] }));
+  const body = JSON.stringify(calls.find((c) => c.url.startsWith('https://api.anthropic.com'))!.body);
+  assert.match(body, /Visual brake system condition/);
+  assert.ok(!/Exhaust/.test(body), 'parts from other points in the stage are not offered');
+});
+
 test('AI output is validated against the candidates and the ontology', () => {
   const c = candidatesFor(DEFAULT_TEMPLATE, 'under_car', runner.config);
   const rotor = compKey(clsByName('brake_rotor').id, 'left_front');

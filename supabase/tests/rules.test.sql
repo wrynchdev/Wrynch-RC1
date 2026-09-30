@@ -98,6 +98,16 @@ insert into storage.objects (bucket_id, name) values ('inspection-media', (selec
 select public.add_media((select v::uuid from t.ids where k = 'insp'), '00000000-0000-0000-0000-0000000000f1', 'under_car',
   (select v from t.ids where k = 'shop') || '/' || (select v from t.ids where k = 'insp') || '/m1.jpg', 'IMG_1.jpg');
 select t.expect_error($$ select public.add_media((select v::uuid from t.ids where k = 'insp'), gen_random_uuid(), 'under_car', 'elsewhere/x.jpg', 'x') $$, '%wrong folder%');
+-- A photo from one point's camera button keeps its point (AI then only considers that point's parts).
+select public.add_point_media((select v::uuid from t.ids where k = 'insp'), '00000000-0000-0000-0000-0000000000f9', 'under_car', 'S24',
+  (select v from t.ids where k = 'shop') || '/' || (select v from t.ids where k = 'insp') || '/m9.jpg', 'IMG_9.jpg');
+select t.eq((select m ->> 'pointId' from jsonb_array_elements(public.get_inspection((select v::uuid from t.ids where k = 'insp')) -> 'inspection' -> 'media') m
+             where m ->> 'id' = '00000000-0000-0000-0000-0000000000f9'), 'S24', 'point photo keeps its point');
+select t.expect_error($$ select public.add_point_media((select v::uuid from t.ids where k = 'insp'), gen_random_uuid(), 'under_car', 'S24', 'elsewhere/x.jpg', 'x') $$, '%wrong folder%');
+select public.exclude_photo('00000000-0000-0000-0000-0000000000f9');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000c');
+select t.expect_error($$ select public.add_point_media((select v::uuid from t.ids where k = 'insp'), gen_random_uuid(), 'under_car', 'S24', 'x/y.jpg', 'x') $$, '%permission%');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
 
 select t.act('service_role', null);
 -- One photo shows three parts: rotor (problem), caliper (looks OK), tire (looks OK). A finding the rotor can't have is dropped.

@@ -478,13 +478,13 @@ export const actions = {
 
   // ---- photos
   /** Demo: files carry inline urls. Live: files carry File objects that are shrunk, uploaded, then sorted by AI on the server. */
-  async addPhotos(inspId: string, sectionId: string, files: { url: string; name: string; file?: File }[]) {
+  async addPhotos(inspId: string, sectionId: string, files: { url: string; name: string; file?: File }[], pointId?: string) {
     if (!files.length) return;
     if (state.mode === 'demo') {
       edit(inspId, (i, v) => {
         const withIds = files.map((f) => ({ ...f, id: uid('m') }));
-        for (const f of withIds) i.media.push({ id: f.id, sectionId, url: f.url, label: f.name, excluded: false, customerVisible: true, analyzed: false, links: [] });
-        applyAnalysis(i, analyzePhotos(sectionId, withIds, v.config));
+        for (const f of withIds) i.media.push({ id: f.id, sectionId, url: f.url, label: f.name, excluded: false, customerVisible: true, analyzed: false, links: [], pointId: pointId ?? null });
+        applyAnalysis(i, analyzePhotos(sectionId, withIds, v.config, undefined, pointId));
         if (i.status === 'not_started') i.status = 'in_progress';
       });
       return;
@@ -500,7 +500,8 @@ export const actions = {
         const blob = f.file ? await shrinkPhoto(f.file) : await (await fetch(f.url)).blob();
         await upload(path, blob);
         set({ photoUrls: { ...state.photoUrls, [path]: f.url } });
-        await rpc('add_media', { p_inspection: inspId, p_media: id, p_section: sectionId, p_path: path, p_label: f.name });
+        if (pointId) await rpc('add_point_media', { p_inspection: inspId, p_media: id, p_section: sectionId, p_point: pointId, p_path: path, p_label: f.name });
+        else await rpc('add_media', { p_inspection: inspId, p_media: id, p_section: sectionId, p_path: path, p_label: f.name });
         ids.push(id);
       }
       if (state.ai && !state.ai.on) toast(`${ids.length} ${ids.length === 1 ? 'photo' : 'photos'} saved. AI sorting isn’t set up, so place them by hand.`);

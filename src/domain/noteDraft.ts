@@ -16,8 +16,8 @@ export interface PointFacts { point: string; parts: PartFacts[]; photoIds: strin
 export type NoteStyle = 'customer' | 'technical';
 export const NOTE_STYLES: Record<NoteStyle, string> = { customer: 'Customer-friendly', technical: 'Technical' };
 
-/** True when a point has something worth an automatic note: a part that needs attention, or one that wasn't checked. */
-export const worthANote = (f: PointFacts) => f.parts.some((p) => p.state === 'immediate' || p.state === 'monitor' || p.state === 'not_inspected' || p.state === 'unable_to_assess');
+/** True when a point has something to write about: at least one part rated (OK included) or marked not checked. */
+export const worthANote = (f: PointFacts) => f.parts.some((p) => p.state !== 'unrated');
 
 const REASON: Record<string, string> = {
   not_accessible: 'not accessible', not_performed_this_visit: 'not done this visit', blocked_by_other_condition: 'blocked by another problem',
@@ -99,7 +99,7 @@ export function draftNote(f: PointFacts, style: NoteStyle = 'technical'): string
 
 /**
  * Points that get an automatic note when the inspection is finished: every point whose technician note is still the
- * technician's own (reworded), and every point with a blank note that has something to report (drafted).
+ * technician's own (reworded), and every point with a blank note where anything was rated, all-OK points included (drafted).
  * Points already suggested, approved, edited or kept as written are left alone.
  */
 export function autoNotePoints(insp: Inspection, vehicle: Vehicle, points: TemplatePoint[]): { pointId: string; kind: 'reword' | 'draft' }[] {

@@ -129,6 +129,20 @@ const B = `${ROOT}/app/`;
       await p.locator('button:has-text("Save")').first().click(); await p.waitForTimeout(900);
       await shot('L09-measure');
     });
+    await step('point-photos', async () => {
+      // The camera button on a point uploads photos for that point only.
+      await p.goto(B + `#/insp/${inspId}/point/S26`); await p.waitForSelector('label[for="point-files"]');
+      const before = await p.locator('.thumbs .thumb').count();
+      await p.setInputFiles('#point-files', PHOTOS.slice(0, 1));
+      await p.waitForFunction((n) => document.querySelectorAll('.thumbs .thumb').length > n, before, { timeout: 30000 })
+        .catch(() => errs.push('photo added from a point did not show on that point'));
+      await p.waitForTimeout(800); await shot('L09c-point-photo');
+      const names = await p.locator('.thumbs .thumb .t').allTextContents();
+      if (names.some((t) => /Exhaust|Brake/.test(t))) errs.push('point photo matched to a part outside the point: ' + names.join(', '));
+      await p.goto(B + `#/insp/${inspId}/sort/under_car`); await p.waitForTimeout(600);
+      const confirm = p.locator('button:has-text("AI part matches")');
+      if (await confirm.count() && await confirm.isEnabled()) { await confirm.click(); await p.waitForTimeout(800); }
+    });
     await step('finish-gate', async () => {
       // resolve AI findings, then mark every point "nothing found"
       await p.goto(B + `#/insp/${inspId}/finish`); await p.waitForTimeout(600);
@@ -173,6 +187,9 @@ const B = `${ROOT}/app/`;
       await shot('L10-finish-notes');
       await p.fill('.note-review[data-point="S24"] textarea', s24 + ' Recheck at next service.');
       await p.click('.note-review[data-point="S24"] button:has-text("Approve edit")'); await p.waitForTimeout(700);
+      await p.locator('.note-review button:has-text("Approve")').first().click(); await p.waitForTimeout(500);
+      const all = p.locator('button:has-text("as written")');
+      if (await all.count()) { await all.click(); await p.waitForTimeout(1500); } else errs.push('no Approve all button');
       for (let k = 0; k < 40 && await p.locator('.note-review').count(); k++) { await p.locator('.note-review button:has-text("Approve")').first().click(); await p.waitForTimeout(500); }
       await p.goto(B + `#/insp/${inspId}/finish`); await p.waitForTimeout(1200); await shot('L10-finish');
       if (await p.locator('.note-review').count()) errs.push('automatic notes were written again after approval');
