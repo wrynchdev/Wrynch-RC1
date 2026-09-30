@@ -2,6 +2,7 @@
 // Swap `analyzePhotos` / `suggestWording` for real model calls later; the rest of the app only
 // ever sees AI output as *pending* proposals that a technician must confirm (rules R4, R10–R12).
 import { cls, compKey, parseKey, pointComponents, sections } from './ontology';
+import { filterByCorner, type Corner } from './corner';
 import type { AiObservation, Finding, Media, Severity, VehicleConfig, CompKey, PointNote, Template } from './types';
 
 function hash(s: string): number {
@@ -34,7 +35,7 @@ export interface PartReading {
 export interface PhotoAnalysis { mediaId: string; parts: PartReading[] }
 
 /** Parts a photo from this stage could show on this vehicle (photo-capable parts only). */
-export function stageTargets(sectionId: string, config: VehicleConfig, template?: Template, pointId?: string | null): CompKey[] {
+export function stageTargets(sectionId: string, config: VehicleConfig, template?: Template, pointId?: string | null, corner?: Corner | null): CompKey[] {
   const section = (template ? template.sections : sections()).find((s) => s.id === sectionId);
   if (!section) throw new Error(`Unknown section ${sectionId}`);
   const out: CompKey[] = [];
@@ -43,15 +44,15 @@ export function stageTargets(sectionId: string, config: VehicleConfig, template?
       if (c.applies && !out.includes(c.key) && cls(parseKey(c.key).classId).aiPhoto !== 'no') out.push(c.key);
     }
   }
-  return out;
+  return filterByCorner(out, (k) => k, corner);
 }
 
 /**
  * Deterministic stand-in for the vision model: each photo "shows" one to three neighbouring parts at the same
  * position, most look OK, some get a typical finding, and about one in six can't be identified.
  */
-export function analyzePhotos(sectionId: string, files: { id: string; name: string }[], config: VehicleConfig, template?: Template, pointId?: string | null): PhotoAnalysis[] {
-  const targets = stageTargets(sectionId, config, template, pointId);
+export function analyzePhotos(sectionId: string, files: { id: string; name: string }[], config: VehicleConfig, template?: Template, pointId?: string | null, corner?: Corner | null): PhotoAnalysis[] {
+  const targets = stageTargets(sectionId, config, template, pointId, corner);
   return files.map((f, i) => {
     const h = hash(`${f.name}:${i}`);
     const confidence = 0.5 + ((h >>> 3) % 50) / 100; // 0.50–0.99

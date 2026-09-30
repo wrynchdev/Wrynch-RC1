@@ -8,6 +8,7 @@ import type { CompKey, Finding, Inspection, Media, NotInspectedReason, Rating, S
 import { SEVERITIES, SIDE_UNSURE_CONFIDENCE } from '../domain/types';
 import { actions, isLive, jobList, noteStyle, photoSrc, toast, useStore, type NoteDraft } from '../state/store';
 import { autoNotePoints, NOTE_STYLES } from '../domain/noteDraft';
+import { CORNER_LABEL, CORNER_SHORT, CORNERS, type Corner } from '../domain/corner';
 import { AiChip, fmtDate, fmtMi, Icon, Sheet, StateChip, Tile, TopBar } from './kit';
 import { enc, go, pointStatus, useInspection, useVehicleHistory } from './hooks';
 
@@ -251,13 +252,24 @@ export function Overview({ id }: { id: string }) {
 export function Capture({ id, sectionId }: { id: string; sectionId: string }) {
   const data = useInspection(id);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [corner, setCorner] = useState<Corner | null>(null);
+  const [shot, setShot] = useState<Partial<Record<Corner | 'none', number>>>({});
   const section = sections().find((s) => s.id === sectionId);
   if (!data || !section) return <Missing />;
+  const toFiles = (fs: File[]) => fs.map((f) => ({ url: URL.createObjectURL(f), name: f.name, file: f }));
+  // Library photos: sorted as before (no corner), then off to the sort screen.
   const add = (files: { url: string; name: string; file?: File }[]) => {
     if (!files.length) return;
     go(`/insp/${id}/sort/${sectionId}`);
     void actions.addPhotos(id, sectionId, files);
   };
+  // In-app camera: stay here and keep shooting; each photo carries the corner picked above.
+  const snap = (fs: File[]) => {
+    if (!fs.length) return;
+    setShot((x) => ({ ...x, [corner ?? 'none']: (x[corner ?? 'none'] ?? 0) + fs.length }));
+    void actions.addPhotos(id, sectionId, toFiles(fs), undefined, corner);
+  };
+  const total = Object.values(shot).reduce((a, b) => a + (b ?? 0), 0);
   return (
     <div className="phone" style={{ background: 'var(--paper)', color: 'var(--ink)' }}>
       <div className="topbar" style={{ background: 'var(--paper)', borderColor: 'var(--card2)' }}>
@@ -265,13 +277,46 @@ export function Capture({ id, sectionId }: { id: string; sectionId: string }) {
         <div className="grow"><h1>{section.name}</h1><div className="sub" style={{ color: 'var(--text2)' }}>Burst capture · shoot in any order</div></div>
       </div>
       <div className="body">
-        <div className="dropzone" style={{ background: 'var(--card)', borderColor: 'var(--line)', color: 'var(--ink)', minHeight: 300, justifyContent: 'center' }}>
-          <Icon name="camera" size={40} />
-          <strong style={{ fontSize: 18 }}>Shoot or pick every photo for this stage</strong>
-          <span className="small" style={{ color: 'var(--text2)', maxWidth: 320 }}>Shoot with your camera app, then pick them all here at once. Wrynch sorts them onto parts; nothing it suggests counts until you confirm.</span>
+        <section className="card pad stack corner-pick" aria-labelledby="corner-h">
+          <div>
+            <strong id="corner-h" style={{ fontSize: 16 }}>Where are you shooting?</strong>
+            <div className="small" style={{ color: 'var(--text2)' }}>Tap your corner before you shoot. The AI then only looks for parts at that corner. Left is the driver's side. Leave it off for photos of the whole car or the middle.</div>
+          </div>
+          <div className="corner-grid" role="group" aria-label="Corner of the vehicle">
+            {CORNERS.map((c) => (
+              <button key={c} type="button" className={`corner-btn c-${c}`} aria-pressed={corner === c} onClick={() => setCorner(corner === c ? null : c)}>
+                <b>{CORNER_SHORT[c]}</b><span>{CORNER_LABEL[c]}</span>{shot[c] ? <i>{shot[c]}</i> : null}
+              </button>
+            ))}
+            <div className="corner-car" aria-hidden="true">
+              <span>Front</span>
+              <svg viewBox="0 0 60 110" width="54" height="99" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinejoin="round">
+                <rect x="10" y="6" width="40" height="98" rx="14" />
+                <path d="M15 34h30l-3-10H18zM15 80h30l-3 10H18z" />
+                <rect x="3" y="18" width="7" height="16" rx="2" fill="currentColor" /><rect x="50" y="18" width="7" height="16" rx="2" fill="currentColor" />
+                <rect x="3" y="76" width="7" height="16" rx="2" fill="currentColor" /><rect x="50" y="76" width="7" height="16" rx="2" fill="currentColor" />
+              </svg>
+            </div>
+          </div>
+          <input className="sr" id="snap" type="file" accept="image/*" capture="environment" multiple
+            onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ''; snap(fs); }} />
+          <label htmlFor="snap" className="btn primary block" style={{ cursor: 'pointer' }}>
+            <Icon name="camera" />{corner ? `Take photo · ${CORNER_LABEL[corner]}` : 'Take photo'}
+          </label>
+          {total > 0 && (
+            <div className="row between">
+              <span className="small" role="status" style={{ color: 'var(--text2)' }}>{total} {total === 1 ? 'photo' : 'photos'} taken{Object.entries(shot).filter(([k, n]) => n && k !== 'none').length ? ` · ${Object.entries(shot).filter(([k, n]) => n && k !== 'none').map(([k, n]) => `${CORNER_SHORT[k as Corner]} ${n}`).join(', ')}` : ''}</span>
+              <a className="btn sm secondary" href={`#/insp/${id}/sort/${sectionId}`}>Done · sort photos</a>
+            </div>
+          )}
+        </section>
+        <div className="dropzone" style={{ background: 'var(--card)', borderColor: 'var(--line)', color: 'var(--ink)', minHeight: 160, justifyContent: 'center' }}>
+          <Icon name="image" size={32} />
+          <strong style={{ fontSize: 16 }}>Already took them? Pick from your photos</strong>
+          <span className="small" style={{ color: 'var(--text2)', maxWidth: 320 }}>Pick every photo for this stage at once. Wrynch sorts them onto parts; nothing it suggests counts until you confirm.</span>
           <input ref={fileRef} className="sr" id="files" type="file" accept="image/*" multiple
-            onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ''; void add(fs.map((f) => ({ url: URL.createObjectURL(f), name: f.name, file: f }))); }} />
-          <label htmlFor="files" className="btn primary" style={{ cursor: 'pointer' }}>Take or choose photos</label>
+            onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ''; void add(toFiles(fs)); }} />
+          <label htmlFor="files" className="btn secondary" style={{ cursor: 'pointer' }}>Choose photos</label>
           {!isLive() && <button className="btn sm" style={{ background: 'var(--card2)', color: 'var(--ink)' }} onClick={() => add(actions.samplePhotos(sectionId, 12))}>No photos handy? Use 12 sample photos</button>}
         </div>
         <div className="small" style={{ color: 'var(--text2)' }}>What to capture in {section.name.toLowerCase()}:</div>

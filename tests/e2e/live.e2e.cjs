@@ -95,6 +95,15 @@ const B = `${ROOT}/app/`;
       await p.waitForSelector('text=points done'); await shot('L06-overview');
     });
     const inspId = p.url().split('/insp/')[1].split('/')[0];
+    await step('corner-capture', async () => {
+      // In-app camera: tap a corner, shoot, and the photo is tagged with that corner; the tech stays on the capture screen.
+      await p.goto(B + `#/insp/${inspId}/capture/under_car`); await p.waitForSelector('text=Where are you shooting?');
+      await p.click('.corner-btn.c-right_front');
+      await p.setInputFiles('#snap', PHOTOS.slice(0, 1));
+      await p.waitForSelector('text=1 photo taken · RF 1', { timeout: 15000 }).catch(() => errs.push('corner photo count not shown'));
+      await p.waitForFunction(() => !document.querySelector('.toast[role=status]') || !/Uploading|reading/.test(document.querySelector('.toast').textContent), null, { timeout: 30000 });
+      await shot('L06b-corner-capture');
+    });
     await step('upload', async () => {
       await p.goto(B + `#/insp/${inspId}/capture/under_car`);
       await p.setInputFiles('#files', PHOTOS);

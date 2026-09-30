@@ -2,6 +2,7 @@
 // and the shop template before it is stored, and everything stored is a pending proposal (rules R4, R10).
 import { cls, compLabel, DEFAULT_TEMPLATE, findingLabel, ONTOLOGY, parseKey, pointComponents } from '../src/domain/ontology';
 import { suggestWording, wordingKeepsFacts, type PartReading, type PhotoAnalysis } from '../src/domain/aiStub';
+import { filterByCorner, type Corner } from '../src/domain/corner';
 import { draftKeepsFacts, factsText, type NoteStyle, type PointFacts } from '../src/domain/noteDraft';
 import type { CompKey, PointNote, Severity, Template, VehicleConfig } from '../src/domain/types';
 import { SIDE_UNSURE_CONFIDENCE } from '../src/domain/types';
@@ -13,7 +14,7 @@ export interface Candidate { key: CompKey; stage: string; point: string; label: 
  * Parts a photo could show: the photo-capable parts of the inspection points in the stage the photo was taken in.
  * A part shared by several points in that stage is listed once, under the first point.
  */
-export function candidatesFor(template: Template, sectionId: string, config: VehicleConfig, pointId?: string | null): Candidate[] {
+export function candidatesFor(template: Template, sectionId: string, config: VehicleConfig, pointId?: string | null, corner?: Corner | null): Candidate[] {
   const section = template.sections.find((s) => s.id === sectionId);
   if (!section) throw new HttpError(400, `Unknown stage ${sectionId}`);
   const out = new Map<CompKey, Candidate>();
@@ -26,7 +27,7 @@ export function candidatesFor(template: Template, sectionId: string, config: Veh
       out.set(c.key, { key: c.key, stage: section.name, point: p.name, label: compLabel(c.key), findings: Object.keys(k.findings) });
     }
   }
-  return [...out.values()];
+  return filterByCorner([...out.values()], (c) => c.key, corner);
 }
 
 const SEVERITIES = ['minor', 'moderate', 'severe', 'critical'];

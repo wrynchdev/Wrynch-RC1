@@ -3,6 +3,7 @@ import { analyzePhotos, type PhotoAnalysis } from '../src/domain/aiStub';
 import type { Inspection, Template, Vehicle } from '../src/domain/types';
 import { aiMode, analyzePhoto, candidatesFor, mapTemplatePoints, mapTemplatePointsStub, model, readTemplate, rewriteNote, validateAnalysis, writePointNote, type DraftPoint } from './ai';
 import { draftNote, pointFacts, type NoteStyle } from '../src/domain/noteDraft';
+import { CORNER_LABEL, isCorner } from '../src/domain/corner';
 import { decodeVin } from './vin';
 import { bearer, downloadObject, env, HttpError, json, rateLimit, readJson, route, rpc, signUrls, type Handler } from './lib';
 
@@ -34,19 +35,22 @@ export const aiSort: Handler = route({
     const todo = inspection.media.filter((m) => mediaIds.includes(m.id) && !m.excluded && !m.analyzed && m.links.length === 0);
     // Group by stage, and by point for photos taken from one point's camera button (only that point's parts are considered).
     const bySection = new Map<string, typeof todo>();
-    for (const m of todo) { const g = `${m.sectionId}|${m.pointId ?? ''}`; bySection.set(g, [...(bySection.get(g) ?? []), m]); }
+    // Photos from the in-app camera can carry a corner tag (LF/RF/LR/RR): only parts that fit that corner are considered.
+    for (const m of todo) { const g = `${m.sectionId}|${m.pointId ?? ''}|${isCorner(m.corner) ? m.corner : ''}`; bySection.set(g, [...(bySection.get(g) ?? []), m]); }
 
     const analyses: PhotoAnalysis[] = [];
     let failed = 0;
     let reason = '';
     const vehicleText = [vehicle.year || '', vehicle.make, vehicle.model, vehicle.trim].filter(Boolean).join(' ');
     for (const [group, items] of bySection) {
-      const [sectionId, pointId] = [group.slice(0, group.indexOf('|')), group.slice(group.indexOf('|') + 1) || null];
+      const [sectionId, pointPart, cornerPart] = group.split('|');
+      const pointId = pointPart || null;
+      const corner = isCorner(cornerPart) ? cornerPart : null;
       if (mode === 'claude') {
-        const candidates = candidatesFor(template, sectionId, vehicle.config, pointId);
+        const candidates = candidatesFor(template, sectionId, vehicle.config, pointId, corner);
         const sec = template.sections.find((s) => s.id === sectionId);
         const pointName = pointId ? sec?.points.find((p) => p.id === pointId)?.name : undefined;
-        const stage = `${sec?.name ?? sectionId}${pointName ? ` (taken for the inspection point "${pointName}")` : ''}`;
+        const stage = `${sec?.name ?? sectionId}${pointName ? ` (taken for the inspection point "${pointName}")` : ''}${corner ? `; the technician tagged this photo as taken at the ${CORNER_LABEL[corner].toLowerCase()} corner of the vehicle` : ''}`;
         const results = await pool(items, 4, async (m) => {
           try {
             return validateAnalysis(m.id, await analyzePhoto(await downloadObject(m.url), candidates, stage, vehicleText), candidates);
@@ -61,7 +65,7 @@ export const aiSort: Handler = route({
         analyses.push(...results.filter((a): a is PhotoAnalysis => a !== null));
       } else {
         // AI_STUB=1 (tests and local demos only): the rule-based stand-in.
-        analyses.push(...analyzePhotos(sectionId, items.map((m) => ({ id: m.id, name: m.label })), vehicle.config, template, pointId));
+        analyses.push(...analyzePhotos(sectionId, items.map((m) => ({ id: m.id, name: m.label })), vehicle.config, template, pointId, corner));
       }
     }
     if (todo.length && !analyses.length) throw new HttpError(502, `${reason || 'The AI couldn’t read these photos right now.'} Photos are saved; try “Sort with AI” again or place them by hand.`);

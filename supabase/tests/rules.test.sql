@@ -105,6 +105,13 @@ select t.eq((select m ->> 'pointId' from jsonb_array_elements(public.get_inspect
              where m ->> 'id' = '00000000-0000-0000-0000-0000000000f9'), 'S24', 'point photo keeps its point');
 select t.expect_error($$ select public.add_point_media((select v::uuid from t.ids where k = 'insp'), gen_random_uuid(), 'under_car', 'S24', 'elsewhere/x.jpg', 'x') $$, '%wrong folder%');
 select public.exclude_photo('00000000-0000-0000-0000-0000000000f9');
+select public.add_captured_media((select v::uuid from t.ids where k = 'insp'), '00000000-0000-0000-0000-0000000000fa', 'under_car', null, 'left_front',
+  (select v from t.ids where k = 'shop') || '/' || (select v from t.ids where k = 'insp') || '/ma.jpg', 'IMG_10.jpg');
+select t.eq((select m ->> 'corner' from jsonb_array_elements(public.get_inspection((select v::uuid from t.ids where k = 'insp')) -> 'inspection' -> 'media') m
+             where m ->> 'id' = '00000000-0000-0000-0000-0000000000fa'), 'left_front', 'camera photo keeps its corner');
+select t.expect_error($$ select public.add_captured_media((select v::uuid from t.ids where k = 'insp'), gen_random_uuid(), 'under_car', null, 'upside_down',
+  (select v from t.ids where k = 'shop') || '/' || (select v from t.ids where k = 'insp') || '/mb.jpg', 'x') $$, '%Unknown corner%');
+select public.exclude_photo('00000000-0000-0000-0000-0000000000fa');
 select t.act('authenticated', '00000000-0000-0000-0000-00000000000c');
 select t.expect_error($$ select public.add_point_media((select v::uuid from t.ids where k = 'insp'), gen_random_uuid(), 'under_car', 'S24', 'x/y.jpg', 'x') $$, '%permission%');
 select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');

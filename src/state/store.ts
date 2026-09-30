@@ -17,6 +17,7 @@ import type {
 import { ApiError, auth, fn, getSession, hostInfo, LIVE, onSession, rpc, rpcAnon, shared, shrinkPhoto, signPhotos, upload, type Session } from './remote';
 import { dashFromInspections, type DashData } from '../domain/dashboard';
 import { draftNote, pointFacts, type NoteStyle } from '../domain/noteDraft';
+import type { Corner } from '../domain/corner';
 
 export type Role = 'owner' | 'advisor' | 'technician';
 export interface Member { userId: string; name: string; role: Role }
@@ -478,13 +479,13 @@ export const actions = {
 
   // ---- photos
   /** Demo: files carry inline urls. Live: files carry File objects that are shrunk, uploaded, then sorted by AI on the server. */
-  async addPhotos(inspId: string, sectionId: string, files: { url: string; name: string; file?: File }[], pointId?: string) {
+  async addPhotos(inspId: string, sectionId: string, files: { url: string; name: string; file?: File }[], pointId?: string, corner?: Corner | null) {
     if (!files.length) return;
     if (state.mode === 'demo') {
       edit(inspId, (i, v) => {
         const withIds = files.map((f) => ({ ...f, id: uid('m') }));
-        for (const f of withIds) i.media.push({ id: f.id, sectionId, url: f.url, label: f.name, excluded: false, customerVisible: true, analyzed: false, links: [], pointId: pointId ?? null });
-        applyAnalysis(i, analyzePhotos(sectionId, withIds, v.config, undefined, pointId));
+        for (const f of withIds) i.media.push({ id: f.id, sectionId, url: f.url, label: f.name, excluded: false, customerVisible: true, analyzed: false, links: [], pointId: pointId ?? null, corner: corner ?? null });
+        applyAnalysis(i, analyzePhotos(sectionId, withIds, v.config, undefined, pointId, corner));
         if (i.status === 'not_started') i.status = 'in_progress';
       });
       return;
@@ -500,7 +501,8 @@ export const actions = {
         const blob = f.file ? await shrinkPhoto(f.file) : await (await fetch(f.url)).blob();
         await upload(path, blob);
         set({ photoUrls: { ...state.photoUrls, [path]: f.url } });
-        if (pointId) await rpc('add_point_media', { p_inspection: inspId, p_media: id, p_section: sectionId, p_point: pointId, p_path: path, p_label: f.name });
+        if (corner) await rpc('add_captured_media', { p_inspection: inspId, p_media: id, p_section: sectionId, p_point: pointId ?? null, p_corner: corner, p_path: path, p_label: f.name });
+        else if (pointId) await rpc('add_point_media', { p_inspection: inspId, p_media: id, p_section: sectionId, p_point: pointId, p_path: path, p_label: f.name });
         else await rpc('add_media', { p_inspection: inspId, p_media: id, p_section: sectionId, p_path: path, p_label: f.name });
         ids.push(id);
       }
