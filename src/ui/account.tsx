@@ -333,7 +333,7 @@ export function Team() {
           <tbody>
             {ws.members.map((m) => (
               <tr key={m.userId}>
-                <td>{m.name}{m.userId === ws.me?.userId ? ' (you)' : ''}</td>
+                <td><a href={`#/profile/${m.userId}`}>{m.name}</a>{m.userId === ws.me?.userId ? ' (you)' : ''}</td>
                 <td>{isOwner ? (
                   <select className="input" aria-label={`Role for ${m.name}`} style={{ height: 38, width: 160 }} value={m.role} onChange={(e) => void actions.setMemberRole(m.userId, e.target.value as Role)}>
                     {Object.entries(ROLE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}

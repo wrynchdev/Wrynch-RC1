@@ -114,6 +114,10 @@ export const photoSrc = (url: string) => (state.mode === 'demo' ? url : state.ph
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 // An invite or pilot link survives the email-confirmation round trip (which lands back on the app's home).
+export interface TechStats {
+  userId: string; name: string; role: Role; inspections: number; last30: number; timed: number; avgSeconds: number | null; inProgress: number;
+  recent: { id: string; ro: string; vehicle: string; startedAt: string | null; submittedAt: string; seconds: number | null }[];
+}
 export interface TrainingItem { mediaId: string; url: string | null; shop: number; vehicle: string; stage: string; parts: string[] }
 export interface TrainingStats { approved: number; skipped: number; waiting: number; shops: number; classes: Record<string, number> }
 export interface ShopAiInfo { configured: boolean; provider?: 'anthropic' | 'openai'; model?: string | null; last4?: string | null; updatedAt?: string | null }
@@ -390,6 +394,8 @@ export const actions = {
       set({ dashboard: state.dashboard ? { ...state.dashboard, baseline: percent } : null });
     } catch (e) { toast(errText(e), 'error'); }
   },
+  /** Inspection counts and times per technician (technicians only ever get their own). */
+  techStats: (userId?: string) => rpc<TechStats[]>('technician_stats', { p_shop: state.workspace!.shop!.id, p_user: userId ?? null }),
   // ---- training data (owners share; Wrynch staff label)
   async loadTrainingInfo() {
     if (state.mode !== 'live' || !state.workspace?.shop) return;

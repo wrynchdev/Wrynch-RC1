@@ -10,6 +10,7 @@ import { actions, isLive, jobList, noteStyle, photoSrc, toast, useStore, type No
 import { autoNotePoints, NOTE_STYLES } from '../domain/noteDraft';
 import { CORNER_LABEL, CORNER_SHORT, CORNERS, type Corner } from '../domain/corner';
 import { CameraSheet } from './camera';
+import { InspectionClock } from './profile';
 import { AiChip, fmtDate, fmtMi, Icon, Sheet, StateChip, Tile, TopBar } from './kit';
 import { enc, go, pointStatus, useInspection, useVehicleHistory } from './hooks';
 
@@ -169,8 +170,15 @@ export function Setup({ id }: { id: string }) {
 }
 
 // ------------------------------------------------------------------ Overview
+/** The stage a technician is working in, per inspection (the stage of the last point, capture or photo review opened). */
+const workingStage = new Map<string, string>();
+export const rememberStage = (inspId: string, sectionId: string) => { workingStage.set(inspId, sectionId); };
+
 export function Overview({ id }: { id: string }) {
   const data = useInspection(id);
+  // Only one stage is open at a time. Until the tech picks one, it's the stage they were last working in, or the
+  // first stage that isn't finished.
+  const [picked, setPicked] = useState<string | null | undefined>(undefined);
   if (!data) return <Missing />;
   const { insp, vehicle } = data;
   const sum = summarize(insp, vehicle);
@@ -181,6 +189,10 @@ export function Overview({ id }: { id: string }) {
   const pointsDone = allPoints.filter((p) => pointStatus(insp, vehicle, p.id).done).length;
   const locked = insp.status !== 'in_progress';
   const isDemo = !isLive();
+  const firstOpen = visible.find((s) => !s.points.every((p) => pointStatus(insp, vehicle, p.id).done))?.id ?? visible[0]?.id ?? null;
+  const remembered = workingStage.get(id);
+  const openStage = picked !== undefined ? picked : remembered && visible.some((s) => s.id === remembered) ? remembered : firstOpen;
+  const toggle = (sid: string) => { const next = openStage === sid ? null : sid; setPicked(next); if (next) rememberStage(id, next); };
   return (
     <div className="phone">
       <TopBar title={`${vehicle.year} ${vehicle.model} ${vehicle.trim}`.trim()} sub={`${insp.ro ? `RO ${insp.ro} · ` : ''}${fmtMi(insp.odometer)}`} back="#/jobs"
@@ -189,6 +201,7 @@ export function Overview({ id }: { id: string }) {
         {locked && <div className="card pad row"><Icon name="lock" /><span className="grow">Submitted. Changes are locked.</span><a href={`#/advisor/${id}`}>Advisor view</a></div>}
         <div className="card pad stack">
           <div className="row between"><strong>{pointsDone} of {allPoints.length} points done</strong><span className="small muted">{insp.media.filter((m) => !m.excluded).length} photos</span></div>
+          <InspectionClock startedAt={insp.startedAt} firstSubmittedAt={insp.firstSubmittedAt} />
           <div className="bar"><div style={{ width: `${(pointsDone / allPoints.length) * 100}%` }} /></div>
           <div className="tiles">
             <Tile kind="immediate" n={sum.immediate} label="Immediate" />
@@ -200,6 +213,7 @@ export function Overview({ id }: { id: string }) {
         </div>
 
         {visible.map((s) => {
+          const open = s.id === openStage;
           const st = s.points.map((p) => ({ p, st: pointStatus(insp, vehicle, p.id) }));
           const done = st.filter((x) => x.st.done).length;
           const sectionKeys = new Set(st.flatMap((x) => x.st.keys));
@@ -209,11 +223,13 @@ export function Overview({ id }: { id: string }) {
           const photos = insp.media.filter((m) => m.sectionId === s.id && !m.excluded).length;
           const complete = done === s.points.length && pend === 0;
           return (
-            <section key={s.id} className="card" style={complete ? undefined : { borderColor: 'var(--line)' }}>
-              <div className="pad row">
+            <section key={s.id} className={`card stage${open ? ' open' : ''}`} style={complete ? undefined : { borderColor: 'var(--line)' }}>
+              <button type="button" className="pad row stage-head" aria-expanded={open} aria-controls={`stage-${s.id}`} onClick={() => toggle(s.id)}>
                 <span className={`chip ${complete ? 'ok' : 'na'}`}>{complete ? <Icon name="check" size={14} stroke={2.6} /> : null}{done}/{s.points.length}</span>
-                <div className="grow"><div className="t" style={{ fontWeight: 700 }}>{s.name}</div><div className="small muted">{photos} photos</div></div>
-              </div>
+                <span className="grow" style={{ textAlign: 'left' }}><span className="t" style={{ fontWeight: 700, display: 'block' }}>{s.name}</span><span className="small muted">{photos} photos{pend > 0 ? ` · ${pend} AI items to review` : ''}</span></span>
+                <Icon name="next" size={20} />
+              </button>
+              {open && <div id={`stage-${s.id}`}>
               {pend > 0 && <div className="ai-box small" style={{ margin: '0 16px 10px' }}>{pend} AI items wait for you in this stage.</div>}
               <div className="list" style={{ borderTop: '1px solid var(--line2)' }}>
                 {st.map(({ p, st: ps }) => (
@@ -234,6 +250,7 @@ export function Overview({ id }: { id: string }) {
                   <button className="btn quiet block sm" onClick={() => actions.demoFillUnderCar(id)}>Demo: enter the shop's real under-car results</button>
                 </div>
               )}
+              </div>}
             </section>
           );
         })}
@@ -259,6 +276,7 @@ export function Capture({ id, sectionId }: { id: string; sectionId: string }) {
   const snapRef = useRef<HTMLInputElement>(null);
   const section = sections().find((s) => s.id === sectionId);
   if (!data || !section) return <Missing />;
+  rememberStage(id, sectionId);
   const toFiles = (fs: File[]) => fs.map((f) => ({ url: URL.createObjectURL(f), name: f.name, file: f }));
   // Library photos: sorted as before (no corner), then off to the sort screen.
   const add = (files: { url: string; name: string; file?: File }[]) => {
@@ -355,6 +373,7 @@ export function Sort({ id, sectionId }: { id: string; sectionId: string }) {
   const [placing, setPlacing] = useState<string | null>(null);
   const section = sections().find((s) => s.id === sectionId);
   if (!data || !section) return <Missing />;
+  rememberStage(id, sectionId);
   const { insp, vehicle } = data;
   const media = insp.media.filter((m) => m.sectionId === sectionId && !m.excluded);
   const needs = media.filter((m) => m.links.length === 0);
@@ -524,6 +543,7 @@ export function PointView({ id, pointId }: { id: string; pointId: string }) {
   let p;
   try { p = getPoint(pointId); } catch { return <Missing />; }
   const section = sectionOfPoint(pointId);
+  rememberStage(id, section.id);
   const all = pointComponents(p, vehicle.config);
   const comps = all.filter((c) => c.applies);
   const na = all.filter((c) => !c.applies);
