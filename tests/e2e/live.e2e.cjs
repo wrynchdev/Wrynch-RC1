@@ -190,6 +190,28 @@ const B = `${ROOT}/app/`;
       const confirm = p.locator('button:has-text("AI part matches")');
       if (await confirm.count() && await confirm.isEnabled()) { await confirm.click(); await p.waitForTimeout(800); }
     });
+    await step('training', async () => {
+      // Owner shares training data; Wrynch staff (added in the database) label a confirmed photo and export.
+      await p.goto(B + '#/settings'); await p.waitForSelector('text=Help improve Wrynch');
+      await p.check('section[aria-labelledby="tr-h"] input[type=checkbox]'); await p.waitForTimeout(800);
+      require('child_process').spawnSync('psql', ['-Atc', "insert into platform_admin select user_id from shop_member where role = 'owner' on conflict do nothing", PGURL]);
+      await p.reload(); await p.waitForSelector('a[href="#/training"]', { timeout: 10000 }).catch(() => errs.push('staff do not see Training data'));
+      await p.goto(B + '#/training');
+      await p.waitForSelector('.tbox', { timeout: 20000 }).catch(() => errs.push('AI pre-draw boxes did not appear'));
+      // Draw one more box by hand for the first part.
+      const f = await p.locator('.train-frame').boundingBox();
+      if (f) { await p.mouse.move(f.x + f.width * 0.6, f.y + f.height * 0.6); await p.mouse.down(); await p.mouse.move(f.x + f.width * 0.9, f.y + f.height * 0.9, { steps: 5 }); await p.mouse.up(); }
+      await shot('L09d-training');
+      const before = Number((await p.textContent('.train-kpis .card b')).trim());
+      await p.click('button:has-text("Approve")');
+      await p.waitForFunction((n) => Number(document.querySelector('.train-kpis .card b')?.textContent) > n, before, { timeout: 10000 }).catch(() => errs.push('approved count did not go up'));
+      const [dl] = await Promise.all([p.waitForEvent('download', { timeout: 15000 }).catch(() => null), p.click('button:has-text("Export dataset")')]);
+      if (!dl) errs.push('dataset export did not download');
+      else {
+        const m = JSON.parse(require('fs').readFileSync(await dl.path(), 'utf8'));
+        if (m.format !== 'wrynch-yolo-1' || !m.images.length || !m.images[0].labels.length) errs.push('dataset export is empty or malformed');
+      }
+    });
     await step('finish-gate', async () => {
       // resolve AI findings, then mark every point "nothing found"
       await p.goto(B + `#/insp/${inspId}/finish`); await p.waitForTimeout(600);

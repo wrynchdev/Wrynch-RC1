@@ -1,7 +1,7 @@
 // HTTP endpoints. Each is deployed as its own function under /api/<name> (see scripts/build.mjs).
 import { analyzePhotos, type PhotoAnalysis } from '../src/domain/aiStub';
 import type { Inspection, Template, Vehicle } from '../src/domain/types';
-import { aiMode, analyzePhoto, candidatesFor, mapTemplatePoints, mapTemplatePointsStub, model, readTemplate, rewriteNote, validateAnalysis, writePointNote, type DraftPoint } from './ai';
+import { aiMode, analyzePhoto, locateParts, locatePartsStub, candidatesFor, mapTemplatePoints, mapTemplatePointsStub, model, readTemplate, rewriteNote, validateAnalysis, writePointNote, type DraftPoint } from './ai';
 import { draftNote, pointFacts, type NoteStyle } from '../src/domain/noteDraft';
 import { CORNER_LABEL, isCorner } from '../src/domain/corner';
 import { decodeVin } from './vin';
@@ -9,6 +9,7 @@ import { DEFAULT_ANTHROPIC_MODEL, withShopAi, type AiProvider, type ShopAi } fro
 import { lastFour, openSecret, sealSecret, secretsConfigured } from './secrets';
 import { findRepairOrder, loadRepairOrder, roIdFromWebhook, tekmetricConfigured, webhookEvent, type RoImport } from './tekmetric';
 import { buildTekmetricExport } from '../src/domain/tekmetricExport';
+import { clampBox, labelParts, toYoloManifest, type TrainingBox } from '../src/domain/training';
 import { bearer, downloadObject, env, HttpError, json, rateLimit, readJson, route, rpc, signUrls, type Handler } from './lib';
 
 interface InspectionBundle { inspection: Inspection; vehicle: Vehicle; template: Template }
@@ -446,7 +447,56 @@ export const tekmetricExport: Handler = route({
   },
 });
 
+// ------------------------------------------------------------------ training data (Wrynch staff only)
+
+// GET /api/training -> { items: [{ mediaId, url, shop, vehicle, stage, parts }], stats }
+// The next photos to label from shops that share training data, with short-lived photo links.
+export const training: Handler = route({
+  GET: async (req) => {
+    const jwt = bearer(req);
+    const [items, stats] = await Promise.all([
+      rpc<{ mediaId: string; path: string; shop: number; vehicle: string; stage: string; parts: string[] }[]>('training_queue', { p_limit: 20 }, jwt),
+      rpc<Record<string, unknown>>('training_stats', {}, jwt),
+    ]);
+    const urls = await signUrls(items.map((x) => x.path), 3600);
+    return json({ items: items.map(({ path, ...x }) => ({ ...x, url: urls[path] ?? null })), stats });
+  },
+});
+
+// POST /api/training-suggest { mediaId } -> { boxes } : AI first-guess boxes for staff to correct. Nothing is stored.
+export const trainingSuggest: Handler = route({
+  POST: async (req) => {
+    const jwt = bearer(req);
+    const { mediaId } = await readJson<{ mediaId: string }>(req);
+    const photo = await rpc<{ path: string; parts: string[] }>('training_photo', { p_media: mediaId }, jwt);
+    const parts = labelParts(photo.parts ?? []);
+    const mode = aiMode();
+    if (mode === 'off') return json({ boxes: [], note: 'AI isn’t set up, so draw the boxes by hand.' });
+    const found = mode === 'stub' ? locatePartsStub(parts) : await locateParts(await downloadObject(photo.path), parts);
+    const boxes: TrainingBox[] = found.map((b) => {
+      const p = parts.find((x) => x.key === b.key)!;
+      return clampBox({ classId: p.classId, position: p.position, x: b.x, y: b.y, w: b.w, h: b.h, source: 'ai' as const });
+    });
+    return json({ boxes });
+  },
+});
+
+// GET /api/training-export -> the dataset manifest (YOLO rows, classes, photo links valid for 7 days) as a download.
+export const trainingExport: Handler = route({
+  GET: async (req) => {
+    const jwt = bearer(req);
+    const rows = await rpc<{ mediaId: string; path: string; width: number | null; height: number | null; boxes: TrainingBox[] }[]>('training_export', {}, jwt);
+    const urls: Record<string, string> = {};
+    for (let i = 0; i < rows.length; i += 500) Object.assign(urls, await signUrls(rows.slice(i, i + 500).map((r) => r.path), 7 * 24 * 3600));
+    const manifest = toYoloManifest(rows.filter((r) => urls[r.path]).map((r) => ({ mediaId: r.mediaId, url: urls[r.path], width: r.width, height: r.height, boxes: r.boxes })));
+    return new Response(JSON.stringify(manifest), { headers: {
+      'content-type': 'application/json', 'cache-control': 'no-store',
+      'content-disposition': `attachment; filename="wrynch-dataset-${manifest.createdAt.slice(0, 10)}.json"`,
+    } });
+  },
+});
+
 export const ROUTES: Record<string, Handler> = {
   status, pilot, 'ai-note': aiNote, 'template-read': templateRead, 'template-map': templateMap, 'ai-sort': aiSort, 'ai-wording': aiWording, vin, report, 'send-report': sendReport,
-  'ai-key': aiKey, 'tekmetric-webhook': tekmetricWebhook, 'tekmetric-import': tekmetricImport, 'tekmetric-export': tekmetricExport,
+  'ai-key': aiKey, training, 'training-suggest': trainingSuggest, 'training-export': trainingExport, 'tekmetric-webhook': tekmetricWebhook, 'tekmetric-import': tekmetricImport, 'tekmetric-export': tekmetricExport,
 };

@@ -317,3 +317,28 @@ select.input { appearance: auto; }
 .appr-weeks .d { font-size: 11px; color: var(--muted); white-space: nowrap; }
 .appr-note { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
 @media (max-width: 760px) { .approval { grid-template-columns: minmax(0, 1fr); } }
+
+/* Training data labeling (Wrynch staff). */
+.train-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.train-kpis .card { display: flex; flex-direction: column; gap: 2px; }
+.train-kpis b { font: 800 28px/1 var(--display); color: var(--ink); }
+.train-kpis span { font-size: 13px; color: var(--text2); }
+.train-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
+.train-frame { position: relative; user-select: none; -webkit-user-select: none; touch-action: none; cursor: crosshair; border-radius: 10px; overflow: hidden; background: #000; line-height: 0; }
+.train-frame img { width: 100%; height: auto; display: block; pointer-events: none; }
+.tbox { position: absolute; border: 2px solid; border-radius: 3px; cursor: move; box-shadow: 0 0 0 1px rgba(0,0,0,.5); }
+.tbox.sel { border-width: 3px; background: rgba(255,255,255,.06); }
+.tlabel { position: absolute; left: -2px; top: -22px; font: 600 11px/1 var(--body); color: #0A1020; padding: 5px 6px; border-radius: 4px 4px 4px 0; white-space: nowrap; }
+.th { position: absolute; width: 14px; height: 14px; background: #fff; border: 2px solid #0A1020; border-radius: 3px; }
+.th.nw { left: -8px; top: -8px; cursor: nwse-resize; } .th.se { right: -8px; bottom: -8px; cursor: nwse-resize; }
+.th.ne { right: -8px; top: -8px; cursor: nesw-resize; } .th.sw { left: -8px; bottom: -8px; cursor: nesw-resize; }
+.train-busy { position: absolute; left: 12px; bottom: 12px; line-height: 1.2; background: rgba(10,16,32,.85); color: var(--ink); padding: 8px 12px; border-radius: 8px; font-size: 13px; }
+.tpart { display: flex; align-items: center; gap: 10px; text-align: left; padding: 9px 10px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--card2); color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; }
+.tpart.on { border-color: var(--blue); background: var(--blue-tint); }
+.tpart i { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.tpart .ok { color: var(--ok); font-size: 12px; font-weight: 700; } .tpart .muted { font-size: 12px; }
+.tprog { display: grid; grid-template-columns: minmax(0, 1fr) 90px 36px; gap: 8px; align-items: center; font-size: 13px; }
+.tprog span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text2); }
+.tprog .bar { height: 6px; border-radius: 3px; background: var(--line2); overflow: hidden; } .tprog .bar i { display: block; height: 100%; background: var(--ok-bar); }
+.tprog b { text-align: right; color: var(--ink); }
+@media (max-width: 900px) { .train-grid { grid-template-columns: minmax(0, 1fr); } .train-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

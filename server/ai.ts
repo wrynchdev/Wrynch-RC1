@@ -498,3 +498,44 @@ export async function writePointNote(facts: PointFacts, photos: { bytes: Uint8Ar
   const out = text.trim().slice(0, 600);
   return draftKeepsFacts(facts, out) ? out : null;
 }
+
+// ------------------------------------------------------------------ training-data pre-draw
+
+/**
+ * First-guess boxes around the parts a technician confirmed on a photo, for Wrynch staff to correct before they're
+ * used as training data. Only listed parts are kept, and every box is clamped to the photo. Nothing is stored here.
+ */
+export async function locateParts(image: { bytes: Uint8Array; type: string }, parts: { key: string; label: string }[]): Promise<{ key: string; x: number; y: number; w: number; h: number }[]> {
+  const type = image.type.split(';')[0].trim().toLowerCase();
+  if (!AI_IMAGE_TYPES.includes(type)) throw new HttpError(422, `This photo is ${type}; the AI reads JPEG or PNG.`);
+  const res = await claude({
+    max_tokens: 1200,
+    system: 'You locate vehicle parts in a technician\'s inspection photo. For each listed part that is clearly visible, give one tight bounding box '
+      + 'as fractions of the image: x and y of the top-left corner, w and h of the size, each between 0 and 1. Leave out parts you cannot see. '
+      + 'Use only the part ids given.',
+    tools: [{ name: 'boxes', description: 'Boxes around visible parts', input_schema: { type: 'object', properties: { boxes: { type: 'array', items: {
+      type: 'object', properties: { part: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' }, w: { type: 'number' }, h: { type: 'number' } },
+      required: ['part', 'x', 'y', 'w', 'h'] } } }, required: ['boxes'] } }],
+    tool_choice: { type: 'tool', name: 'boxes' },
+    messages: [{ role: 'user', content: [
+      { type: 'image', source: { type: 'base64', media_type: type, data: b64(image.bytes) } },
+      { type: 'text', text: `Parts the technician confirmed in this photo:\n${parts.map((p) => `- ${p.key}: ${p.label}`).join('\n')}` },
+    ] }],
+  });
+  const raw = ((toolInput(res) as { boxes?: unknown } | null)?.boxes ?? []) as Record<string, unknown>[];
+  const keys = new Set(parts.map((p) => p.key));
+  const out: { key: string; x: number; y: number; w: number; h: number }[] = [];
+  for (const b of Array.isArray(raw) ? raw : []) {
+    const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : NaN);
+    const [x, y, w, h] = [n(b.x), n(b.y), n(b.w), n(b.h)];
+    if (typeof b.part !== 'string' || !keys.has(b.part) || [x, y, w, h].some(Number.isNaN) || w <= 0 || h <= 0) continue;
+    const cx = Math.min(Math.max(x, 0), 0.995), cy = Math.min(Math.max(y, 0), 0.995);
+    out.push({ key: b.part, x: cx, y: cy, w: Math.min(w, 1 - cx), h: Math.min(h, 1 - cy) });
+  }
+  return out;
+}
+
+/** Stand-in pre-draw (tests and local demos): a neat row of boxes, one per part. */
+export function locatePartsStub(parts: { key: string }[]) {
+  return parts.map((p, i) => ({ key: p.key, x: 0.05 + (i % 3) * 0.31, y: 0.1 + Math.floor(i / 3) * 0.3, w: 0.28, h: 0.25 }));
+}
