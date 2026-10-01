@@ -55,6 +55,8 @@ export interface State {
   dashboard: DashData | null;
   /** Demo only: the note style (live shops keep theirs on the shop). */
   demoNoteStyle: NoteStyle;
+  /** Demo only: the before-Wrynch approval rate. */
+  demoBaseline?: number | null;
 }
 
 const STORAGE_KEY = 'wrynch-demo-v3'; // bumped when the saved demo data shape changes
@@ -90,8 +92,8 @@ const listeners = new Set<() => void>();
 function save() {
   if (state.mode !== 'demo') return;
   try {
-    const { vehicles, inspections, role, demoNoteStyle } = state;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ vehicles, inspections, role, demoNoteStyle }));
+    const { vehicles, inspections, role, demoNoteStyle, demoBaseline } = state;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ vehicles, inspections, role, demoNoteStyle, demoBaseline }));
   } catch { /* ignore */ }
 }
 function set(patch: Partial<State>) { state = { ...state, ...patch }; save(); listeners.forEach((l) => l()); }
@@ -356,12 +358,20 @@ export const actions = {
     if (!state.ai) void actions.checkAi();
   },
   async loadDashboard(days: number) {
-    if (state.mode === 'demo') { set({ dashboard: { ...dashFromInspections(state.inspections, state.vehicles), days } }); return; }
+    if (state.mode === 'demo') { set({ dashboard: { ...dashFromInspections(state.inspections, state.vehicles), days, baseline: state.demoBaseline ?? null } }); return; }
     const shop = state.workspace?.shop?.id;
     if (!shop) return;
     try {
       const d = await rpc<DashData>('shop_dashboard', { p_shop: shop, p_days: days });
-      set({ dashboard: { days: d.days, money: !!d.money, rows: d.rows ?? [], events: d.events ?? [] } });
+      set({ dashboard: { days: d.days, money: !!d.money, rows: d.rows ?? [], events: d.events ?? [], baseline: d.baseline ?? null } });
+    } catch (e) { toast(errText(e), 'error'); }
+  },
+  /** Owner: the share of recommended work customers approved before Wrynch, in percent (null clears it). */
+  async setApprovalBaseline(percent: number | null) {
+    if (state.mode === 'demo') { set({ demoBaseline: percent, dashboard: state.dashboard ? { ...state.dashboard, baseline: percent } : null }); return; }
+    try {
+      await rpc('set_approval_baseline', { p_shop: state.workspace!.shop!.id, p_percent: percent });
+      set({ dashboard: state.dashboard ? { ...state.dashboard, baseline: percent } : null });
     } catch (e) { toast(errText(e), 'error'); }
   },
   async checkAi() {

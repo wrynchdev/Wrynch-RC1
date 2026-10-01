@@ -1,6 +1,6 @@
 // Shop dashboard: what's in the bays, what's waiting on the advisor, what customers approved.
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { summarizeDashboard, type DashEvent, type DayBucket } from '../domain/dashboard';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { summarizeDashboard, type Approval, type DashEvent, type DayBucket } from '../domain/dashboard';
 import { actions, useStore } from '../state/store';
 import { Icon } from './kit';
 
@@ -55,7 +55,7 @@ export function Dashboard() {
         <div className="tools">
           <label className="sr" htmlFor="range">Date range</label>
           <select id="range" className="input" value={days} onChange={(e) => pickDays(Number(e.target.value))}>
-            <option value={1}>Today</option><option value={7}>Last 7 days</option><option value={14}>Last 14 days</option><option value={30}>Last 30 days</option>
+            <option value={1}>Today</option><option value={7}>Last 7 days</option><option value={14}>Last 14 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option>
           </select>
           <a className="btn primary sm hide-mobile" href="#/new"><Icon name="plus" size={16} />New inspection</a>
         </div>
@@ -79,6 +79,8 @@ export function Dashboard() {
               </>
             )}
           </div>
+
+          <ApprovalPanel a={sum.approval} days={days} owner={s.mode === 'demo' || s.workspace?.role === 'owner'} />
 
           <div className="dash-grid">
             <section className="card panel" aria-labelledby="act-h">
@@ -112,6 +114,58 @@ export function Dashboard() {
         </>
       )}
     </div>
+  );
+}
+
+/** The pilot's key number: of the work recommended on reports sent, how much customers approved, against the shop's before-Wrynch rate. */
+function ApprovalPanel({ a, days, owner }: { a: Approval; days: number; owner: boolean }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState('');
+  const pct = (r: number | null) => (r === null ? '—' : `${Math.round(r * 100)}%`);
+  const weeks = a.weeks;
+  const save = (e: FormEvent) => { e.preventDefault(); const n = val.trim() === '' ? null : Number(val); void actions.setApprovalBaseline(n !== null && Number.isFinite(n) ? n : null); setEditing(false); };
+  return (
+    <section className="card panel approval" aria-labelledby="appr-h">
+      <div className="appr-main">
+        <h2 id="appr-h">Approval rate</h2>
+        <div className="appr-big">{pct(a.rate)}</div>
+        <p className="appr-sub">{a.reports === 0 ? `No reports sent to customers ${rangeText(days)}.`
+          : `${a.approved} of ${a.recommended} recommended ${a.recommended === 1 ? 'item' : 'items'} approved on ${a.reports} ${a.reports === 1 ? 'report' : 'reports'} sent ${rangeText(days)}.`}</p>
+        {a.baseline !== null && !editing && (
+          <p className="appr-base">
+            Before Wrynch: <b>{a.baseline}%</b>
+            {a.change !== null && <span className={`delta ${a.change >= 0 ? 'up' : 'down'}`}>{a.change >= 0 ? '+' : ''}{a.change} pts</span>}
+            {owner && <button className="linkbtn" onClick={() => { setVal(String(a.baseline)); setEditing(true); }}>Change</button>}
+          </p>
+        )}
+        {a.baseline === null && !editing && owner && (
+          <p className="appr-base">What did customers approve before Wrynch? <button className="linkbtn" onClick={() => { setVal(''); setEditing(true); }}>Add your estimate</button> to compare.</p>
+        )}
+        {editing && (
+          <form className="row appr-form" onSubmit={save}>
+            <label htmlFor="baseline" className="small">Before Wrynch, customers approved about</label>
+            <input id="baseline" className="input" inputMode="decimal" style={{ width: 80 }} value={val} onChange={(e) => setVal(e.target.value.replace(/[^\d.]/g, ''))} autoFocus />
+            <span className="small">% of recommended work</span>
+            <button className="btn sm primary">Save</button>
+            <button type="button" className="btn sm quiet" onClick={() => setEditing(false)}>Cancel</button>
+          </form>
+        )}
+      </div>
+      <div className="appr-weeks" role="img" aria-label={`Approval rate by week: ${weeks.map((w) => `${w.start} ${w.recommended ? pct(w.approved / w.recommended) : 'no reports'}`).join(', ')}`}>
+        {weeks.map((w) => {
+          const r = w.recommended ? w.approved / w.recommended : null;
+          return (
+            <div key={w.start} className="wk" title={r === null ? 'No reports sent' : `${w.approved} of ${w.recommended} approved`}>
+              <span className="v">{pct(r)}</span>
+              <span className="bar"><i style={{ height: `${Math.max(r ?? 0, 0.02) * 100}%`, opacity: r === null ? 0.25 : 1 }} />
+                {a.baseline !== null && <b style={{ bottom: `${a.baseline}%` }} />}</span>
+              <span className="d">{new Date(`${w.start}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+            </div>
+          );
+        })}
+      </div>
+      <p className="appr-note">Weeks start Monday. Approvals on recent reports can still come in.{a.baseline !== null ? ' The line marks your before-Wrynch rate.' : ''}</p>
+    </section>
   );
 }
 

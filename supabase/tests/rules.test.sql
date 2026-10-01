@@ -260,4 +260,14 @@ select t.expect_error($$ select public.tekmetric_export_info((select v::uuid fro
 select t.eq((public.tekmetric_ro_of((select v::uuid from t.ids where k = 'tmi')) ->> 'roId')::bigint, 777::bigint, 'members see the linked RO');
 reset role;
 
+-- Approval rate: owners set the before-Wrynch baseline; the dashboard returns it and approved item counts.
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
+select public.set_approval_baseline((select v::uuid from t.ids where k = 'shop'), 32.5);
+select t.eq((public.shop_dashboard((select v::uuid from t.ids where k = 'shop'), 30) ->> 'baseline')::numeric, 32.5, 'baseline returned');
+select t.eq((select bool_and(r ? 'approvedItems') from jsonb_array_elements(public.shop_dashboard((select v::uuid from t.ids where k = 'shop'), 30) -> 'rows') r), true, 'rows carry approved item counts');
+select t.expect_error($$ select public.set_approval_baseline((select v::uuid from t.ids where k = 'shop'), 140) $$, '%0 to 100%');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
+select t.expect_error($$ select public.set_approval_baseline((select v::uuid from t.ids where k = 'shop'), 10) $$, '%permission%');
+reset role;
+
 \echo ALL DATABASE TESTS PASSED
