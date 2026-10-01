@@ -359,7 +359,8 @@ export function Sort({ id, sectionId }: { id: string; sectionId: string }) {
   const media = insp.media.filter((m) => m.sectionId === sectionId && !m.excluded);
   const needs = media.filter((m) => m.links.length === 0);
   const unread = needs.filter((m) => !m.analyzed).length;
-  const aiOff = mode === 'live' && ai !== null && !ai.on;
+  const shopAi = useStore((x) => x.shopAi);
+  const aiOff = mode === 'live' && ai !== null && !ai.on && !shopAi?.configured;
   const proposedLinks = media.reduce((n, m) => n + m.links.filter((l) => l.status === 'ai_proposed').length, 0);
   const partsSeen = media.reduce((n, m) => n + m.links.length, 0);
   // A photo appears under every point whose parts it shows, including points in other stages.

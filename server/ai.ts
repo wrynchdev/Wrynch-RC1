@@ -6,6 +6,7 @@ import { filterByCorner, type Corner } from '../src/domain/corner';
 import { draftKeepsFacts, factsText, type NoteStyle, type PointFacts } from '../src/domain/noteDraft';
 import type { CompKey, PointNote, Severity, Template, VehicleConfig } from '../src/domain/types';
 import { SIDE_UNSURE_CONFIDENCE } from '../src/domain/types';
+import { currentAi, DEFAULT_ANTHROPIC_MODEL, type AiAccount, type AiProvider } from './aiContext';
 import { env, HttpError } from './lib';
 
 export interface Candidate { key: CompKey; stage: string; point: string; label: string; findings: string[] }
@@ -77,15 +78,17 @@ export function validateAnalysis(mediaId: string, raw: unknown, candidates: Cand
   return out;
 }
 
-/** A plain-language reason for an Anthropic API error (never includes the key). */
-export function explainAiError(status: number, body: string): string {
+/** A plain-language reason for an AI provider error (never includes the key). */
+export function explainAiError(status: number, body: string, provider: AiProvider = 'anthropic', source: 'shop' | 'platform' = 'platform'): string {
   let type = '', message = '';
-  try { const e = JSON.parse(body).error ?? {}; type = String(e.type ?? ''); message = String(e.message ?? ''); } catch { /* not JSON */ }
-  if (status === 401 || type === 'authentication_error') return 'The Anthropic API key isn’t valid. Check ANTHROPIC_API_KEY in Vercel.';
+  try { const e = JSON.parse(body).error ?? {}; type = String(e.type ?? e.code ?? ''); message = String(e.message ?? ''); } catch { /* not JSON */ }
+  const who = provider === 'openai' ? 'OpenAI' : 'Anthropic';
+  const fixKey = source === 'shop' ? 'Check the AI key in Settings.' : provider === 'anthropic' ? 'Check ANTHROPIC_API_KEY in Vercel.' : '';
+  if (status === 401 || type === 'authentication_error' || type === 'invalid_api_key') return `The ${who} API key isn’t valid. ${fixKey}`.trim();
   if (/workspace/i.test(message)) return 'This Anthropic key isn’t tied to a workspace. Set ANTHROPIC_WORKSPACE_ID in Vercel, or create the key inside a workspace.';
-  if (/credit balance|billing/i.test(message)) return 'The Anthropic account is out of credit. Add credit at console.anthropic.com.';
-  if (status === 403 || type === 'permission_error') return 'The Anthropic API key doesn’t have access to this model.';
-  if (status === 404 || type === 'not_found_error') return `The AI model “${model()}” isn’t available. Check ANTHROPIC_MODEL in Vercel.`;
+  if (/credit balance|billing|insufficient_quota|quota/i.test(`${message} ${type}`)) return `The ${who} account is out of credit or over its quota.${source === 'shop' ? ' Add credit with your AI provider.' : ''}`;
+  if (status === 403 || type === 'permission_error') return `The ${who} API key doesn’t have access to this model.`;
+  if (status === 404 || type === 'not_found_error' || type === 'model_not_found') return `The AI model “${model()}” isn’t available. ${source === 'shop' ? 'Choose another model in Settings.' : 'Check ANTHROPIC_MODEL in Vercel.'}`;
   if (status === 429 || type === 'rate_limit_error') return 'The AI is rate-limited right now. Wait a minute and try again.';
   if (status === 529 || status >= 500 || type === 'overloaded_error' || type === 'api_error') return 'The AI service is busy. Try again in a minute.';
   if (/image/i.test(message)) return `The AI couldn’t open this photo (${message.slice(0, 120)}).`;
@@ -95,13 +98,13 @@ export function explainAiError(status: number, body: string): string {
 const AI_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const AI_IMAGE_MAX = 5 * 1024 * 1024;
 
-export const model = () => env('ANTHROPIC_MODEL') ?? 'claude-sonnet-5';
-/** Real AI when a key is set; the rule-based stand-in only when explicitly asked for (tests, local demos). */
-export const aiMode = (): 'claude' | 'stub' | 'off' => (env('ANTHROPIC_API_KEY') ? 'claude' : env('AI_STUB') === '1' ? 'stub' : 'off');
+export const model = () => currentAi()?.model ?? env('ANTHROPIC_MODEL') ?? DEFAULT_ANTHROPIC_MODEL;
+/** Real AI when a key is set (the shop's own, or Wrynch's); the rule-based stand-in only when explicitly asked for (tests, local demos). */
+export const aiMode = (): 'claude' | 'stub' | 'off' => (currentAi() ? 'claude' : env('AI_STUB') === '1' ? 'stub' : 'off');
 
 // Some models don't accept a forced tool choice. After the first refusal we ask with tool_choice "auto" and an
 // instruction to call the tool instead (per server instance).
-let forcedToolUnsupported = false;
+const forcedToolUnsupported = new Set<string>(); // models that refused a forced tool choice
 
 function withAutoToolChoice(body: Record<string, unknown>): Record<string, unknown> {
   const choice = body.tool_choice as { type?: string; name?: string } | undefined;
@@ -110,16 +113,16 @@ function withAutoToolChoice(body: Record<string, unknown>): Record<string, unkno
   return { ...body, tool_choice: { type: 'auto' }, system: `${body.system ?? ''}\n\nAlways answer by calling the ${name} tool exactly once. Do not answer in plain text.` };
 }
 
-async function send(key: string, body: Record<string, unknown>): Promise<Response> {
+async function send(acct: AiAccount, body: Record<string, unknown>): Promise<Response> {
   try {
     return await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json',
-        // Keys that aren't scoped to a workspace must name one.
-        ...(env('ANTHROPIC_WORKSPACE_ID') ? { 'anthropic-workspace-id': env('ANTHROPIC_WORKSPACE_ID')! } : {}),
+        'x-api-key': acct.key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json',
+        // Wrynch's own key may need its workspace named; a shop's key is used as it is.
+        ...(acct.source === 'platform' && env('ANTHROPIC_WORKSPACE_ID') ? { 'anthropic-workspace-id': env('ANTHROPIC_WORKSPACE_ID')! } : {}),
       },
-      body: JSON.stringify({ model: model(), ...body }),
+      body: JSON.stringify({ model: acct.model, ...body }),
       // Stay inside the 60-second function limit so the app gets a clear answer.
       signal: AbortSignal.timeout(50_000),
     });
@@ -130,23 +133,72 @@ async function send(key: string, body: Record<string, unknown>): Promise<Respons
 }
 
 async function claude(body: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const key = env('ANTHROPIC_API_KEY');
-  if (!key) throw new HttpError(503, 'AI is not configured');
-  let r = await send(key, forcedToolUnsupported ? withAutoToolChoice(body) : body);
+  const acct = currentAi();
+  if (!acct) throw new HttpError(503, 'AI is not configured');
+  if (acct.provider === 'openai') return openaiMessages(acct, body);
+  const forced = forcedToolUnsupported.has(acct.model);
+  let r = await send(acct, forced ? withAutoToolChoice(body) : body);
   if (!r.ok) {
     const t = await r.text();
-    if (r.status === 400 && /tool_choice/i.test(t) && !forcedToolUnsupported) {
-      forcedToolUnsupported = true;
-      r = await send(key, withAutoToolChoice(body));
+    if (r.status === 400 && /tool_choice/i.test(t) && !forced) {
+      forcedToolUnsupported.add(acct.model);
+      r = await send(acct, withAutoToolChoice(body));
       if (r.ok) return (await r.json()) as Record<string, unknown>;
       const t2 = await r.text();
       console.error('Anthropic API error', r.status, t2.slice(0, 500));
-      throw new HttpError(502, explainAiError(r.status, t2));
+      throw new HttpError(502, explainAiError(r.status, t2, 'anthropic', acct.source));
     }
     console.error('Anthropic API error', r.status, t.slice(0, 500));
-    throw new HttpError(502, explainAiError(r.status, t));
+    throw new HttpError(502, explainAiError(r.status, t, 'anthropic', acct.source));
   }
   return (await r.json()) as Record<string, unknown>;
+}
+
+type Block = { type: string; text?: string; source?: { type: string; media_type?: string; data?: string } };
+/**
+ * The same request through OpenAI's Chat Completions API, for shops that use their own OpenAI key. Our requests
+ * (system prompt, text and images, one forced tool) are translated, and the answer is returned in the shape the rest
+ * of this file reads (a tool_use block, or text).
+ */
+async function openaiMessages(acct: AiAccount, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const part = (b: Block) => {
+    if (b.type === 'text') return { type: 'text', text: b.text ?? '' };
+    if (b.type === 'image' && b.source?.type === 'base64') return { type: 'image_url', image_url: { url: `data:${b.source.media_type};base64,${b.source.data}` } };
+    throw new HttpError(422, 'This AI provider can’t read this kind of file. Use a photo instead.');
+  };
+  const messages: Record<string, unknown>[] = [];
+  if (body.system) messages.push({ role: 'system', content: String(body.system) });
+  for (const m of (body.messages as { role: string; content: string | Block[] }[]) ?? []) {
+    messages.push({ role: m.role, content: typeof m.content === 'string' ? m.content : m.content.map(part) });
+  }
+  const tools = ((body.tools as { name: string; description?: string; input_schema: unknown }[]) ?? [])
+    .map((t) => ({ type: 'function', function: { name: t.name, description: t.description ?? '', parameters: t.input_schema } }));
+  const choice = body.tool_choice as { type?: string; name?: string } | undefined;
+  const req: Record<string, unknown> = { model: acct.model, messages, max_completion_tokens: body.max_tokens ?? 1024 };
+  if (tools.length) {
+    req.tools = tools;
+    req.tool_choice = choice?.type === 'tool' && choice.name ? { type: 'function', function: { name: choice.name } } : 'auto';
+  }
+  let r: Response;
+  try {
+    r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST', headers: { authorization: `Bearer ${acct.key}`, 'content-type': 'application/json' },
+      body: JSON.stringify(req), signal: AbortSignal.timeout(50_000),
+    });
+  } catch (e) {
+    const timedOut = e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError');
+    throw new HttpError(504, timedOut ? 'The AI took too long on this photo. Try again.' : 'Couldn’t reach the AI service. Try again.');
+  }
+  if (!r.ok) {
+    const t = await r.text();
+    console.error('OpenAI API error', r.status, t.slice(0, 500));
+    throw new HttpError(502, explainAiError(r.status, t, 'openai', acct.source));
+  }
+  const out = (await r.json()) as { choices?: { message?: { content?: string | null; tool_calls?: { function?: { arguments?: string } }[] } }[] };
+  const msg = out.choices?.[0]?.message;
+  const args = msg?.tool_calls?.[0]?.function?.arguments;
+  if (args) { try { return { content: [{ type: 'tool_use', input: JSON.parse(args) }] }; } catch { /* fall through to text */ } }
+  return { content: [{ type: 'text', text: msg?.content ?? args ?? '' }] };
 }
 
 /** The tool call's input; if the model answered in text instead, the first JSON object in that text. */
@@ -161,7 +213,7 @@ function toolInput(res: Record<string, unknown>): unknown {
 }
 
 /** Test hook: forget what we learned about forced tool choice. */
-export function resetAiState() { forcedToolUnsupported = false; }
+export function resetAiState() { forcedToolUnsupported.clear(); }
 
 const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64');
 
@@ -244,7 +296,7 @@ export async function analyzePhoto(image: { bytes: Uint8Array; type: string }, c
  * changes, adds or drops any number; returns null if neither passes.
  */
 export async function rewriteNote(note: PointNote, context: string, style: NoteStyle = 'customer'): Promise<string | null> {
-  if (env('ANTHROPIC_API_KEY')) {
+  if (currentAi()) {
     try {
       const res = await claude({
         max_tokens: 400,

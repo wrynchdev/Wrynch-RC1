@@ -132,3 +132,18 @@ Limits of Tekmetric's API today: it has no inspection endpoints, so Wrynch can't
 inspection points or attach photos there. Its repair-order write calls are documented only to approved
 developers, so for now the export is shown as text the advisor copies into the repair order. Once access is
 approved and the write calls are confirmed, the export can be sent automatically.
+
+## Shops' own AI keys
+
+Shop owners can use their own Anthropic or OpenAI account (Settings → AI provider). Keys are checked with the
+provider, encrypted on the server with AES-256-GCM, and stored so that only the server can read them; people only
+ever see the provider, model and last four characters.
+
+1. **Create the encryption secret** once, on your own computer: `openssl rand -base64 32`
+2. **Add it in Vercel** as `SHOP_KEYS_SECRET` (Project → Settings → Environment Variables), then redeploy.
+   Keep it only there: not in the code, not in chat. Anyone with both this secret and a copy of the database could
+   read the keys, so treat it like a password.
+3. **Run the migration** `supabase/migrations/20261007000000_shop_ai_keys.sql` in the Supabase SQL Editor.
+
+If `SHOP_KEYS_SECRET` is ever lost or changed, saved keys can no longer be unlocked: owners will see an error and
+need to enter their key again. A shop without its own key uses Wrynch's (`ANTHROPIC_API_KEY`) as before.

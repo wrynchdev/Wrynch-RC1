@@ -91,6 +91,14 @@ const B = `${ROOT}/app/`;
       if (out.inspectionId && !p.url().includes(out.inspectionId)) errs.push('pulling the same RO made a second inspection');
       await p.waitForSelector('text=Honda', { timeout: 10000 }).catch(() => errs.push('imported vehicle not shown'));
     });
+    await step('ai-key', async () => {
+      // Owners see the AI provider section with a masked key field.
+      await p.goto(B + '#/settings'); await p.waitForSelector('#aik-key');
+      if ((await p.getAttribute('#aik-key', 'type')) !== 'password') errs.push('AI key field is not masked');
+      // (Saving is covered by the server tests with a stand-in provider; this run has no real provider to check against.)
+      if (!(await p.locator('text=This shop uses Wrynch').count()) && !(await p.locator('text=No AI is set up').count())) errs.push('AI provider status missing');
+      await shot('L04c-ai-key');
+    });
     await step('invite', async () => {
       await p.goto(B + '#/settings/team'); await p.waitForSelector('text=Invite someone');
       await p.fill('#ie', 'tech@shop.test'); await p.click('button:has-text("Create invite link")');
