@@ -277,9 +277,9 @@ export interface NewInspection {
  * Sort photos with the AI, one photo per request and a few at a time, so no request comes near the server's
  * time limit. Photos the AI couldn't read stay unsorted and can be retried; the first reason is shown.
  */
-async function runAiSort(inspId: string, ids: string[]) {
+async function runAiSort(inspId: string, ids: string[], quiet = false) {
   let done = 0, failed = 0, reason = '';
-  set({ busy: `AI is reading photo 1 of ${ids.length}…` });
+  if (!quiet) set({ busy: `AI is reading photo 1 of ${ids.length}…` });
   await pool(ids, 3, async (id) => {
     try {
       const r = await fn<{ failed?: number; reason?: string }>('ai-sort', { inspectionId: inspId, mediaIds: [id] });
@@ -288,7 +288,7 @@ async function runAiSort(inspId: string, ids: string[]) {
       failed++; reason ||= errText(e);
     }
     done++;
-    set({ busy: done < ids.length ? `AI is reading photo ${done + 1} of ${ids.length}…` : 'Saving…' });
+    if (!quiet) set({ busy: done < ids.length ? `AI is reading photo ${done + 1} of ${ids.length}…` : 'Saving…' });
   });
   if (failed) toast(`The AI couldn’t read ${failed} of ${ids.length} ${ids.length === 1 ? 'photo' : 'photos'}. ${reason.replace(/ Photos are saved;.*$/, '')} Use “Sort with AI” to retry or place them by hand.`, 'error');
 }
@@ -479,7 +479,8 @@ export const actions = {
 
   // ---- photos
   /** Demo: files carry inline urls. Live: files carry File objects that are shrunk, uploaded, then sorted by AI on the server. */
-  async addPhotos(inspId: string, sectionId: string, files: { url: string; name: string; file?: File }[], pointId?: string, corner?: Corner | null) {
+  /** `quiet`: the in-app camera keeps shooting while photos upload, so no busy banner over the viewfinder. */
+  async addPhotos(inspId: string, sectionId: string, files: { url: string; name: string; file?: File }[], pointId?: string, corner?: Corner | null, quiet = false) {
     if (!files.length) return;
     if (state.mode === 'demo') {
       edit(inspId, (i, v) => {
@@ -494,7 +495,7 @@ export const actions = {
     const ids: string[] = [];
     try {
       for (let k = 0; k < files.length; k++) {
-        set({ busy: `Uploading photo ${k + 1} of ${files.length}…` });
+        if (!quiet) set({ busy: `Uploading photo ${k + 1} of ${files.length}…` });
         const f = files[k];
         const id = crypto.randomUUID();
         const path = `${shopId}/${inspId}/${id}.jpg`;
@@ -507,7 +508,7 @@ export const actions = {
         ids.push(id);
       }
       if (state.ai && !state.ai.on) toast(`${ids.length} ${ids.length === 1 ? 'photo' : 'photos'} saved. AI sorting isn’t set up, so place them by hand.`);
-      else await runAiSort(inspId, ids);
+      else await runAiSort(inspId, ids, quiet);
     } catch (e) {
       toast(`${errText(e)}${ids.length && !/saved/.test(errText(e)) ? ` (${ids.length} photos saved; place any unsorted ones by hand)` : ''}`, 'error');
     } finally {
