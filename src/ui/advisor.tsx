@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { TekmetricExportButton } from './tekmetric';
 import {
   allPoints, cls, compLabel, defaultThreshold, findingLabel, ONTOLOGY, pointComponents, setTemplate, vehicleComponents, type Threshold,
 } from '../domain/ontology';
@@ -157,6 +158,7 @@ export function AdvisorResults({ id }: { id: string }) {
             {insp.status === 'in_progress' && <span className="chip na">Tech still working</span>}
             {(insp.status === 'submitted' || insp.status === 'sent') && <a className="btn secondary sm" href={isLive() ? `#/r/${insp.reportToken}` : `#/report/${id}`}>Preview customer report</a>}
             {canAdvise && insp.status === 'submitted' && <button className="btn quiet sm" onClick={() => actions.reopen(id)}>Reopen for the tech</button>}
+            {canAdvise && <TekmetricExportButton inspId={id} status={insp.status} />}
             {canAdvise && (insp.status === 'submitted' || insp.status === 'sent') && <button className="btn primary sm" onClick={() => setSending(true)}>{insp.status === 'sent' ? 'Send again' : 'Send to customer'}</button>}
             {insp.status === 'sent' && <span className="chip ok"><Icon name="check" size={14} />Sent</span>}
           </div>

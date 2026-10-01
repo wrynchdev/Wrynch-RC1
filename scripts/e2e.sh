@@ -20,9 +20,11 @@ export PGURL="postgresql://postgres@/postgres?host=$DIR&port=5496"
 psql "$PGURL" -q -v ON_ERROR_STOP=1 -f supabase/tests/shim.sql
 for f in supabase/migrations/*.sql; do psql "$PGURL" -q -v ON_ERROR_STOP=1 -f "$f" >/dev/null; done
 MOCK_PORT=54329 node supabase/tests/mock-supabase.mjs & PIDS+=($!)
+TM_PORT=54331 node tests/e2e/fake-tekmetric.mjs & PIDS+=($!)
 # .app domains are HTTPS-only in browsers (HSTS preload), so the test uses .test names for the app and site domains.
 export APP_DOMAIN=wrynch.test SITE_DOMAIN=getwrynch.test
 PORT=5179 SUPABASE_URL=http://localhost:54329 SUPABASE_ANON_KEY=anon SUPABASE_SERVICE_ROLE_KEY=service APP_URL=http://localhost:5179 \
-  ANTHROPIC_API_KEY= AI_STUB=1 node --import tsx scripts/dev.mjs & PIDS+=($!)
+  ANTHROPIC_API_KEY= AI_STUB=1 TEKMETRIC_CLIENT_ID=e2e TEKMETRIC_CLIENT_SECRET=e2e TEKMETRIC_BASE_URL=http://localhost:54331 \
+  node --import tsx scripts/dev.mjs & PIDS+=($!)
 sleep 3
 PORT=5179 node tests/e2e/live.e2e.cjs

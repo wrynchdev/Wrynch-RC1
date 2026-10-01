@@ -5,6 +5,7 @@ import {
 import type { Template, TemplateComponent, VehicleConfig } from '../domain/types';
 import { VEHICLES } from '../domain/seed';
 import { actions, isLive, noteStyle, setPendingLink, toast, useStore, type Role } from '../state/store';
+import { TekmetricCard, TekmetricPull } from './tekmetric';
 import { NOTE_STYLES, type NoteStyle } from '../domain/noteDraft';
 import { go } from './hooks';
 import { Icon, TopBar, Wordmark } from './kit';
@@ -226,6 +227,7 @@ export function NewInspection() {
   return (
     <div className="phone">
       <TopBar title="New inspection" back="#/jobs" />
+      <TekmetricPull />
       <form className="body" onSubmit={create}>
         <div className="card pad stack">
           <div className="field"><label htmlFor="vin">VIN</label>
@@ -290,6 +292,7 @@ export function Settings() {
         </div>
         <div className="small muted">{style === 'customer' ? 'Plain, everyday language written for the vehicle owner.' : 'Concise shop terminology for the advisor and knowledgeable customers.'}{!canSetStyle && ' Only the shop owner can change this.'}</div>
       </section>
+      <TekmetricCard />
       <div className="card list">
         {(role === 'owner' || !isLive()) && <a className="item" href="#/settings/team"><div className="grow"><div className="t">Team</div><div className="d">Invite technicians and advisors; change roles</div></div><Icon name="next" /></a>}
         <a className="item" href="#/settings/template"><div className="grow"><div className="t">Inspection template</div><div className="d">Stages, points and the parts behind each point</div></div><Icon name="next" /></a>

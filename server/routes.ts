@@ -5,6 +5,8 @@ import { aiMode, analyzePhoto, candidatesFor, mapTemplatePoints, mapTemplatePoin
 import { draftNote, pointFacts, type NoteStyle } from '../src/domain/noteDraft';
 import { CORNER_LABEL, isCorner } from '../src/domain/corner';
 import { decodeVin } from './vin';
+import { findRepairOrder, loadRepairOrder, roIdFromWebhook, tekmetricConfigured, webhookEvent, type RoImport } from './tekmetric';
+import { buildTekmetricExport } from '../src/domain/tekmetricExport';
 import { bearer, downloadObject, env, HttpError, json, rateLimit, readJson, route, rpc, signUrls, type Handler } from './lib';
 
 interface InspectionBundle { inspection: Inspection; vehicle: Vehicle; template: Template }
@@ -306,9 +308,82 @@ export const templateMap: Handler = route({
 
 // GET /api/status: whether AI photo sorting is available (no secrets, no sign-in).
 export const status: Handler = route({
-  GET: async () => json({ ai: aiMode() !== 'off', model: aiMode() === 'claude' ? model() : aiMode() }),
+  GET: async () => json({ ai: aiMode() !== 'off', model: aiMode() === 'claude' ? model() : aiMode(), tekmetric: tekmetricConfigured() }),
+});
+
+// ------------------------------------------------------------------ Tekmetric
+
+const importRo = async (shopId: string, ro: RoImport) => {
+  const inspectionId = await rpc<string>('tekmetric_import_ro', { p_shop: shopId, p_ro: ro }, 'service');
+  await rpc('tekmetric_log', { p_shop: shopId, p_kind: 'import', p_ro: ro.roId, p_inspection: inspectionId, p_status: 'ok',
+    p_detail: `RO ${ro.roNumber || ro.roId} · ${[ro.year, ro.make, ro.model].filter(Boolean).join(' ')}${ro.technician ? ` · ${ro.technician}` : ''}` }, 'service');
+  return inspectionId;
+};
+
+// POST /api/tekmetric-webhook?token=<shop's webhook token>
+// Tekmetric calls this when a repair order is created (or changes). The token in the address identifies the shop;
+// the repair order itself is always re-read from Tekmetric's API, never trusted from the request body.
+export const tekmetricWebhook: Handler = route({
+  POST: async (req) => {
+    const token = new URL(req.url).searchParams.get('token') ?? '';
+    rateLimit(req, 'tm-webhook', 240, 60_000);
+    const link = token.length >= 32 ? await rpc<{ shopId: string; tekmetricShopId: number; enabled: boolean } | null>('tekmetric_shop_for_token', { p_token: token }, 'service') : null;
+    if (!link) throw new HttpError(404, 'Unknown webhook address');
+    const body = await req.json().catch(() => null);
+    const roId = roIdFromWebhook(body);
+    const event = webhookEvent(body);
+    const log = (status: string, detail: string, inspectionId: string | null = null) =>
+      rpc('tekmetric_log', { p_shop: link.shopId, p_kind: 'webhook', p_ro: roId, p_inspection: inspectionId, p_status: status, p_detail: detail }, 'service');
+    if (!link.enabled) { await log('skipped', `${event}: Tekmetric sync is turned off for this shop`); return json({ ok: true, skipped: 'disabled' }); }
+    if (!roId) { await log('skipped', `${event}: no repair order in this notification`); return json({ ok: true, skipped: 'no repair order' }); }
+    if (!tekmetricConfigured()) { await log('skipped', `${event}: Tekmetric API credentials aren't set up on the server yet`); return json({ ok: true, skipped: 'not configured' }, 202); }
+    try {
+      const inspectionId = await importRo(link.shopId, await loadRepairOrder(link.tekmetricShopId, roId));
+      return json({ ok: true, inspectionId });
+    } catch (e) {
+      await log('error', `${event}: ${e instanceof Error ? e.message : 'import failed'}`);
+      return json({ ok: false }, 200); // recorded for the shop to see; no point in Tekmetric retrying the same failure
+    }
+  },
+});
+
+// POST /api/tekmetric-import { shopId, roNumber } -> { inspectionId }
+// Pull one repair order by number (for ROs created before the shop connected, or a missed notification).
+export const tekmetricImport: Handler = route({
+  POST: async (req) => {
+    const jwt = bearer(req);
+    const { shopId, roNumber } = await readJson<{ shopId: string; roNumber: string }>(req);
+    if (!shopId || !String(roNumber ?? '').trim()) throw new HttpError(400, 'Enter a repair order number');
+    const link = await rpc<{ linked: boolean; tekmetricShopId: number | null; enabled: boolean }>('tekmetric_link_for', { p_shop: shopId }, jwt);
+    if (!link.linked || !link.tekmetricShopId) throw new HttpError(409, 'Connect Tekmetric in Settings first');
+    if (!link.enabled) throw new HttpError(409, 'Tekmetric sync is turned off in Settings');
+    if (!tekmetricConfigured()) throw new HttpError(503, 'Tekmetric isn’t connected on the server yet (API credentials missing).');
+    const ro = await findRepairOrder(link.tekmetricShopId, String(roNumber));
+    return json({ inspectionId: await importRo(shopId, ro) });
+  },
+});
+
+// POST /api/tekmetric-export { inspectionId } -> { written, text, export }
+// Owners and advisors, after review. Builds the export from approved, technician-confirmed content only: each
+// point's rating, customer note and photo count, the estimate with the customer's decisions, and the report link.
+// Tekmetric's API has no inspection endpoints, and its repair-order write calls are only documented to approved
+// developers, so until those are confirmed the export is returned as text for the advisor to paste into the RO.
+export const tekmetricExport: Handler = route({
+  POST: async (req) => {
+    const jwt = bearer(req);
+    const { inspectionId } = await readJson<{ inspectionId: string }>(req);
+    const info = await rpc<{ shopId: string; roId: number | null; status: string }>('tekmetric_export_info', { p_inspection: inspectionId }, jwt);
+    if (!info.roId) throw new HttpError(409, 'This inspection didn’t come from a Tekmetric repair order');
+    if (info.status !== 'submitted' && info.status !== 'sent') throw new HttpError(409, 'Finish the review before exporting');
+    const { inspection, vehicle, template } = await loadAsUser(jwt, inspectionId);
+    const out = buildTekmetricExport(inspection, vehicle, template, `${appRoot(req)}#/r/${inspection.reportToken}`);
+    await rpc('tekmetric_log', { p_shop: info.shopId, p_kind: 'export', p_ro: info.roId, p_inspection: inspectionId, p_status: 'skipped',
+      p_detail: `RO ${inspection.ro || info.roId}: ${out.points.length} points prepared to paste into Tekmetric` }, 'service');
+    return json({ written: false, reason: 'Writing to Tekmetric isn’t switched on yet, so copy this into the repair order.', text: out.text, export: out });
+  },
 });
 
 export const ROUTES: Record<string, Handler> = {
   status, pilot, 'ai-note': aiNote, 'template-read': templateRead, 'template-map': templateMap, 'ai-sort': aiSort, 'ai-wording': aiWording, vin, report, 'send-report': sendReport,
+  'tekmetric-webhook': tekmetricWebhook, 'tekmetric-import': tekmetricImport, 'tekmetric-export': tekmetricExport,
 };
