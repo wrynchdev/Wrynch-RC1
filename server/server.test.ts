@@ -4,7 +4,7 @@ import { buildMappedPoint, candidatesFor, explainAiError, resetAiState, validate
 import { mapVpic } from './vin';
 import { aiNote, aiSort, aiWording, appRoot, pilot, report, sendReport, status, tekmetricExport, tekmetricImport, tekmetricWebhook, templateMap, templateRead } from './routes';
 import { resetTekmetricToken, roIdFromWebhook, toImport } from './tekmetric';
-import { aiKey } from './routes';
+import { aiKey, training, trainingExport, trainingSuggest } from './routes';
 import { openSecret, sealSecret } from './secrets';
 import { resetRateLimits } from './lib';
 import { DEFAULT_TEMPLATE, clsByName, compKey } from '../src/domain/ontology';
@@ -647,4 +647,57 @@ test('a shop with its own OpenAI key: photos are sorted through OpenAI with that
   assert.ok(body.messages.some((m) => Array.isArray(m.content) && m.content.some((p) => p.type === 'image_url' && p.image_url!.url.startsWith('data:image/jpeg;base64,'))));
   assert.ok(!calls.some((c) => c.url.includes('api.anthropic.com')), 'Wrynch\'s key is not used');
   assert.ok(calls.some((c) => c.url.endsWith('/ai_record_sort')));
+});
+
+// ---------------------------------------------------------------- training data
+const get = (name: string) => new Request(`https://app.test/api/${name}`, { headers: { authorization: 'Bearer user-jwt' } });
+
+test('training queue: staff get the next confirmed photos with short-lived links; the database decides who is staff', async () => {
+  respond = (url) => {
+    if (url.endsWith('/training_queue')) return [{ mediaId: 'm1', path: 's/i/m1.jpg', shop: 1001, vehicle: '2011 Toyota 4Runner', stage: 'under_car', parts: ['71@left_front'] }];
+    if (url.endsWith('/training_stats')) return { approved: 3, skipped: 1, waiting: 9, shops: 2, classes: { 71: 3 } };
+    if (url.includes('/object/sign/')) return [{ path: 's/i/m1.jpg', signedURL: '/object/sign/inspection-media/s/i/m1.jpg?token=t' }];
+    return null;
+  };
+  const out = await (await training(get('training'))).json();
+  assert.equal(out.items[0].url, 'https://db.test/storage/v1/object/sign/inspection-media/s/i/m1.jpg?token=t');
+  assert.ok(!('path' in out.items[0]));
+  assert.equal(out.stats.waiting, 9);
+  assert.equal(calls.find((c) => c.url.endsWith('/training_queue'))!.auth, 'Bearer user-jwt');
+  respond = (url) => (url.endsWith('/training_queue') || url.endsWith('/training_stats') ? new Response(JSON.stringify({ message: 'Only Wrynch staff can do that' }), { status: 403 }) : null);
+  assert.equal((await training(get('training'))).status, 403);
+});
+
+test('training pre-draw: boxes only for the confirmed parts, clamped to the photo, never stored', async () => {
+  process.env.ANTHROPIC_API_KEY = 'k';
+  const rotor = compKey(clsByName('brake_rotor').id, 'left_front');
+  const pad = compKey(clsByName('brake_pad').id, 'left_front');
+  respond = (url) => {
+    if (url.endsWith('/training_photo')) return { path: 's/i/m1.jpg', parts: [rotor, pad] };
+    if (url.includes('/storage/v1/object/inspection-media/')) return new Response(new Uint8Array([255, 216, 255]), { headers: { 'content-type': 'image/jpeg' } });
+    if (url.startsWith('https://api.anthropic.com')) return { content: [{ type: 'tool_use', input: { boxes: [
+      { part: rotor, x: 0.2, y: 0.3, w: 0.4, h: 0.4 }, { part: pad, x: 0.9, y: 0.9, w: 0.5, h: 0.5 }, { part: '999@x', x: 0, y: 0, w: 0.1, h: 0.1 } ] } }] };
+    return null;
+  };
+  const { boxes } = await (await trainingSuggest(post('training-suggest', { mediaId: 'm1' }))).json();
+  assert.equal(boxes.length, 2, 'unknown parts dropped');
+  assert.deepEqual([boxes[0].classId, boxes[0].position, boxes[0].source], [clsByName('brake_rotor').id, 'left_front', 'ai']);
+  assert.ok(boxes[1].x + boxes[1].w <= 1 && boxes[1].y + boxes[1].h <= 1, 'clamped inside the photo');
+  assert.ok(!calls.some((c) => c.url.endsWith('/training_save')));
+});
+
+test('training export: a YOLO manifest with signed links, as a download', async () => {
+  const rotor = clsByName('brake_rotor').id;
+  respond = (url) => {
+    if (url.endsWith('/training_export')) return [{ mediaId: 'm1', path: 's/i/m1.jpg', width: 800, height: 600, boxes: [{ classId: rotor, position: 'left_front', x: 0.1, y: 0.2, w: 0.2, h: 0.2, source: 'human' }] }];
+    if (url.includes('/object/sign/')) return [{ path: 's/i/m1.jpg', signedURL: '/object/sign/inspection-media/s/i/m1.jpg?token=t' }];
+    return null;
+  };
+  const r = await trainingExport(get('training-export'));
+  assert.match(r.headers.get('content-disposition') ?? '', /attachment; filename="wrynch-dataset-/);
+  const m = await r.json();
+  assert.equal(m.format, 'wrynch-yolo-1');
+  assert.deepEqual(m.classes[0].classId, rotor);
+  assert.deepEqual(m.images[0].labels, [[0, 0.2, 0.3, 0.2, 0.2]]);
+  assert.equal((calls.find((c) => c.url.includes('/object/sign/'))!.body as { expiresIn: number }).expiresIn, 7 * 24 * 3600);
 });

@@ -18,6 +18,7 @@ import { ApiError, auth, fn, getSession, hostInfo, LIVE, onSession, rpc, rpcAnon
 import { dashFromInspections, type DashData } from '../domain/dashboard';
 import { draftNote, pointFacts, type NoteStyle } from '../domain/noteDraft';
 import type { Corner } from '../domain/corner';
+import type { TrainingBox } from '../domain/training';
 
 export type Role = 'owner' | 'advisor' | 'technician';
 export interface Member { userId: string; name: string; role: Role }
@@ -51,6 +52,8 @@ export interface State {
   ai: { on: boolean; model: string; tekmetric?: boolean; shopKeys?: boolean } | null;
   /** The shop's own AI key, if the owner saved one (only the provider, model and last four characters). */
   shopAi: ShopAiInfo | null;
+  /** Whether this shop shares confirmed photos for training, and whether the user is Wrynch staff. */
+  training: { shared: boolean; admin: boolean } | null;
   /** The shop's Tekmetric link and recent sync activity (live mode, loaded on demand). */
   tekmetric: TekmetricLink | null;
   /** Shop dashboard for the chosen range (live: from the server; demo: from the inspections here). */
@@ -68,7 +71,7 @@ const uid = (p: string) => `${p}-${(seq++).toString(36)}`;
 
 function demoInitial(): State {
   return {
-    mode: 'demo', vehicles: structuredClone(VEHICLES), inspections: seedInspections(), role: 'tech', demoNoteStyle: 'customer', tekmetric: null, shopAi: null,
+    mode: 'demo', vehicles: structuredClone(VEHICLES), inspections: seedInspections(), role: 'tech', demoNoteStyle: 'customer', tekmetric: null, shopAi: null, training: null,
     session: null, workspace: null, jobs: [], loading: 0, busy: null, toast: null, photoUrls: {}, ai: null, dashboard: null,
   };
 }
@@ -111,6 +114,8 @@ export const photoSrc = (url: string) => (state.mode === 'demo' ? url : state.ph
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 // An invite or pilot link survives the email-confirmation round trip (which lands back on the app's home).
+export interface TrainingItem { mediaId: string; url: string | null; shop: number; vehicle: string; stage: string; parts: string[] }
+export interface TrainingStats { approved: number; skipped: number; waiting: number; shops: number; classes: Record<string, number> }
 export interface ShopAiInfo { configured: boolean; provider?: 'anthropic' | 'openai'; model?: string | null; last4?: string | null; updatedAt?: string | null }
 export interface TekmetricEvent { at: string; kind: 'import' | 'export' | 'webhook'; roId: number | null; inspectionId: string | null; status: 'ok' | 'error' | 'skipped'; detail: string }
 export interface TekmetricLink { linked: boolean; tekmetricShopId: number | null; enabled: boolean; webhookToken: string | null; events: TekmetricEvent[] }
@@ -366,6 +371,7 @@ export const actions = {
     set({ workspace: full, jobs: ws.jobs ?? [], session: getSession() });
     if (!state.ai) void actions.checkAi();
     void actions.loadShopAi();
+    void actions.loadTrainingInfo();
   },
   async loadDashboard(days: number) {
     if (state.mode === 'demo') { set({ dashboard: { ...dashFromInspections(state.inspections, state.vehicles), days, baseline: state.demoBaseline ?? null } }); return; }
@@ -383,6 +389,32 @@ export const actions = {
       await rpc('set_approval_baseline', { p_shop: state.workspace!.shop!.id, p_percent: percent });
       set({ dashboard: state.dashboard ? { ...state.dashboard, baseline: percent } : null });
     } catch (e) { toast(errText(e), 'error'); }
+  },
+  // ---- training data (owners share; Wrynch staff label)
+  async loadTrainingInfo() {
+    if (state.mode !== 'live' || !state.workspace?.shop) return;
+    try { set({ training: await rpc<{ shared: boolean; admin: boolean }>('shop_training_info', { p_shop: state.workspace.shop.id }) }); } catch { set({ training: null }); }
+  },
+  async setShareTraining(on: boolean) {
+    const admin = state.training?.admin ?? false;
+    set({ training: { admin, shared: on } }); // show the change right away; undone below if saving fails
+    try {
+      await rpc('set_share_training', { p_shop: state.workspace!.shop!.id, p_on: on });
+      toast(on ? 'Thanks. Confirmed photos from this shop can now help train Wrynch’s AI.' : 'This shop’s photos are no longer used for training.');
+    } catch (e) { set({ training: { admin, shared: !on } }); toast(errText(e), 'error'); }
+  },
+  trainingQueue: () => fn<{ items: TrainingItem[]; stats: TrainingStats }>('training', undefined, 'GET'),
+  suggestBoxes: (mediaId: string) => fn<{ boxes: TrainingBox[]; note?: string }>('training-suggest', { mediaId }),
+  saveTrainingLabel: (mediaId: string, status: 'approved' | 'skipped', boxes: TrainingBox[], width: number, height: number) =>
+    rpc('training_save', { p_media: mediaId, p_status: status, p_boxes: boxes, p_width: width || null, p_height: height || null }),
+  /** Download the dataset manifest (YOLO rows + photo links valid for 7 days). */
+  async exportTrainingData(): Promise<number> {
+    const m = await fn<{ createdAt: string; images: unknown[] }>('training-export', undefined, 'GET');
+    const url = URL.createObjectURL(new Blob([JSON.stringify(m)], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = `wrynch-dataset-${m.createdAt.slice(0, 10)}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    return m.images.length;
   },
   async loadShopAi() {
     if (state.mode !== 'live' || !state.workspace?.shop) return;

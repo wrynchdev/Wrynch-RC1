@@ -147,3 +147,12 @@ ever see the provider, model and last four characters.
 
 If `SHOP_KEYS_SECRET` is ever lost or changed, saved keys can no longer be unlocked: owners will see an error and
 need to enter their key again. A shop without its own key uses Wrynch's (`ANTHROPIC_API_KEY`) as before.
+
+## Training data (part detection)
+
+1. **Run the migration** `supabase/migrations/20261008000000_training.sql`.
+2. **Make yourself Wrynch staff** (only staff see **Training data**). In the Supabase SQL Editor:
+   `insert into platform_admin (user_id) select id from auth.users where email = 'you@example.com';`
+3. Shop owners opt in under **Settings → Help improve Wrynch’s AI** (off by default). Only technician-confirmed
+   photos from opted-in shops are offered for labeling, and a shop that turns it off drops out of future exports.
+4. Label in **Training data**, then **Export dataset** and train with `training/train.py` (see `training/README.md`).

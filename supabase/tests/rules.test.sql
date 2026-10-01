@@ -293,4 +293,33 @@ select public.delete_shop_ai_key((select v::uuid from t.ids where k = 'shop'));
 select t.eq((public.shop_ai_key_info((select v::uuid from t.ids where k = 'shop')) ->> 'configured')::boolean, false, 'owner removed the key');
 reset role;
 
+-- Training data: shops opt in; only Wrynch staff label; only technician-confirmed photos from opted-in shops.
+insert into public.platform_admin (user_id) values ('00000000-0000-0000-0000-00000000000a');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
+select t.eq(jsonb_array_length(public.training_queue(50)), 0, 'nothing to label until the shop opts in');
+select public.set_share_training((select v::uuid from t.ids where k = 'shop'), true);
+select t.eq((public.shop_training_info((select v::uuid from t.ids where k = 'shop')) ->> 'shared')::boolean, true, 'owner opted in');
+select t.eq(jsonb_array_length(public.training_queue(50)) >= 1, true, 'confirmed photos are queued');
+insert into t.ids select 'tm', public.training_queue(1) -> 0 ->> 'mediaId';
+insert into t.ids select 'tc', split_part(public.training_queue(1) -> 0 -> 'parts' ->> 0, '@', 1);
+select t.expect_error($$ select public.training_save((select v::uuid from t.ids where k = 'tm'), 'approved',
+  jsonb_build_array(jsonb_build_object('classId', (select v::int from t.ids where k = 'tc'), 'x', 0.8, 'y', 0.1, 'w', 0.5, 'h', 0.2)), 800, 600) $$, '%outside the photo%');
+select t.expect_error($$ select public.training_save((select v::uuid from t.ids where k = 'tm'), 'approved', '[]', 800, 600) $$, '%at least one box%');
+select t.expect_error($$ select public.training_save((select v::uuid from t.ids where k = 'tm'), 'approved', '[{"classId": 999999, "x": 0.1, "y": 0.1, "w": 0.2, "h": 0.2}]', 800, 600) $$, '%Unknown part type%');
+select public.training_save((select v::uuid from t.ids where k = 'tm'), 'approved',
+  jsonb_build_array(jsonb_build_object('classId', (select v::int from t.ids where k = 'tc'), 'position', 'left_front', 'x', 0.1, 'y', 0.2, 'w', 0.3, 'h', 0.4, 'source', 'human')), 800, 600);
+select t.eq((public.training_stats() -> 'classes' ->> (select v from t.ids where k = 'tc'))::int, 1, 'approved boxes counted per part type');
+select t.eq(jsonb_array_length(public.training_export()), 1, 'approved photo exported');
+select t.eq((select count(*) from jsonb_array_elements(public.training_queue(50)) q where q ->> 'mediaId' = (select v from t.ids where k = 'tm')), 0::bigint, 'labeled photos leave the queue');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
+select t.expect_error($$ select public.training_queue(5) $$, '%Wrynch staff%');
+select t.expect_error($$ select public.training_export() $$, '%Wrynch staff%');
+select t.expect_error($$ select public.set_share_training((select v::uuid from t.ids where k = 'shop'), false) $$, '%permission%');
+select t.eq((public.shop_training_info((select v::uuid from t.ids where k = 'shop')) ->> 'admin')::boolean, false, 'technician is not staff');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
+select public.set_share_training((select v::uuid from t.ids where k = 'shop'), false);
+select t.eq(jsonb_array_length(public.training_export()), 0, 'a shop that stops sharing leaves the export');
+select t.expect_error($$ select public.training_save((select v::uuid from t.ids where k = 'tm'), 'skipped', '[]', 800, 600) $$, '%can''t be used%');
+reset role;
+
 \echo ALL DATABASE TESTS PASSED
