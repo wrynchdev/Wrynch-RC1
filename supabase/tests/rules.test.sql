@@ -322,4 +322,21 @@ select t.eq(jsonb_array_length(public.training_export()), 0, 'a shop that stops 
 select t.expect_error($$ select public.training_save((select v::uuid from t.ids where k = 'tm'), 'skipped', '[]', 800, 600) $$, '%can''t be used%');
 reset role;
 
+-- Inspection timing: start and first-submit are stamped by the database; stats per technician.
+select t.eq((select started_at is not null and first_submitted_at is not null and first_submitted_at >= started_at
+             from public.inspection where id = (select v::uuid from t.ids where k = 'insp')), true, 'start and first submit are recorded');
+select t.eq((select started_at from public.inspection where id = (select v::uuid from t.ids where k = 'tmi')), null::timestamptz, 'not-started inspections have no start time');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
+select t.eq((select (x ->> 'inspections')::int >= 1 from jsonb_array_elements(public.technician_stats((select v::uuid from t.ids where k = 'shop'))) x
+             where x ->> 'userId' = '00000000-0000-0000-0000-00000000000b'), true, 'owner sees the technician''s count');
+select t.eq((select jsonb_array_length(x -> 'recent') >= 1 from jsonb_array_elements(public.technician_stats((select v::uuid from t.ids where k = 'shop'))) x
+             where x ->> 'userId' = '00000000-0000-0000-0000-00000000000b'), true, 'recent inspections listed');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
+select t.eq(jsonb_array_length(public.technician_stats((select v::uuid from t.ids where k = 'shop'))), 1, 'technicians see only themselves');
+select t.expect_error($$ select public.technician_stats((select v::uuid from t.ids where k = 'shop'), '00000000-0000-0000-0000-00000000000a') $$, '%permission%');
+select t.eq((public.get_inspection((select v::uuid from t.ids where k = 'insp')) -> 'inspection' ->> 'startedAt') is not null, true, 'inspection document carries the start time');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000c');
+select t.expect_error($$ select public.technician_stats((select v::uuid from t.ids where k = 'shop')) $$, '%permission%');
+reset role;
+
 \echo ALL DATABASE TESTS PASSED

@@ -203,6 +203,9 @@ export interface Inspection {
   estimate: EstimateLine[];
   /** Secret token for the customer's report link (server-issued). */
   reportToken?: string | null;
+  /** Set by the database: when work started (first change) and when it was first sent to the advisor. */
+  startedAt?: string | null;
+  firstSubmittedAt?: string | null;
 }
 
 /** Confidence stored on an AI photo link when the AI recognised the part but not which side of the car it is on. */

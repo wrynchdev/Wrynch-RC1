@@ -118,6 +118,16 @@ const B = `${ROOT}/app/`;
       await p.waitForTimeout(400);
       await p.click('text=Start inspection');
       await p.waitForSelector('text=points done'); await shot('L06-overview');
+      // One stage open at a time; tapping another stage's name opens it and closes the first.
+      if ((await p.locator('.stage.open').count()) !== 1) errs.push('expected exactly one open stage');
+      const heads = p.locator('.stage-head');
+      const firstOpen = await p.locator('.stage.open .stage-head').textContent();
+      for (let k = 0; k < await heads.count(); k++) {
+        if ((await heads.nth(k).getAttribute('aria-expanded')) === 'false') { await heads.nth(k).click(); break; }
+      }
+      if ((await p.locator('.stage.open').count()) !== 1 || (await p.locator('.stage.open .stage-head').textContent()) === firstOpen) errs.push('tapping a stage did not switch the open stage');
+      await p.locator('.stage.open .stage-head').click();
+      if ((await p.locator('.stage.open').count()) !== 0) errs.push('tapping the open stage did not close it');
     });
     const inspId = p.url().split('/insp/')[1].split('/')[0];
     await step('corner-capture', async () => {
@@ -265,6 +275,16 @@ const B = `${ROOT}/app/`;
       await p.click('button:has-text("Send to advisor")'); await p.waitForSelector('text=Inspection results', { timeout: 10000 });
       await p.setViewportSize({ width: 1300, height: 900 }); await p.waitForTimeout(500); await shot('L11-advisor');
     });
+    await step('profile', async () => {
+      // The finished inspection counts on the person's profile, with timing from the database.
+      await p.goto(B + '#/profile'); await p.waitForSelector('text=inspections completed', { timeout: 10000 });
+      const n = Number((await p.locator('.profile-kpis .card b').first().textContent()).trim());
+      if (!(n >= 1)) errs.push('profile does not count the finished inspection');
+      const t = require('child_process').spawnSync('psql', ['-Atc', "select (started_at is not null and first_submitted_at is not null)::text from inspection where vehicle_id = (select id from vehicle where vin = 'JTEBU5JR4B5012345')", PGURL], { encoding: 'utf8' }).stdout.trim();
+      if (t !== 'true') errs.push('inspection start/finish not recorded: ' + t);
+      await shot('L11b-profile');
+      await p.goto(B + `#/advisor/${inspId}`); await p.waitForSelector('text=Inspection results', { timeout: 10000 });
+    });
     let link;
     await step('estimate-send', async () => {
       await p.locator('button:has-text("+ Price")').first().click();
@@ -283,6 +303,7 @@ const B = `${ROOT}/app/`;
       await c.locator('label:has-text("Approve this repair") input').first().check(); await c.waitForTimeout(800);
       const body = await c.textContent('body');
       if (!body.includes('Recheck at next service.')) errs.push('approved automatic note missing for customer');
+      if (!body.includes('Notes from your technician')) errs.push('notes for OK points missing from the customer report');
       if (body.includes('fronts 5mm/rotors')) errs.push('customer sees the raw tech note instead of the approved one');
       if (body.includes('Uneven wear (minor)')) errs.push('severity jargon shown to customer');
       await c.close();

@@ -3,7 +3,7 @@ import { TekmetricExportButton } from './tekmetric';
 import {
   allPoints, cls, compLabel, defaultThreshold, findingLabel, ONTOLOGY, pointComponents, setTemplate, vehicleComponents, type Threshold,
 } from '../domain/ontology';
-import { completionGate, componentState, countsFinding, linkConfirmed, mediaConfirmed, summarize } from '../domain/rating';
+import { completionGate, componentState, countsFinding, linkConfirmed, mediaConfirmed, pointState, summarize } from '../domain/rating';
 import type { CompKey, EstimateLine, Inspection, Op, Rating, Template, Vehicle } from '../domain/types';
 import { actions, isLive, jobList, photoSrc, toast, useStore } from '../state/store';
 import { fn } from '../state/remote';
@@ -489,6 +489,16 @@ function Report({ insp, vehicle, shopName, shopPhone, approved, onToggle }: Repo
     });
   };
   const approvedTotal = priceOf(approved);
+  // Every other point's note from the technician, including points where everything was fine. Points with parts to
+  // replace or plan for are shown above with their notes, so they aren't repeated here.
+  const flaggedPoints = new Set([...groups('immediate'), ...groups('monitor')].map((g) => g.gid));
+  const otherNotes = allPoints().flatMap((p) => {
+    if (flaggedPoints.has(p.id)) return [];
+    const note = insp.notes.find((x) => x.pointId === p.id && x.customerText && x.status !== 'ai_suggested')?.customerText?.trim();
+    if (!note) return [];
+    const keys = pointComponents(p, vehicle.config).filter((c) => c.applies).map((c) => c.key);
+    return [{ id: p.id, name: p.name, note, state: keys.length ? pointState(insp, keys) : null }];
+  });
   const Group = ({ g, strong }: { g: ReturnType<typeof groups>[number]; strong?: boolean }) => {
     const photos = insp.media.filter((m) => !m.excluded && m.customerVisible && g.keys.some((k) => linkConfirmed(m, k)));
     const isOn = g.keys.every((k) => approved.includes(k));
@@ -534,6 +544,19 @@ function Report({ insp, vehicle, shopName, shopPhone, approved, onToggle }: Repo
         {groups('immediate').map((g) => <Group key={g.gid} g={g} strong />)}
         {flagged('monitor').length > 0 && <h2 className="h2" style={{ fontSize: 20 }}>Plan for · {flagged('monitor').length} parts</h2>}
         {groups('monitor').map((g) => <Group key={g.gid} g={g} />)}
+        {otherNotes.length > 0 && (
+          <>
+            <h2 className="h2" style={{ fontSize: 20 }}>Notes from your technician</h2>
+            <div className="card list report-notes">
+              {otherNotes.map((n) => (
+                <div key={n.id} className="item" style={{ alignItems: 'flex-start' }}>
+                  <div className="grow"><div className="t">{n.name}</div><div className="d" style={{ color: 'var(--ink)', lineHeight: 1.45, marginTop: 2 }}>{n.note}</div></div>
+                  {n.state && n.state !== 'unrated' && <StateChip state={n.state} customer />}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
         <h2 className="h2" style={{ fontSize: 20 }}>Good · {sum.ok}</h2>
         <details className="card pad"><summary style={{ cursor: 'pointer', fontWeight: 700 }}>See all {sum.ok} parts in good shape</summary>
           <p className="small" style={{ lineHeight: 1.6 }}>{applies.filter((k) => componentState(insp, k) === 'ok').map((k) => compLabel(k, true)).join(' · ')}</p>

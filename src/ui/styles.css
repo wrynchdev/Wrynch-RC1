@@ -342,3 +342,17 @@ select.input { appearance: auto; }
 .tprog .bar { height: 6px; border-radius: 3px; background: var(--line2); overflow: hidden; } .tprog .bar i { display: block; height: 100%; background: var(--ok-bar); }
 .tprog b { text-align: right; color: var(--ink); }
 @media (max-width: 900px) { .train-grid { grid-template-columns: minmax(0, 1fr); } .train-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Inspection stages: one open at a time; tap a stage's name to open it. */
+.stage-head { width: 100%; background: none; border: 0; color: inherit; font: inherit; cursor: pointer; align-items: center; }
+.stage-head > svg { transition: transform .15s ease; color: var(--muted); }
+.stage.open .stage-head > svg { transform: rotate(90deg); }
+
+/* Profile: inspection counts and times. */
+.me-link { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; color: inherit; text-decoration: none; border-radius: 10px; }
+.me-link:hover .n { text-decoration: underline; }
+.profile-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.profile-kpis .card { display: flex; flex-direction: column; gap: 4px; }
+.profile-kpis b { font: 800 30px/1 var(--display); color: var(--ink); }
+.profile-kpis span { font-size: 13px; color: var(--text2); }
+@media (max-width: 760px) { .profile-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

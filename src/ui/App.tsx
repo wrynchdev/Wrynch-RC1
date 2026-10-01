@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Training } from './training';
+import { Profile } from './profile';
 import { actions, getPendingLink, jobList, useStore } from '../state/store';
 import { hostInfo, shopUrl } from '../state/remote';
 import { Join, NewInspection, NoShop, Pilot, SetPassword, Settings, SignIn, Team, TemplateEditor } from './account';
@@ -31,6 +32,7 @@ function route(p: string[], home: 'dashboard' | 'jobs') {
   if (a === 'rules') return <Rules />;
   if (a === 'report' && b) return <DemoReport id={b} />;
   if (a === 'training') return <Training />;
+  if (a === 'profile') return <Profile userId={b} />;
   if (a === 'settings') return b === 'team' ? <Team /> : b === 'template' ? <TemplateEditor /> : <Settings />;
   if (a === 'account' && b === 'password') return <SetPassword />;
   return <Missing />;
@@ -141,8 +143,10 @@ export function App() {
           {s.training?.admin && link('training', '#/training', 'layers', 'Training data')}
         </nav>
         <div className="me">
-          <span className="avatar round">{initials(me)}</span>
-          <span style={{ minWidth: 0 }}><span className="n" style={{ display: 'block' }}>{me || 'Signed in'}</span><span className="d">{ROLE_LABEL[role]}</span></span>
+          <a href="#/profile" className="me-link" onClick={() => setMenu(false)} aria-label="Your profile">
+            <span className="avatar round">{initials(me)}</span>
+            <span style={{ minWidth: 0 }}><span className="n" style={{ display: 'block' }}>{me || 'Signed in'}</span><span className="d">{ROLE_LABEL[role]}</span></span>
+          </a>
           {s.mode === 'demo' ? (
             <button className="iconbtn" title={confirmReset ? 'Tap again to reset the demo' : 'Reset demo'} aria-label={confirmReset ? 'Tap again to reset the demo' : 'Reset demo'}
               style={confirmReset ? { color: 'var(--imm)' } : undefined} onClick={() => {
