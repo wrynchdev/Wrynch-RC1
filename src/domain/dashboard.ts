@@ -8,16 +8,49 @@ export interface DashRow {
   createdAt: string; submittedAt: string | null; sentAt: string | null;
   vehicle: string; customer: string; technician: string;
   immediate: number; monitor: number; estimate: number; approved: number;
+  /** Recommended parts the customer approved (customer approvals are made on Monitor and Immediate parts). */
+  approvedItems?: number;
 }
 export type DashEventKind = 'created' | 'submitted' | 'sent' | 'delivered' | 'approved';
 export interface DashEvent { at: string; kind: DashEventKind; inspectionId: string; ro: string; vehicle: string; detail: string | null }
-export interface DashData { days: number; money: boolean; rows: DashRow[]; events: DashEvent[] }
+export interface DashData { days: number; money: boolean; rows: DashRow[]; events: DashEvent[]; /** Owner's estimate of the approval rate before Wrynch, in percent. */ baseline?: number | null }
 
 export interface DayBucket { date: string; sent: number; review: number; progress: number }
 export interface DashSummary {
   inProgress: number; awaitingReview: number; sent: number;
   quoted: number; approved: number; approvalRate: number | null; urgent: number;
   series: DayBucket[]; recent: DashEvent[];
+  approval: Approval;
+}
+export interface WeekBucket { start: string; recommended: number; approved: number }
+/** Of the work recommended on reports sent in the range (Monitor + Immediate parts), how much customers approved. */
+export interface Approval { recommended: number; approved: number; rate: number | null; reports: number; baseline: number | null; change: number | null; weeks: WeekBucket[] }
+
+/** Monday of the week a date falls in. */
+export function weekStart(day: string): string {
+  const d = new Date(`${day.slice(0, 10)}T12:00:00`);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return isoDay(d);
+}
+
+export function approvalRate(rows: DashRow[], range: string[], baseline: number | null | undefined): Approval {
+  const inRange = new Set(range);
+  const weeks = new Map<string, WeekBucket>();
+  for (const d of range) { const w = weekStart(d); if (!weeks.has(w)) weeks.set(w, { start: w, recommended: 0, approved: 0 }); }
+  let recommended = 0, approved = 0, reports = 0;
+  for (const r of rows) {
+    if (r.status !== 'sent' || !r.sentAt) continue;
+    const day = isoDay(new Date(r.sentAt));
+    if (!inRange.has(day)) continue;
+    const rec = r.immediate + r.monitor;
+    const ok = Math.min(r.approvedItems ?? 0, rec);
+    reports++; recommended += rec; approved += ok;
+    const w = weeks.get(weekStart(day))!;
+    w.recommended += rec; w.approved += ok;
+  }
+  const rate = recommended ? approved / recommended : null;
+  const base = baseline ?? null;
+  return { recommended, approved, rate, reports, baseline: base, change: rate !== null && base !== null ? Math.round((rate * 100 - base) * 10) / 10 : null, weeks: [...weeks.values()] };
 }
 
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -55,6 +88,7 @@ export function summarizeDashboard(data: DashData, days: number, now = new Date(
     urgent: data.rows.filter((r) => r.status === 'submitted' && r.immediate > 0).length,
     series: [...buckets.values()],
     recent: data.events.filter((e) => inRange.has(isoDay(new Date(e.at)))).slice(0, 8),
+    approval: approvalRate(data.rows, range, data.baseline),
   };
 }
 
@@ -73,7 +107,7 @@ export function dashFromInspections(inspections: Inspection[], vehicles: Vehicle
     const submitted = i.status === 'submitted' || i.status === 'sent';
     rows.push({ id: i.id, ro: i.ro, status: i.status, date: i.date, createdAt: at(8), submittedAt: submitted ? at(10) : null, sentAt: i.status === 'sent' ? at(11) : null,
       vehicle, customer: v.customer ?? '', technician: i.technician, immediate: s.immediate, monitor: s.monitor,
-      estimate: money ? estimate : 0, approved: money ? approved : 0 });
+      estimate: money ? estimate : 0, approved: money ? approved : 0, approvedItems: i.customerApprovals.length });
     const base = { inspectionId: i.id, ro: i.ro, vehicle, detail: null };
     events.push({ ...base, at: at(8), kind: 'created' });
     if (submitted) events.push({ ...base, at: at(10), kind: 'submitted' });

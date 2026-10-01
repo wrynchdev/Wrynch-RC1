@@ -296,3 +296,24 @@ select.input { appearance: auto; }
 .cam-shutter:disabled { opacity: .4; }
 .cam-done { justify-self: end; height: 44px; padding: 0 18px; border-radius: 22px; border: 0; background: rgba(255,255,255,.92); color: #000; font: 700 15px/1 inherit; cursor: pointer; }
 .cam-hint { text-align: center; font-size: 12px; color: rgba(255,255,255,.7); }
+
+/* Dashboard: approval rate (the pilot's key number) with weekly bars and the before-Wrynch line. */
+.approval { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 8px 28px; align-items: end; margin-bottom: 20px; }
+.approval .appr-main { display: flex; flex-direction: column; gap: 6px; }
+.approval h2 { margin: 0; }
+.appr-big { font: 800 52px/1 var(--display); color: var(--ink); letter-spacing: -.01em; }
+.appr-sub, .appr-base, .appr-note { margin: 0; color: var(--text2); font-size: 14px; }
+.appr-base b { color: var(--ink); }
+.appr-base .delta { margin: 0 10px 0 8px; font-weight: 700; padding: 2px 8px; border-radius: 999px; font-size: 13px; }
+.appr-base .delta.up { background: var(--ok-tint); color: var(--ok); }
+.appr-base .delta.down { background: var(--imm-tint); color: var(--imm); }
+.appr-form { flex-wrap: wrap; gap: 8px; align-items: center; }
+.appr-weeks { display: flex; gap: 8px; align-items: flex-end; min-height: 150px; overflow-x: auto; padding-top: 4px; }
+.appr-weeks .wk { flex: 1 0 44px; max-width: 72px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.appr-weeks .v { font-size: 12px; font-weight: 700; color: var(--text2); }
+.appr-weeks .bar { position: relative; width: 100%; height: 100px; border-radius: 6px; background: var(--line2); display: flex; align-items: flex-end; overflow: hidden; }
+.appr-weeks .bar i { display: block; width: 100%; background: var(--ok-bar); border-radius: 6px 6px 0 0; }
+.appr-weeks .bar b { position: absolute; left: 0; right: 0; height: 0; border-top: 2px dashed var(--text2); }
+.appr-weeks .d { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.appr-note { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
+@media (max-width: 760px) { .approval { grid-template-columns: minmax(0, 1fr); } }

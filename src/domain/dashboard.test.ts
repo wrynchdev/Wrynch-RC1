@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dashFromInspections, dayRange, summarizeDashboard, type DashData, type DashRow } from './dashboard';
+import { dashFromInspections, dayRange, summarizeDashboard, weekStart, type DashData, type DashRow } from './dashboard';
 import { seedInspections, VEHICLES } from './seed';
 
 const row = (over: Partial<DashRow>): DashRow => ({
@@ -35,4 +35,28 @@ test('demo data produces rows and recent events', () => {
   assert.ok(d.rows.length >= 3);
   assert.ok(d.events.some((e) => e.kind === 'created'));
   assert.ok(d.events.every((e, k) => k === 0 || d.events[k - 1].at >= e.at), 'newest first');
+});
+
+test('approval rate: approved recommended parts on reports sent in the range, by week, against the baseline', () => {
+  const now = new Date('2026-10-01T12:00:00');
+  const row = (id: string, sent: string | null, status: DashRow['status'], imm: number, mon: number, ok: number): DashRow => ({
+    id, ro: id, status, date: (sent ?? '2026-09-30').slice(0, 10), createdAt: `${(sent ?? '2026-09-30').slice(0, 10)}T08:00:00`, submittedAt: null, sentAt: sent,
+    vehicle: 'v', customer: '', technician: '', immediate: imm, monitor: mon, estimate: 0, approved: 0, approvedItems: ok,
+  });
+  const data: DashData = { days: 30, money: true, events: [], baseline: 30, rows: [
+    row('a', '2026-09-29T10:00:00', 'sent', 1, 3, 2),   // this week (Mon Sep 28)
+    row('b', '2026-09-22T10:00:00', 'sent', 2, 2, 1),   // last week
+    row('c', '2026-08-01T10:00:00', 'sent', 1, 1, 1),   // outside 30 days
+    row('d', null, 'submitted', 3, 0, 0),               // not sent yet: not counted
+    row('e', '2026-09-30T10:00:00', 'sent', 0, 1, 5),   // approvals capped at what was recommended
+  ] };
+  const a = summarizeDashboard(data, 30, now).approval;
+  assert.deepEqual([a.reports, a.recommended, a.approved], [3, 9, 4]);
+  assert.equal(Math.round(a.rate! * 1000), 444);
+  assert.equal(a.change, 14.4);
+  const thisWeek = a.weeks.find((w) => w.start === '2026-09-28')!;
+  const lastWeek = a.weeks.find((w) => w.start === '2026-09-21')!;
+  assert.deepEqual([thisWeek.recommended, thisWeek.approved, lastWeek.recommended, lastWeek.approved], [5, 3, 4, 1]);
+  assert.equal(weekStart('2026-10-04'), '2026-09-28', 'Sunday belongs to the week that started Monday');
+  assert.equal(summarizeDashboard({ ...data, rows: [], baseline: null }, 7, now).approval.rate, null);
 });
