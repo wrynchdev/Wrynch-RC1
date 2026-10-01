@@ -38,9 +38,12 @@ Nothing secret ever goes in the code or in chat: keys go only into Supabase's an
    | `ANTHROPIC_API_KEY` | from console.anthropic.com | for real AI photo sorting and wording |
    | `ANTHROPIC_MODEL` | defaults to `claude-sonnet-5` | optional |
    | `ANTHROPIC_WORKSPACE_ID` | Console → Settings → Workspaces (`wrkspc_…`) | only if your key isn't created inside a workspace |
+   | `OPENAI_API_KEY` | from platform.openai.com → API keys | instead of `ANTHROPIC_API_KEY`, to use OpenAI |
+   | `OPENAI_MODEL` | defaults to `gpt-5`; must read photos | optional |
+   | `AI_PROVIDER` | `openai` or `anthropic` | only if both keys are set (otherwise Anthropic is used) |
    | `PILOT_NOTIFY_EMAIL` | your email | where pilot applications are emailed (needs `RESEND_API_KEY` and `EMAIL_FROM`) |
 
-   Without `ANTHROPIC_API_KEY` the app does not guess: photos stay unsorted and techs place them by hand.
+   Without `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` the app does not guess: photos stay unsorted and techs place them by hand.
    To check, open `https://<your-app>/api/status`: `{"ai":true,…}` means real AI sorting is on.
    For the most accurate photo reading, set `ANTHROPIC_MODEL` to `claude-opus-5-5` (higher cost per photo).
    | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` | from Twilio | to text reports |
@@ -146,7 +149,7 @@ ever see the provider, model and last four characters.
 3. **Run the migration** `supabase/migrations/20261007000000_shop_ai_keys.sql` in the Supabase SQL Editor.
 
 If `SHOP_KEYS_SECRET` is ever lost or changed, saved keys can no longer be unlocked: owners will see an error and
-need to enter their key again. A shop without its own key uses Wrynch's (`ANTHROPIC_API_KEY`) as before.
+need to enter their key again. A shop without its own key uses Wrynch's (`OPENAI_API_KEY` or `ANTHROPIC_API_KEY`) as before.
 
 ## Training data (part detection)
 
