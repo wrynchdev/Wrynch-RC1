@@ -48,7 +48,9 @@ export interface State {
   toast: { text: string; kind: 'error' | 'info' } | null;
   photoUrls: Record<string, string>;
   /** Live mode: whether real AI photo sorting is available (null until checked). */
-  ai: { on: boolean; model: string } | null;
+  ai: { on: boolean; model: string; tekmetric?: boolean } | null;
+  /** The shop's Tekmetric link and recent sync activity (live mode, loaded on demand). */
+  tekmetric: TekmetricLink | null;
   /** Shop dashboard for the chosen range (live: from the server; demo: from the inspections here). */
   dashboard: DashData | null;
   /** Demo only: the note style (live shops keep theirs on the shop). */
@@ -62,7 +64,7 @@ const uid = (p: string) => `${p}-${(seq++).toString(36)}`;
 
 function demoInitial(): State {
   return {
-    mode: 'demo', vehicles: structuredClone(VEHICLES), inspections: seedInspections(), role: 'tech', demoNoteStyle: 'customer',
+    mode: 'demo', vehicles: structuredClone(VEHICLES), inspections: seedInspections(), role: 'tech', demoNoteStyle: 'customer', tekmetric: null,
     session: null, workspace: null, jobs: [], loading: 0, busy: null, toast: null, photoUrls: {}, ai: null, dashboard: null,
   };
 }
@@ -105,6 +107,9 @@ export const photoSrc = (url: string) => (state.mode === 'demo' ? url : state.ph
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 // An invite or pilot link survives the email-confirmation round trip (which lands back on the app's home).
+export interface TekmetricEvent { at: string; kind: 'import' | 'export' | 'webhook'; roId: number | null; inspectionId: string | null; status: 'ok' | 'error' | 'skipped'; detail: string }
+export interface TekmetricLink { linked: boolean; tekmetricShopId: number | null; enabled: boolean; webhookToken: string | null; events: TekmetricEvent[] }
+export interface TekmetricExportResult { written: boolean; reason?: string; text: string }
 export interface NoteDraft { text: string; source: 'ai' | 'rules'; basis: { parts: number; photos: number } }
 export interface PendingLink { kind: 'join' | 'pilot'; token: string }
 const PENDING_KEY = 'wrynch-pending-link';
@@ -361,8 +366,8 @@ export const actions = {
   },
   async checkAi() {
     try {
-      const r = await fn<{ ai: boolean; model: string }>('status', undefined, 'GET', false);
-      set({ ai: { on: !!r.ai, model: String(r.model ?? '') } });
+      const r = await fn<{ ai: boolean; model: string; tekmetric?: boolean }>('status', undefined, 'GET', false);
+      set({ ai: { on: !!r.ai, model: String(r.model ?? ''), tekmetric: !!(r as { tekmetric?: boolean }).tekmetric } });
     } catch { /* unknown: sorting is still attempted and reports its own error */ }
   },
   /** Ask the AI to sort photos that haven't been analysed yet (after a failure, or photos added while AI was off). */
@@ -634,6 +639,25 @@ export const actions = {
     const args = typeof action === 'string' ? { p_action: action } : { p_action: 'edit', p_text: action.text };
     void liveEdit(inspId, local.resolveWording(pointId, action), () => rpc('resolve_wording', { p_inspection: inspId, p_point: pointId, ...args }));
   },
+
+  // ---- Tekmetric
+  async loadTekmetric() {
+    if (state.mode !== 'live' || !state.workspace?.shop) return;
+    try { set({ tekmetric: await rpc<TekmetricLink>('tekmetric_link_for', { p_shop: state.workspace.shop.id }) }); } catch { /* shown as not linked */ }
+  },
+  async saveTekmetric(tekmetricShopId: number | null, enabled: boolean) {
+    const link = await rpc<TekmetricLink>('set_tekmetric_link', { p_shop: state.workspace!.shop!.id, p_tekmetric_shop_id: tekmetricShopId, p_enabled: enabled });
+    set({ tekmetric: link });
+    toast(tekmetricShopId ? 'Tekmetric connection saved.' : 'Tekmetric disconnected.');
+  },
+  /** Pull one Tekmetric repair order by number into a new (or the existing) Wrynch inspection. */
+  async importTekmetricRo(roNumber: string): Promise<string> {
+    const r = await fn<{ inspectionId: string }>('tekmetric-import', { shopId: state.workspace!.shop!.id, roNumber });
+    await Promise.all([actions.loadWorkspace(), reload(r.inspectionId).catch(() => undefined), actions.loadTekmetric()]);
+    return r.inspectionId;
+  },
+  tekmetricRoOf: (inspId: string) => rpc<{ roId: number | null; exportedAt: string | null } | null>('tekmetric_ro_of', { p_inspection: inspId }),
+  exportTekmetric: (inspId: string) => fn<TekmetricExportResult>('tekmetric-export', { inspectionId: inspId }),
 
   // ---- lifecycle
   async submit(inspId: string): Promise<boolean> {

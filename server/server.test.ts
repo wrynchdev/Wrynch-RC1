@@ -2,7 +2,8 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildMappedPoint, candidatesFor, explainAiError, resetAiState, validateAnalysis } from './ai';
 import { mapVpic } from './vin';
-import { aiNote, aiSort, aiWording, appRoot, pilot, report, sendReport, status, templateMap, templateRead } from './routes';
+import { aiNote, aiSort, aiWording, appRoot, pilot, report, sendReport, status, tekmetricExport, tekmetricImport, tekmetricWebhook, templateMap, templateRead } from './routes';
+import { resetTekmetricToken, roIdFromWebhook, toImport } from './tekmetric';
 import { resetRateLimits } from './lib';
 import { DEFAULT_TEMPLATE, clsByName, compKey } from '../src/domain/ontology';
 import { seedInspections, vehicle } from '../src/domain/seed';
@@ -123,10 +124,12 @@ beforeEach(() => {
   resetRateLimits();
   delete process.env.PILOT_NOTIFY_EMAIL; delete process.env.RESEND_API_KEY; delete process.env.EMAIL_FROM;
   delete process.env.TWILIO_ACCOUNT_SID;
+  delete process.env.TEKMETRIC_CLIENT_ID; delete process.env.TEKMETRIC_CLIENT_SECRET; delete process.env.TEKMETRIC_ENV;
+  resetTekmetricToken();
   calls = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    const body = init?.body && typeof init.body === 'string' ? JSON.parse(init.body) : null;
+    const body = init?.body && typeof init.body === 'string' ? (() => { try { return JSON.parse(init.body as string); } catch { return init.body; } })() : null;
     calls.push({ url, body, auth: new Headers(init?.headers).get('authorization'), ws: new Headers(init?.headers).get('anthropic-workspace-id') });
     const out = respond(url, body);
     if (out instanceof Response) return out;
@@ -149,7 +152,7 @@ test('without an AI key, ai-sort refuses instead of guessing, and status says AI
   const r = await aiSort(post('ai-sort', { inspectionId: 'i-4r-now', mediaIds: ['m1'] }));
   assert.equal(r.status, 503);
   assert.ok(!calls.some((c) => c.url.endsWith('/ai_record_sort')), 'nothing recorded');
-  assert.deepEqual(await (await status(new Request('https://app.test/api/status'))).json(), { ai: false, model: 'off' });
+  assert.deepEqual(await (await status(new Request('https://app.test/api/status'))).json(), { ai: false, model: 'off', tekmetric: false });
   process.env.ANTHROPIC_API_KEY = 'k';
   assert.equal((await (await status(new Request('https://app.test/api/status'))).json()).ai, true);
 });
@@ -479,4 +482,90 @@ test('links we send point at the shop\'s own address on wrynch.app, and at /app/
   process.env.APP_URL = 'http://localhost:5179';
   assert.equal(appRoot(new Request('http://localhost:5179/api/send-report')), 'http://localhost:5179/app/');
   delete process.env.APP_URL;
+});
+
+// ---------------------------------------------------------------- Tekmetric
+const TOKEN = 'b'.repeat(64);
+function tekmetric(url: string, body: unknown): unknown {
+  if (url.endsWith('/tekmetric_shop_for_token')) return (body as { p_token: string }).p_token === TOKEN ? { shopId: 'shop-1', tekmetricShopId: 238, enabled: true } : null;
+  if (url === 'https://sandbox.tekmetric.com/api/v1/oauth/token') return { access_token: 'tm-access', expires_in: 3600 };
+  if (url.startsWith('https://sandbox.tekmetric.com/api/v1/repair-orders/55?')) return { id: 55, repairOrderNumber: 10421, vehicleId: 9, customerId: 7, technicianId: 3, milesIn: 88120, customerConcerns: [{ concern: 'Squeal when braking' }] };
+  if (url.startsWith('https://sandbox.tekmetric.com/api/v1/repair-orders?')) return { content: [{ id: 55, repairOrderNumber: 10421, vehicleId: 9, customerId: 7, technicianId: 3 }] };
+  if (url.startsWith('https://sandbox.tekmetric.com/api/v1/vehicles/9')) return { id: 9, vin: '1hgcm82633a004352', year: 2003, make: 'Honda', model: 'Accord', subModel: 'EX' };
+  if (url.startsWith('https://sandbox.tekmetric.com/api/v1/customers/7')) return { id: 7, firstName: 'Pat', lastName: 'Lee', email: 'pat@example.com', phone: [{ number: '555-0111', primary: true }] };
+  if (url.startsWith('https://sandbox.tekmetric.com/api/v1/employees/3')) return { id: 3, firstName: 'Ray', lastName: 'K.' };
+  if (url.includes('vpic.nhtsa.dot.gov')) return { Results: [{ Make: 'HONDA', Model: 'Accord', ModelYear: '2003', DriveType: 'FWD', BodyClass: 'Sedan' }] };
+  if (url.endsWith('/tekmetric_import_ro')) return 'insp-new';
+  return null;
+}
+
+test('Tekmetric webhook: the repair order is re-read from the API and imported with RO#, vehicle, customer and tech', async () => {
+  process.env.TEKMETRIC_CLIENT_ID = 'cid'; process.env.TEKMETRIC_CLIENT_SECRET = 'secret';
+  respond = tekmetric;
+  const r = await tekmetricWebhook(new Request(`https://app.test/api/tekmetric-webhook?token=${TOKEN}`, { method: 'POST', body: JSON.stringify({ event: 'Repair Order Created', data: { id: 55, repairOrderNumber: 999 } }) }));
+  assert.equal((await r.json()).inspectionId, 'insp-new');
+  const tokenCall = calls.find((c) => c.url.endsWith('/oauth/token'))!;
+  assert.equal(tokenCall.auth, `Basic ${Buffer.from('cid:secret').toString('base64')}`);
+  assert.equal(calls.find((c) => c.url.includes('/repair-orders/55'))!.auth, 'Bearer tm-access');
+  const imp = calls.find((c) => c.url.endsWith('/tekmetric_import_ro'))!;
+  assert.equal(imp.auth, 'Bearer service');
+  const ro = (imp.body as { p_shop: string; p_ro: Record<string, unknown> });
+  assert.equal(ro.p_shop, 'shop-1');
+  assert.deepEqual([ro.p_ro.roId, ro.p_ro.roNumber, ro.p_ro.vin, ro.p_ro.year, ro.p_ro.make, ro.p_ro.trim, ro.p_ro.odometer, ro.p_ro.technician, ro.p_ro.customerName, ro.p_ro.customerPhone],
+    [55, '10421', '1HGCM82633A004352', 2003, 'Honda', 'EX', 88120, 'Ray K.', 'Pat Lee', '555-0111']);
+  assert.deepEqual(ro.p_ro.concerns, ['Squeal when braking']);
+  assert.equal((ro.p_ro.config as { drivetrain: string }).drivetrain, 'fwd', 'vehicle setup comes from the VIN');
+  assert.ok(calls.some((c) => c.url.endsWith('/tekmetric_log')));
+});
+
+test('Tekmetric webhook: unknown address is refused; without API credentials the notification is logged and skipped', async () => {
+  respond = tekmetric;
+  assert.equal((await tekmetricWebhook(new Request(`https://app.test/api/tekmetric-webhook?token=${'c'.repeat(64)}`, { method: 'POST', body: '{}' }))).status, 404);
+  const r = await tekmetricWebhook(new Request(`https://app.test/api/tekmetric-webhook?token=${TOKEN}`, { method: 'POST', body: JSON.stringify({ event: 'Repair Order Created', data: { id: 55 } }) }));
+  assert.equal(r.status, 202);
+  const log = calls.find((c) => c.url.endsWith('/tekmetric_log'))!.body as { p_status: string; p_detail: string };
+  assert.equal(log.p_status, 'skipped');
+  assert.match(log.p_detail, /credentials/);
+  assert.ok(!calls.some((c) => c.url.includes('tekmetric.com')), 'nothing is sent to Tekmetric without credentials');
+});
+
+test('Tekmetric import by RO number checks the shop link as the user', async () => {
+  process.env.TEKMETRIC_CLIENT_ID = 'cid'; process.env.TEKMETRIC_CLIENT_SECRET = 'secret';
+  respond = (url, body) => (url.endsWith('/tekmetric_link_for') ? { linked: true, tekmetricShopId: 238, enabled: true } : tekmetric(url, body));
+  const r = await tekmetricImport(post('tekmetric-import', { shopId: 'shop-1', roNumber: ' 10421 ' }));
+  assert.equal((await r.json()).inspectionId, 'insp-new');
+  assert.equal(calls.find((c) => c.url.endsWith('/tekmetric_link_for'))!.auth, 'Bearer user-jwt');
+  assert.match(calls.find((c) => c.url.includes('/api/v1/repair-orders?'))!.url, /shop=238&repairOrderNumber=10421/);
+});
+
+test('Tekmetric export: only after review, with approved notes, photo counts, estimate decisions and the report link', async () => {
+  respond = (url) => {
+    if (url.endsWith('/tekmetric_export_info')) return { shopId: 'shop-1', roId: 55, status: 'submitted' };
+    if (url.endsWith('/get_inspection')) return bundle((i) => {
+      i.status = 'submitted';
+      i.notes = [{ pointId: 'S14', techText: 'recommend flush. copper 210 ppm', aiText: 'x', status: 'ai_accepted', customerText: 'Brake fluid tested at 210 ppm copper.' }];
+      i.estimate = [{ id: 'e1', compKey: compKey(clsByName('brake_fluid').id, null), description: 'Brake fluid exchange', parts: 24, labor: 95 }];
+      i.customerApprovals = [compKey(clsByName('brake_fluid').id, null)];
+    });
+    return null;
+  };
+  const out = await (await tekmetricExport(post('tekmetric-export', { inspectionId: 'i-4r-now' }))).json();
+  assert.equal(out.written, false);
+  assert.match(out.text, /RO 48213/);
+  assert.match(out.text, /#\/r\/a{64}/);
+  assert.match(out.text, /NEEDS ATTENTION NOW\n- Brake fluid: Brake fluid tested at 210 ppm copper\./);
+  assert.match(out.text, /Brake fluid exchange \(Brake fluid\): \$119\.00 · approved by customer/);
+  assert.ok(!out.text.includes('recommend flush'), 'the tech shorthand is replaced by the approved note');
+
+  respond = (url) => (url.endsWith('/tekmetric_export_info') ? { shopId: 'shop-1', roId: 55, status: 'in_progress' } : null);
+  assert.equal((await tekmetricExport(post('tekmetric-export', { inspectionId: 'i-4r-now' }))).status, 409);
+});
+
+test('Tekmetric webhook bodies: the repair order id is found in common shapes', () => {
+  assert.equal(roIdFromWebhook({ event: 'Repair Order Created', data: { id: 12 } }), 12);
+  assert.equal(roIdFromWebhook({ event: 'Inspection Complete', data: { id: 5, repairOrderId: 13 } }), 13);
+  assert.equal(roIdFromWebhook({ repairOrderId: '14' }), 14);
+  assert.equal(roIdFromWebhook({}), null);
+  const imp = toImport({ id: 1, repairOrderNumber: 'A1' }, null, { firstName: 'A', lastName: 'B', email: [{ email: 'a@b.c' }] }, null, {} as never);
+  assert.deepEqual([imp.roNumber, imp.vin, imp.customerName, imp.customerEmail, imp.technician], ['A1', '', 'A B', 'a@b.c', '']);
 });

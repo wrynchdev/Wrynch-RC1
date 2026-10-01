@@ -229,4 +229,35 @@ select t.act('authenticated', '00000000-0000-0000-0000-00000000000c');
 select t.eq(jsonb_array_length(public.my_shop_list()), 0, 'strangers list no shops');
 reset role;
 select t.eq((select v from t.ids where k = 'pilot_link') like 'https://wrynch.app/#/pilot/%', true, 'pilot link on the app domain');
+-- Tekmetric: owners link the shop; repair orders import once (server only); exports are for owners and advisors.
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
+select t.eq((public.set_tekmetric_link((select v::uuid from t.ids where k = 'shop'), 12345, true) ->> 'tekmetricShopId')::bigint, 12345::bigint, 'owner links Tekmetric');
+select t.eq(length(public.tekmetric_link_for((select v::uuid from t.ids where k = 'shop')) ->> 'webhookToken') >= 32, true, 'owner sees the webhook token');
+select t.expect_error($$ select public.set_tekmetric_link((select v::uuid from t.ids where k = 'shop'), -4, true) $$, '%Tekmetric shop ID%');
+insert into t.ids select 'tmtoken', public.tekmetric_link_for((select v::uuid from t.ids where k = 'shop')) ->> 'webhookToken';
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
+select t.eq(public.tekmetric_link_for((select v::uuid from t.ids where k = 'shop')) ->> 'webhookToken', null, 'technicians do not see the token');
+select t.expect_error($$ select public.set_tekmetric_link((select v::uuid from t.ids where k = 'shop'), 1, true) $$, '%permission%');
+select t.expect_error($$ select public.tekmetric_import_ro((select v::uuid from t.ids where k = 'shop'), '{"roId": 9}') $$, '%permission denied%');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000c');
+select t.expect_error($$ select public.tekmetric_link_for((select v::uuid from t.ids where k = 'shop')) $$, '%permission%');
+select t.act('service_role', null);
+select t.eq((public.tekmetric_shop_for_token((select v from t.ids where k = 'tmtoken')) ->> 'shopId'), (select v from t.ids where k = 'shop'), 'webhook token finds the shop');
+select t.eq(public.tekmetric_shop_for_token('short'), null::jsonb, 'short tokens find nothing');
+insert into t.ids select 'tmi', public.tekmetric_import_ro((select v::uuid from t.ids where k = 'shop'),
+  '{"roId": 777, "roNumber": "52001", "vin": "1HGCM82633A004352", "year": 2003, "make": "Honda", "model": "Accord", "config": {"powertrain": "gasoline"},
+    "customerName": "Pat Lee", "customerPhone": "555-0111", "odometer": 120400, "technician": "Ray K.", "concerns": ["Brake noise", " "]}')::text;
+select t.eq((select ro || '|' || technician_name || '|' || odometer || '|' || array_length(concerns, 1) from public.inspection where id = (select v::uuid from t.ids where k = 'tmi')), '52001|Ray K.|120400|1', 'repair order imported');
+select t.eq(public.tekmetric_import_ro((select v::uuid from t.ids where k = 'shop'), '{"roId": 777, "roNumber": "52001-A"}')::text, (select v from t.ids where k = 'tmi'), 'importing again updates the same inspection');
+select t.eq((select ro from public.inspection where id = (select v::uuid from t.ids where k = 'tmi')), '52001-A', 'RO number refreshed');
+select t.expect_error($$ select public.tekmetric_import_ro((select v::uuid from t.ids where k = 'shop'), '{"roId": 778, "vin": ""}') $$, '%no VIN%');
+select public.tekmetric_log((select v::uuid from t.ids where k = 'shop'), 'import', 777, (select v::uuid from t.ids where k = 'tmi'), 'ok', 'RO 52001');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
+select t.eq((public.tekmetric_export_info((select v::uuid from t.ids where k = 'tmi')) ->> 'roId')::bigint, 777::bigint, 'owner reads export info');
+select t.eq(jsonb_array_length(public.tekmetric_link_for((select v::uuid from t.ids where k = 'shop')) -> 'events'), 1, 'activity is listed');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
+select t.expect_error($$ select public.tekmetric_export_info((select v::uuid from t.ids where k = 'tmi')) $$, '%permission%');
+select t.eq((public.tekmetric_ro_of((select v::uuid from t.ids where k = 'tmi')) ->> 'roId')::bigint, 777::bigint, 'members see the linked RO');
+reset role;
+
 \echo ALL DATABASE TESTS PASSED

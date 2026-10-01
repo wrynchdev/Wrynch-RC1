@@ -101,3 +101,34 @@ Setup:
 3. Optional: `APP_DOMAIN` / `SITE_DOMAIN` environment variables if the domains ever change. They default to wrynch.app and getwrynch.com.
 
 The vercel.app address keeps working as before: the marketing page at `/` and the app at `/app/`.
+
+## Tekmetric
+
+Wrynch connects to Tekmetric as one partner app. Each shop then links its own Tekmetric shop in Wrynch.
+
+1. **Apply for API access** with Tekmetric (their API application form). They review applications and approve
+   them at their discretion; expect about 2–3 weeks. You get a client ID and secret, first for their sandbox
+   ("practice environment").
+2. **Add the credentials in Vercel** (Project → Settings → Environment Variables), then redeploy:
+   - `TEKMETRIC_CLIENT_ID` and `TEKMETRIC_CLIENT_SECRET`
+   - `TEKMETRIC_ENV` = `sandbox` while testing, `production` for live shops
+   Never put these in the code or in chat. Until they're set, Wrynch records Tekmetric notifications but doesn't
+   import anything, and Settings says so.
+3. **Run the migration** `supabase/migrations/20261005000000_tekmetric.sql` in the Supabase SQL Editor.
+4. **Each shop owner, in Wrynch → Settings → Tekmetric:** enters the shop's Tekmetric shop ID and saves. Wrynch
+   shows a private webhook address. In Tekmetric they add a webhook (Settings → Integrations) with that address
+   and turn on the *Repair Order: Create* event.
+
+What happens then:
+- **In:** a new repair order in Tekmetric becomes a Wrynch inspection with the RO number, vehicle (VIN, year,
+  make, model, mileage), customer and assigned technician. The vehicle setup is filled in from the VIN for the
+  tech to confirm. Anyone in the shop can also pull a repair order by number (Settings, or New inspection).
+- **Out:** after review, the advisor clicks **Export to Tekmetric** on the inspection. Wrynch builds the export
+  from approved content only: each inspection point's rating and customer note, its photo count, the estimate
+  with the customer's decisions, and the report link (where the photos are). Part conditions and history stay
+  in Wrynch.
+
+Limits of Tekmetric's API today: it has no inspection endpoints, so Wrynch can't write onto Tekmetric's
+inspection points or attach photos there. Its repair-order write calls are documented only to approved
+developers, so for now the export is shown as text the advisor copies into the repair order. Once access is
+approved and the write calls are confirmed, the export can be sent automatically.

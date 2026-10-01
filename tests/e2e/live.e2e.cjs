@@ -74,6 +74,23 @@ const B = `${ROOT}/app/`;
       await p.click('button:has-text("Create shop")');
       await p.waitForSelector('h2:has-text("In the bays")'); await shot('L03-dashboard');
     });
+    await step('tekmetric', async () => {
+      // Owner links Tekmetric; a "repair order created" notification imports the RO; pulling by number finds the same one.
+      await p.goto(B + '#/settings'); await p.waitForSelector('#tm-shop');
+      await p.fill('#tm-shop', '238'); await p.click('form:has(#tm-shop) button:has-text("Save")');
+      const hookInput = p.locator('input[aria-label="Webhook address"]');
+      await hookInput.waitFor({ timeout: 10000 });
+      const token = new URL(await hookInput.inputValue()).searchParams.get('token');
+      const r = await p.request.post(`http://localhost:${process.env.PORT ?? 5173}/api/tekmetric-webhook?token=${token}`, { data: { event: 'Repair Order Created', data: { id: 55 } } });
+      const out = await r.json().catch(() => ({}));
+      if (!out.inspectionId) errs.push('Tekmetric notification did not import the repair order: ' + JSON.stringify(out));
+      await p.reload(); await p.waitForSelector('text=RO 10421', { timeout: 10000 }).catch(() => errs.push('import not shown in Tekmetric activity'));
+      await shot('L04b-tekmetric');
+      await p.goto(B + '#/new'); await p.fill('input[aria-label="Tekmetric RO number"]', '10421'); await p.click('button:has-text("Pull")');
+      await p.waitForFunction(() => location.hash.includes('/setup/'), null, { timeout: 15000 }).catch(() => errs.push('pull by RO number did not open the inspection'));
+      if (out.inspectionId && !p.url().includes(out.inspectionId)) errs.push('pulling the same RO made a second inspection');
+      await p.waitForSelector('text=Honda', { timeout: 10000 }).catch(() => errs.push('imported vehicle not shown'));
+    });
     await step('invite', async () => {
       await p.goto(B + '#/settings/team'); await p.waitForSelector('text=Invite someone');
       await p.fill('#ie', 'tech@shop.test'); await p.click('button:has-text("Create invite link")');
@@ -274,7 +291,7 @@ const B = `${ROOT}/app/`;
       await ctx2.close();
     });
   } catch (e) { /* recorded */ }
-  const db = require('child_process').spawnSync('psql', ['-Atc', "select config->>'drivetrain', config->>'transferCase' from vehicle", PGURL], { encoding: 'utf8' }).stdout.trim();
+  const db = require('child_process').spawnSync('psql', ['-Atc', "select config->>'drivetrain', config->>'transferCase' from vehicle where vin = 'JTEBU5JR4B5012345'", PGURL], { encoding: 'utf8' }).stdout.trim();
   if (db !== '4wd|true') errs.push('vehicle config in database: ' + db);
   const real = errs.filter((e) => !/ERR_TUNNEL_CONNECTION_FAILED|fonts\.g/.test(e));
   await b.close();
