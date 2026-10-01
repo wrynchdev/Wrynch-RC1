@@ -37,6 +37,7 @@ export function writeIndex() {
   mkdirSync('dist/app', { recursive: true });
   cpSync('site', 'dist', { recursive: true });
   cpSync('index.html', 'dist/app/index.html');
+  writeFileSync('dist/app/robots.txt', 'User-agent: *\nDisallow: /\n');
 }
 
 // Domains: the marketing site and the app (each shop gets <number>.<app domain>).
@@ -73,6 +74,10 @@ async function buildFunctions() {
       { src: '/assets/(.*)', headers: { 'cache-control': 'public, max-age=31536000, immutable' }, continue: true },
       // getwrynch.com is the marketing site: its /app links go to the app's own domain (the #route is kept by the browser).
       { src: '/app(/.*)?', has: [{ type: 'host', value: SITE_HOST }], status: 308, headers: { location: `https://${APP_DOMAIN}/` } },
+      // Search engines: only getwrynch.com is indexed. The app (and the deployment's vercel.app address) say noindex,
+      // and the app's domains get a robots.txt that disallows everything.
+      { src: '/(.*)', has: [{ type: 'host', value: `(?:${APP_HOST}|.*\\.vercel\\.app)` }], headers: { 'x-robots-tag': 'noindex, nofollow' }, continue: true },
+      { src: '/robots\\.txt', has: [{ type: 'host', value: APP_HOST }], dest: '/app/robots.txt' },
       // wrynch.app and every shop address (1001.wrynch.app) open the app at the root.
       { src: '/(index\\.html)?', has: [{ type: 'host', value: APP_HOST }], headers: { 'cache-control': 'no-cache' }, dest: '/app/index.html' },
       { src: '/(index\\.html)?', headers: { 'cache-control': 'no-cache' }, continue: true },

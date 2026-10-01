@@ -3,8 +3,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Wrynch · Vehicle Condition Intelligence</title>
-  <meta name="description" content="Wrynch is digital vehicle inspection for independent shops. AI sorts your techs' photos down to the part, your tech signs off, and every part keeps its own history.">
+  <title>Digital Vehicle Inspection Software for Repair Shops | Wrynch</title>
+  <meta name="description" content="AI-assisted digital vehicle inspection (DVI) software for independent auto repair shops. Photo reports customers approve by phone. Free 90-day pilot.">
+  <link rel="canonical" href="https://getwrynch.com/">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Wrynch">
+  <meta property="og:url" content="https://getwrynch.com/">
+  <meta property="og:title" content="Wrynch | Digital vehicle inspections for independent repair shops">
+  <meta property="og:description" content="Every pad, rotor and tire rated on its own, photo reports customers approve by phone, and your techs in control of every finding. Free 90-day pilot.">
+  <meta property="og:image" content="https://getwrynch.com/og.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Wrynch: see every part, show every customer. A phone showing a customer inspection report.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Wrynch | Digital vehicle inspections for independent repair shops">
+  <meta name="twitter:description" content="Photo inspection reports customers approve by phone, with part-by-part history. Free 90-day pilot.">
+  <meta name="twitter:image" content="https://getwrynch.com/og.jpg">
+  <link rel="preload" as="image" href="/hero.webp" type="image/webp" fetchpriority="high">
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://getwrynch.com/#org","name":"Wrynch","url":"https://getwrynch.com/","logo":"https://getwrynch.com/apple-touch-icon.png","description":"Digital vehicle inspection software for independent auto repair shops."},{"@type":"WebSite","@id":"https://getwrynch.com/#site","url":"https://getwrynch.com/","name":"Wrynch","publisher":{"@id":"https://getwrynch.com/#org"}},{"@type":"SoftwareApplication","name":"Wrynch","applicationCategory":"BusinessApplication","applicationSubCategory":"Digital vehicle inspection software","operatingSystem":"Web browser (phone, tablet, desktop)","url":"https://getwrynch.com/","publisher":{"@id":"https://getwrynch.com/#org"},"description":"AI-assisted digital vehicle inspections for independent auto repair shops: technicians photograph each stage, AI sorts photos onto parts, technicians confirm every finding, and customers approve work from a photo report on their phone.","offers":[{"@type":"Offer","name":"Pilot program","price":"0","priceCurrency":"USD","description":"Free 90-day pilot for independent shops"},{"@type":"Offer","name":"Shop plan","price":"179","priceCurrency":"USD","description":"Per location per month, unlimited technicians, inspections and photos"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is a digital vehicle inspection (DVI)?","acceptedAnswer":{"@type":"Answer","text":"A digital vehicle inspection replaces the paper checklist with photos, measurements and ratings your customer can see on their phone. Wrynch goes a step further: it rates every part on its own, like each brake pad, rotor and tire, and keeps that part’s history from visit to visit."}},{"@type":"Question","name":"Does Wrynch replace my shop management software?","acceptedAnswer":{"@type":"Answer","text":"No. Wrynch is the inspection part of your workflow and runs alongside the software you use for repair orders and invoicing. We’re building integrations with shop management systems, starting with Tekmetric."}},{"@type":"Question","name":"What does it cost?","acceptedAnswer":{"@type":"Answer","text":"The pilot is free for 90 days. Pilot shops that stay pay a founding rate of $99 a month for their first 12 months. After that it’s $179 a month per location, or $1,790 a year, with unlimited techs, inspections and photos. Additional locations get 15–20% off."}},{"@type":"Question","name":"Do my techs have to change how they inspect?","acceptedAnswer":{"@type":"Answer","text":"No. They keep your points and shoot each stage in one go. The part-by-part detail comes from how the photos are sorted, not from extra taps."}},{"@type":"Question","name":"Can one photo count for several parts?","acceptedAnswer":{"@type":"Answer","text":"Yes. A shot of a front wheel can show the tire, pad, rotor and caliper. The AI notes each part it can see from that stage, and the photo shows up under every point it covers. Your tech can add or remove parts on any photo."}},{"@type":"Question","name":"What if the AI gets it wrong?","acceptedAnswer":{"@type":"Answer","text":"Your tech changes the parts on the photo or rejects the finding. Until they confirm, nothing counts and the customer can’t see it."}},{"@type":"Question","name":"Can I set my own limits?","acceptedAnswer":{"@type":"Answer","text":"Yes, every threshold, in mm or 32nds. Past inspections keep the rules they were rated under."}},{"@type":"Question","name":"How do customers get the report?","acceptedAnswer":{"@type":"Answer","text":"By text, email or a link you copy. It opens on their phone with no app to install and no login, and they can approve work right there."}}]}]}</script>
   <meta name="theme-color" content="#0A1020">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -71,7 +88,8 @@
     .hero { position: relative; min-height: min(100vh, 880px); display: flex; flex-direction: column; overflow: hidden; isolation: isolate;
       background: var(--ink); }
     .hero .photo { position: absolute; top: 0; right: 0; bottom: 0; width: 64%; z-index: -1;
-      background: url('/hero.jpg') 70% 38% / cover no-repeat; }
+      background: url('/hero.jpg') 70% 38% / cover no-repeat;
+      background-image: image-set(url('/hero.webp') type('image/webp'), url('/hero.jpg') type('image/jpeg')); }
     .hero .photo::after { content: ''; position: absolute; inset: 0;
       background:
         linear-gradient(rgba(10,16,32,.12), rgba(10,16,32,.12)),
@@ -351,8 +369,9 @@
 
       <div class="wrap hero-body">
         <div>
+          <p class="kicker">Digital vehicle inspection software</p>
           <h1><span>See more.</span> <span>Know sooner.</span> <span>Keep them moving.</span></h1>
-          <p class="sub">AI-assisted inspections, real insights, and long-term vehicle health — built for the shops that keep people on the road.</p>
+          <p class="sub">AI-assisted digital vehicle inspections, part-by-part vehicle history and customer approvals by phone, built for the independent auto repair shops that keep people on the road.</p>
           <div class="cta">
             <a class="btn primary" href="#pilot">Join the Pilot Program</a>
             <a class="btn outline" href="#try"><span class="play" aria-hidden="true"></span>See How It Works</a>
@@ -618,6 +637,8 @@
       <div class="wrap faq">
         <div><p class="kicker">Resources</p><h2>Questions shops ask</h2></div>
         <div>
+          <details><summary>What is a digital vehicle inspection (DVI)?</summary><p>A digital vehicle inspection replaces the paper checklist with photos, measurements and ratings your customer can see on their phone. Wrynch goes a step further: it rates every part on its own, like each brake pad, rotor and tire, and keeps that part’s history from visit to visit.</p></details>
+          <details><summary>Does Wrynch replace my shop management software?</summary><p>No. Wrynch is the inspection part of your workflow and runs alongside the software you use for repair orders and invoicing. We’re building integrations with shop management systems, starting with Tekmetric.</p></details>
           <details><summary>What does it cost?</summary><p>The pilot is free for 90 days. Pilot shops that stay pay a founding rate of $99 a month for their first 12 months. After that it’s $179 a month per location, or $1,790 a year, with unlimited techs, inspections and photos. Additional locations get 15–20% off.</p></details>
           <details><summary>Do my techs have to change how they inspect?</summary><p>No. They keep your points and shoot each stage in one go. The part-by-part detail comes from how the photos are sorted, not from extra taps.</p></details>
           <details><summary>Can one photo count for several parts?</summary><p>Yes. A shot of a front wheel can show the tire, pad, rotor and caliper. The AI notes each part it can see from that stage, and the photo shows up under every point it covers. Your tech can add or remove parts on any photo.</p></details>
