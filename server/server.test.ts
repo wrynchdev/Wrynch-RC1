@@ -4,7 +4,8 @@ import { buildMappedPoint, candidatesFor, explainAiError, resetAiState, validate
 import { mapVpic } from './vin';
 import { aiNote, aiSort, aiWording, appRoot, pilot, report, sendReport, status, tekmetricExport, tekmetricImport, tekmetricWebhook, templateMap, templateRead } from './routes';
 import { resetTekmetricToken, roIdFromWebhook, toImport } from './tekmetric';
-import { aiKey, training, trainingExport, trainingSuggest } from './routes';
+import { aiKey, apiRouter, ROUTES, training, trainingExport, trainingSuggest } from './routes';
+import { readFileSync } from 'node:fs';
 import { openSecret, sealSecret } from './secrets';
 import { resetRateLimits } from './lib';
 import { DEFAULT_TEMPLATE, clsByName, compKey } from '../src/domain/ontology';
@@ -725,4 +726,19 @@ test('training export: a YOLO manifest with signed links, as a download', async 
   assert.deepEqual(m.classes[0].classId, rotor);
   assert.deepEqual(m.images[0].labels, [[0, 0.2, 0.3, 0.2, 0.2]]);
   assert.equal((calls.find((c) => c.url.includes('/object/sign/'))!.body as { expiresIn: number }).expiresIn, 7 * 24 * 3600);
+});
+
+// ---------------------------------------------------------------- one function for all routes
+test('every route is served through the single router, with its query and body intact', async () => {
+  const listed = JSON.parse(/const ROUTE_NAMES = (\[[^\]]*\])/.exec(readFileSync('scripts/build.mjs', 'utf8'))![1].replace(/'/g, '"'));
+  assert.deepEqual([...listed].sort(), Object.keys(ROUTES).sort(), 'the build rewrites exactly the routes the router knows');
+  assert.equal((await apiRouter(new Request('https://app.test/api/router?route=nope'))).status, 404);
+  assert.equal((await apiRouter(new Request('https://app.test/api/router?route=toString'))).status, 404);
+  const viaQuery = await apiRouter(new Request('https://app.test/api/router?route=status'));
+  assert.equal(viaQuery.status, 200);
+  assert.equal(typeof (await viaQuery.json()).ai, 'boolean');
+  assert.equal((await apiRouter(new Request('https://app.test/api/status'))).status, 200, 'path form works too');
+  // POST bodies reach the route: a pilot application with no fields is refused by the route itself (400), not lost.
+  const r = await apiRouter(new Request('https://app.test/api/router?route=pilot', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }));
+  assert.equal(r.status, 400);
 });

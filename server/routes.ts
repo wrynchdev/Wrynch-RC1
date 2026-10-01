@@ -500,3 +500,18 @@ export const ROUTES: Record<string, Handler> = {
   status, pilot, 'ai-note': aiNote, 'template-read': templateRead, 'template-map': templateMap, 'ai-sort': aiSort, 'ai-wording': aiWording, vin, report, 'send-report': sendReport,
   'ai-key': aiKey, training, 'training-suggest': trainingSuggest, 'training-export': trainingExport, 'tekmetric-webhook': tekmetricWebhook, 'tekmetric-import': tekmetricImport, 'tekmetric-export': tekmetricExport,
 };
+
+/**
+ * All routes behind one server function (Vercel's free plan allows 12 per deployment). Requests to /api/<name> are
+ * rewritten to this function with ?route=<name>; the name is also read from the path in case the rewrite keeps it.
+ */
+export const apiRouter: Handler = async (req) => {
+  const url = new URL(req.url);
+  const name = url.searchParams.get('route') || /\/api\/([a-z-]+)\/?$/.exec(url.pathname)?.[1] || '';
+  const handler = Object.hasOwn(ROUTES, name) ? ROUTES[name] : null;
+  if (!handler) return new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers: { 'content-type': 'application/json' } });
+  url.searchParams.delete('route');
+  url.pathname = `/api/${name}`;
+  const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.arrayBuffer();
+  return handler(new Request(url, { method: req.method, headers: req.headers, body }));
+};

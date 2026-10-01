@@ -54,12 +54,13 @@ async function buildFunctions() {
   rmSync(out, { recursive: true, force: true });
   mkdirSync(`${out}/static`, { recursive: true });
   cpSync('dist', `${out}/static`, { recursive: true });
-  for (const name of ROUTE_NAMES) {
-    const dir = `${out}/functions/api/${name}.func`;
+  // One function serves every /api route (Vercel's Hobby plan allows at most 12 functions per deployment).
+  {
+    const dir = `${out}/functions/api/router.func`;
     mkdirSync(dir, { recursive: true });
     await esbuild.build({
       stdin: {
-        contents: `import { ROUTES } from './server/routes.ts'; import { toNode } from './server/lib.ts';\nexport default toNode(ROUTES[${JSON.stringify(name)}]);`,
+        contents: `import { apiRouter } from './server/routes.ts'; import { toNode } from './server/lib.ts';\nexport default toNode(apiRouter);`,
         resolveDir: process.cwd(), loader: 'ts',
       },
       outfile: `${dir}/index.mjs`,
@@ -83,6 +84,7 @@ async function buildFunctions() {
       { src: '/(index\\.html)?', headers: { 'cache-control': 'no-cache' }, continue: true },
       { src: '/app/?(index\\.html)?', headers: { 'cache-control': 'no-cache' }, continue: true },
       { src: '/app', status: 308, headers: { location: '/app/' } },
+      { src: `/api/(${ROUTE_NAMES.join('|')})/?`, dest: '/api/router?route=$1' },
       { handle: 'filesystem' },
       { src: '/app/.*', dest: '/app/index.html' },
     ],
