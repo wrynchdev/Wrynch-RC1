@@ -83,12 +83,12 @@ export function explainAiError(status: number, body: string, provider: AiProvide
   let type = '', message = '';
   try { const e = JSON.parse(body).error ?? {}; type = String(e.type ?? e.code ?? ''); message = String(e.message ?? ''); } catch { /* not JSON */ }
   const who = provider === 'openai' ? 'OpenAI' : 'Anthropic';
-  const fixKey = source === 'shop' ? 'Check the AI key in Settings.' : provider === 'anthropic' ? 'Check ANTHROPIC_API_KEY in Vercel.' : '';
+  const fixKey = source === 'shop' ? 'Check the AI key in Settings.' : provider === 'anthropic' ? 'Check ANTHROPIC_API_KEY in Vercel.' : 'Check OPENAI_API_KEY in Vercel.';
   if (status === 401 || type === 'authentication_error' || type === 'invalid_api_key') return `The ${who} API key isn’t valid. ${fixKey}`.trim();
   if (/workspace/i.test(message)) return 'This Anthropic key isn’t tied to a workspace. Set ANTHROPIC_WORKSPACE_ID in Vercel, or create the key inside a workspace.';
   if (/credit balance|billing|insufficient_quota|quota/i.test(`${message} ${type}`)) return `The ${who} account is out of credit or over its quota.${source === 'shop' ? ' Add credit with your AI provider.' : ''}`;
   if (status === 403 || type === 'permission_error') return `The ${who} API key doesn’t have access to this model.`;
-  if (status === 404 || type === 'not_found_error' || type === 'model_not_found') return `The AI model “${model()}” isn’t available. ${source === 'shop' ? 'Choose another model in Settings.' : 'Check ANTHROPIC_MODEL in Vercel.'}`;
+  if (status === 404 || type === 'not_found_error' || type === 'model_not_found') return `The AI model “${model()}” isn’t available. ${source === 'shop' ? 'Choose another model in Settings.' : `Check ${provider === 'openai' ? 'OPENAI_MODEL' : 'ANTHROPIC_MODEL'} in Vercel.`}`;
   if (status === 429 || type === 'rate_limit_error') return 'The AI is rate-limited right now. Wait a minute and try again.';
   if (status === 529 || status >= 500 || type === 'overloaded_error' || type === 'api_error') return 'The AI service is busy. Try again in a minute.';
   if (/image/i.test(message)) return `The AI couldn’t open this photo (${message.slice(0, 120)}).`;
@@ -156,7 +156,7 @@ async function claude(body: Record<string, unknown>): Promise<Record<string, unk
 
 type Block = { type: string; text?: string; source?: { type: string; media_type?: string; data?: string } };
 /**
- * The same request through OpenAI's Chat Completions API, for shops that use their own OpenAI key. Our requests
+ * The same request through OpenAI's Chat Completions API, for an OpenAI key (a shop's own, or Wrynch's). Our requests
  * (system prompt, text and images, one forced tool) are translated, and the answer is returned in the shape the rest
  * of this file reads (a tool_use block, or text).
  */
@@ -174,7 +174,8 @@ async function openaiMessages(acct: AiAccount, body: Record<string, unknown>): P
   const tools = ((body.tools as { name: string; description?: string; input_schema: unknown }[]) ?? [])
     .map((t) => ({ type: 'function', function: { name: t.name, description: t.description ?? '', parameters: t.input_schema } }));
   const choice = body.tool_choice as { type?: string; name?: string } | undefined;
-  const req: Record<string, unknown> = { model: acct.model, messages, max_completion_tokens: body.max_tokens ?? 1024 };
+  // OpenAI's reasoning models count their thinking against this limit, so it's set well above the answer size.
+  const req: Record<string, unknown> = { model: acct.model, messages, max_completion_tokens: Math.max(4096, 3 * Number(body.max_tokens ?? 1024)) };
   if (tools.length) {
     req.tools = tools;
     req.tool_choice = choice?.type === 'tool' && choice.name ? { type: 'function', function: { name: choice.name } } : 'auto';

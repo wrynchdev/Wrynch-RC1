@@ -120,6 +120,7 @@ beforeEach(() => {
   process.env.SUPABASE_ANON_KEY = 'anon';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'service';
   delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.OPENAI_API_KEY; delete process.env.OPENAI_MODEL; delete process.env.AI_PROVIDER;
   delete process.env.AI_STUB;
   delete process.env.ANTHROPIC_WORKSPACE_ID;
   resetAiState();
@@ -647,6 +648,30 @@ test('a shop with its own OpenAI key: photos are sorted through OpenAI with that
   assert.ok(body.messages.some((m) => Array.isArray(m.content) && m.content.some((p) => p.type === 'image_url' && p.image_url!.url.startsWith('data:image/jpeg;base64,'))));
   assert.ok(!calls.some((c) => c.url.includes('api.anthropic.com')), 'Wrynch\'s key is not used');
   assert.ok(calls.some((c) => c.url.endsWith('/ai_record_sort')));
+});
+
+test('Wrynch\'s own OpenAI key: shops without a key are sorted through OpenAI; AI_PROVIDER picks when both are set', async () => {
+  const rotor = compKey(clsByName('brake_rotor').id, 'left_front');
+  respond = (url) => {
+    if (url.endsWith('/shop_ai_key_secret')) return null;
+    if (url.endsWith('/get_inspection')) return bundle((i) => { i.media = [{ id: 'm1', sectionId: 'under_car', url: 's/i/m1.jpg', label: 'a.jpg', excluded: false, customerVisible: true, analyzed: false, links: [] }]; });
+    if (url.includes('/storage/v1/object/inspection-media/')) return new Response(new Uint8Array([255, 216, 255]), { headers: { 'content-type': 'image/jpeg' } });
+    if (url === 'https://api.openai.com/v1/chat/completions') return { choices: [{ message: { tool_calls: [{ function: { arguments: JSON.stringify({ parts: [{ part: rotor, confidence: 0.9, condition: 'looks_ok', findings: [] }] }) } }] } }] };
+    return null;
+  };
+  process.env.OPENAI_API_KEY = 'sk-wrynch-openai-key-1234567890';
+  assert.equal((await (await status(new Request('https://app.test/api/status'))).json()).model, 'gpt-5');
+  assert.equal((await (await aiSort(post('ai-sort', { inspectionId: 'i-4r-now', mediaIds: ['m1'] }))).json()).parts, 1);
+  const ai = calls.find((c) => c.url === 'https://api.openai.com/v1/chat/completions')!;
+  assert.equal(ai.auth, 'Bearer sk-wrynch-openai-key-1234567890');
+  assert.equal((ai.body as { model: string }).model, 'gpt-5');
+  assert.ok((ai.body as { max_completion_tokens: number }).max_completion_tokens >= 4096, 'room for reasoning models');
+
+  // Both keys set: Anthropic unless AI_PROVIDER says OpenAI.
+  process.env.ANTHROPIC_API_KEY = 'k'; process.env.OPENAI_MODEL = 'gpt-vision-x';
+  assert.equal((await (await status(new Request('https://app.test/api/status'))).json()).model, 'claude-sonnet-5');
+  process.env.AI_PROVIDER = 'openai';
+  assert.equal((await (await status(new Request('https://app.test/api/status'))).json()).model, 'gpt-vision-x');
 });
 
 // ---------------------------------------------------------------- training data
