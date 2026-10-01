@@ -18,8 +18,8 @@ const APPRE = APPD.replace(/\./g, '\\.');
 const B = `${ROOT}/app/`;
 (async () => {
   // Map the production hostnames to this machine so shop addresses (1001.wrynch.app) are tested for real.
-  const b = await chromium.launch({ args: [`--host-resolver-rules=MAP ${APPD} 127.0.0.1, MAP *.${APPD} 127.0.0.1, MAP ${SITED} 127.0.0.1`] });
-  const ctx = await b.newContext({ viewport: { width: 400, height: 860 } });
+  const b = await chromium.launch({ args: [`--host-resolver-rules=MAP ${APPD} 127.0.0.1, MAP *.${APPD} 127.0.0.1, MAP ${SITED} 127.0.0.1`, '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] });
+  const ctx = await b.newContext({ viewport: { width: 400, height: 860 }, permissions: ['camera'] });
   const p = await ctx.newPage();
   const errs = [];
   p.on('pageerror', (e) => errs.push('pageerror: ' + e.message));
@@ -96,12 +96,25 @@ const B = `${ROOT}/app/`;
     });
     const inspId = p.url().split('/insp/')[1].split('/')[0];
     await step('corner-capture', async () => {
-      // In-app camera: tap a corner, shoot, and the photo is tagged with that corner; the tech stays on the capture screen.
+      // In-app camera: pick a corner, tap or hold the shutter for a burst, switch corners without leaving the camera.
       await p.goto(B + `#/insp/${inspId}/capture/under_car`); await p.waitForSelector('text=Where are you shooting?');
       await p.click('.corner-btn.c-right_front');
-      await p.setInputFiles('#snap', PHOTOS.slice(0, 1));
-      await p.waitForSelector('text=1 photo taken · RF 1', { timeout: 15000 }).catch(() => errs.push('corner photo count not shown'));
-      await p.waitForFunction(() => !document.querySelector('.toast[role=status]') || !/Uploading|reading/.test(document.querySelector('.toast').textContent), null, { timeout: 30000 });
+      await p.click('button:has-text("Open camera")');
+      await p.waitForSelector('.cam-shutter:not([disabled])', { timeout: 15000 });
+      const sh = await p.locator('.cam-shutter').boundingBox();
+      await p.mouse.move(sh.x + sh.width / 2, sh.y + sh.height / 2);
+      await p.mouse.down(); await p.waitForTimeout(800); await p.mouse.up(); // hold: a burst
+      await p.locator('.cam-shutter').click();                               // tap: one more
+      await p.click('.cam-corner[aria-label="Left front"]');
+      await p.locator('.cam-shutter').click();
+      await p.waitForTimeout(300); await shot('L06a-camera');
+      const n = Number((await p.textContent('.cam-count')).match(/\d+/)[0]);
+      if (n < 4) errs.push('burst did not take several photos: ' + n);
+      await p.waitForFunction(() => !/saving/.test(document.querySelector('.cam-count')?.textContent ?? ''), null, { timeout: 60000 })
+        .catch(() => errs.push('camera photos did not finish saving'));
+      await p.click('.cam-done');
+      const status = await p.textContent('.corner-pick [role=status]').catch(() => '');
+      if (!/RF \d+/.test(status) || !/LF 1/.test(status)) errs.push('corner counts wrong: ' + status);
       await shot('L06b-corner-capture');
     });
     await step('upload', async () => {

@@ -9,6 +9,7 @@ import { SEVERITIES, SIDE_UNSURE_CONFIDENCE } from '../domain/types';
 import { actions, isLive, jobList, noteStyle, photoSrc, toast, useStore, type NoteDraft } from '../state/store';
 import { autoNotePoints, NOTE_STYLES } from '../domain/noteDraft';
 import { CORNER_LABEL, CORNER_SHORT, CORNERS, type Corner } from '../domain/corner';
+import { CameraSheet } from './camera';
 import { AiChip, fmtDate, fmtMi, Icon, Sheet, StateChip, Tile, TopBar } from './kit';
 import { enc, go, pointStatus, useInspection, useVehicleHistory } from './hooks';
 
@@ -254,6 +255,8 @@ export function Capture({ id, sectionId }: { id: string; sectionId: string }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [corner, setCorner] = useState<Corner | null>(null);
   const [shot, setShot] = useState<Partial<Record<Corner | 'none', number>>>({});
+  const [camera, setCamera] = useState(false);
+  const snapRef = useRef<HTMLInputElement>(null);
   const section = sections().find((s) => s.id === sectionId);
   if (!data || !section) return <Missing />;
   const toFiles = (fs: File[]) => fs.map((f) => ({ url: URL.createObjectURL(f), name: f.name, file: f }));
@@ -270,6 +273,9 @@ export function Capture({ id, sectionId }: { id: string; sectionId: string }) {
     void actions.addPhotos(id, sectionId, toFiles(fs), undefined, corner);
   };
   const total = Object.values(shot).reduce((a, b) => a + (b ?? 0), 0);
+  const counted = (c: Corner | null) => setShot((x) => ({ ...x, [c ?? 'none']: (x[c ?? 'none'] ?? 0) + 1 }));
+  // No camera access (old browser, permission denied): use the phone's camera app, one photo per launch.
+  const noCamera = () => { setCamera(false); toast('Couldn’t open the camera here, so your phone’s camera app opens instead (one photo at a time).'); snapRef.current?.click(); };
   return (
     <div className="phone" style={{ background: 'var(--paper)', color: 'var(--ink)' }}>
       <div className="topbar" style={{ background: 'var(--paper)', borderColor: 'var(--card2)' }}>
@@ -298,11 +304,12 @@ export function Capture({ id, sectionId }: { id: string; sectionId: string }) {
               </svg>
             </div>
           </div>
-          <input className="sr" id="snap" type="file" accept="image/*" capture="environment" multiple
+          <input ref={snapRef} className="sr" id="snap" type="file" accept="image/*" capture="environment" multiple
             onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ''; snap(fs); }} />
-          <label htmlFor="snap" className="btn primary block" style={{ cursor: 'pointer' }}>
-            <Icon name="camera" />{corner ? `Take photo · ${CORNER_LABEL[corner]}` : 'Take photo'}
-          </label>
+          <button className="btn primary block" onClick={() => setCamera(true)}>
+            <Icon name="camera" />{corner ? `Open camera · ${CORNER_LABEL[corner]}` : 'Open camera'}
+          </button>
+          <span className="small" style={{ color: 'var(--text2)', marginTop: -6 }}>Tap the shutter for each photo or hold it for a burst. You can switch corners without leaving the camera.</span>
           {total > 0 && (
             <div className="row between">
               <span className="small" role="status" style={{ color: 'var(--text2)' }}>{total} {total === 1 ? 'photo' : 'photos'} taken{Object.entries(shot).filter(([k, n]) => n && k !== 'none').length ? ` · ${Object.entries(shot).filter(([k, n]) => n && k !== 'none').map(([k, n]) => `${CORNER_SHORT[k as Corner]} ${n}`).join(', ')}` : ''}</span>
@@ -310,6 +317,8 @@ export function Capture({ id, sectionId }: { id: string; sectionId: string }) {
             </div>
           )}
         </section>
+        {camera && <CameraSheet inspId={id} sectionId={sectionId} stageName={section.name} corner={corner} onCorner={setCorner}
+          onShot={counted} onClose={() => setCamera(false)} onUnavailable={noCamera} />}
         <div className="dropzone" style={{ background: 'var(--card)', borderColor: 'var(--line)', color: 'var(--ink)', minHeight: 160, justifyContent: 'center' }}>
           <Icon name="image" size={32} />
           <strong style={{ fontSize: 16 }}>Already took them? Pick from your photos</strong>
