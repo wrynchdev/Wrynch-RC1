@@ -9,6 +9,7 @@ import { TekmetricCard, TekmetricPull } from './tekmetric';
 import { AiKeyCard } from './aiKey';
 import { TrainingShareCard } from './training';
 import { NOTE_STYLES, type NoteStyle } from '../domain/noteDraft';
+import { optimizeOrder, PHASES } from '../domain/templateOrder';
 import { go } from './hooks';
 import { Icon, TopBar, Wordmark } from './kit';
 
@@ -398,7 +399,15 @@ export function TemplateEditor() {
   const [open, setOpen] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
-  const change = (fn_: (x: Template) => void) => { const n = structuredClone(t); fn_(n); setT(n); setDirty(true); };
+  // The order before "Optimize order", for Undo; cleared by any other edit.
+  const [undo, setUndo] = useState<{ before: Template; wasDirty: boolean; moved: number; stagesMoved: boolean } | null>(null);
+  const change = (fn_: (x: Template) => void) => { const n = structuredClone(t); fn_(n); setT(n); setDirty(true); setUndo(null); };
+  const optimize = () => {
+    const r = optimizeOrder(t);
+    if (!r.moved && !r.stagesMoved) { toast('This template is already in working order.'); return; }
+    setUndo({ before: t, wasDirty: dirty, moved: r.moved, stagesMoved: r.stagesMoved });
+    setT(r.template); setDirty(true); setOpen(null);
+  };
   const conditions = useMemo(() => [...Object.keys(CONDITIONS), ...['left_front', 'right_front', 'left_rear', 'right_rear', 'front', 'rear'].map((p) => `chargePort:${p}`)], []);
   const counts = t.sections.reduce((a, s) => a + s.points.length, 0);
   return (
@@ -410,7 +419,8 @@ export function TemplateEditor() {
         </div>
         {canEdit && (
           <div className="row">
-            <button className="btn quiet sm" onClick={() => { setT(structuredClone(DEFAULT_TEMPLATE)); setDirty(true); }}>Start from the standard template</button>
+            <button className="btn quiet sm" onClick={() => { setT(structuredClone(DEFAULT_TEMPLATE)); setDirty(true); setUndo(null); }}>Start from the standard template</button>
+            <button className="btn quiet sm" onClick={optimize} title="Reorder points so a technician works around the car in one pass">Optimize order</button>
             <button className="btn primary sm" disabled={!dirty || saving} onClick={async () => {
               setSaving(true);
               try { await actions.saveTemplate(t); setDirty(false); } catch (e) { toast(errText(e), 'error'); } finally { setSaving(false); }
@@ -419,6 +429,18 @@ export function TemplateEditor() {
         )}
       </div>
       {!canEdit && <div className="card pad small">Only the shop owner can change the template.</div>}
+      {undo && (
+        <div className="card pad row between" role="status" style={{ flexWrap: 'wrap', gap: 10, borderColor: 'var(--blue)' }}>
+          <div className="stack" style={{ gap: 4, flex: '1 1 420px' }}>
+            <strong>Reordered {undo.moved} point{undo.moved === 1 ? '' : 's'}{undo.stagesMoved ? ' and the stages' : ''} for one pass around the car.</strong>
+            <span className="small muted">
+              Order: {PHASES.join(' → ')}. The walk-around and wheels go clockwise from the driver’s door; underneath goes front to back.
+              Points stay in their stages. Review it, then save the template.
+            </span>
+          </div>
+          <button className="btn quiet sm" onClick={() => { setT(undo.before); setDirty(undo.wasDirty); setUndo(null); }}>Undo</button>
+        </div>
+      )}
       {t.sections.map((s, si) => (
         <section key={s.id} className="card">
           <div className="row" style={{ padding: '10px 14px', borderBottom: '1px solid var(--line2)', background: 'var(--card2)', borderRadius: '14px 14px 0 0' }}>

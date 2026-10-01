@@ -99,6 +99,20 @@ const B = `${ROOT}/app/`;
       if (!(await p.locator('text=This shop uses Wrynch').count()) && !(await p.locator('text=No AI is set up').count())) errs.push('AI provider status missing');
       await shot('L04c-ai-key');
     });
+    await step('template-optimize', async () => {
+      // "Optimize order" reorders points for one pass around the car; Undo puts the shop's order back. Nothing is saved.
+      await p.goto(B + '#/settings/template'); await p.waitForSelector('button:has-text("Optimize order")');
+      const order = () => p.$$eval('input[id^="pt-"]', (els) => els.map((e) => e.value));
+      const before = await order();
+      await p.click('button:has-text("Optimize order")');
+      await p.waitForSelector('text=for one pass around the car').catch(() => errs.push('optimize summary missing'));
+      const after = await order();
+      if (!(after.indexOf('RR tire') < after.indexOf('Visual brake system condition'))) errs.push('wheels are not grouped in a lap after optimizing');
+      if (after.length !== before.length || [...after].sort().join() !== [...before].sort().join()) errs.push('optimizing added or dropped points');
+      await shot('L04d-template-optimized');
+      await p.click('button:has-text("Undo")');
+      if ((await order()).join('|') !== before.join('|')) errs.push('undo did not restore the order');
+    });
     await step('invite', async () => {
       await p.goto(B + '#/settings/team'); await p.waitForSelector('text=Invite someone');
       await p.fill('#ie', 'tech@shop.test'); await p.click('button:has-text("Create invite link")');
