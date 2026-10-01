@@ -24,7 +24,7 @@ TM_PORT=54331 node tests/e2e/fake-tekmetric.mjs & PIDS+=($!)
 # .app domains are HTTPS-only in browsers (HSTS preload), so the test uses .test names for the app and site domains.
 export APP_DOMAIN=wrynch.test SITE_DOMAIN=getwrynch.test
 PORT=5179 SUPABASE_URL=http://localhost:54329 SUPABASE_ANON_KEY=anon SUPABASE_SERVICE_ROLE_KEY=service APP_URL=http://localhost:5179 \
-  ANTHROPIC_API_KEY= AI_STUB=1 TEKMETRIC_CLIENT_ID=e2e TEKMETRIC_CLIENT_SECRET=e2e TEKMETRIC_BASE_URL=http://localhost:54331 \
+  ANTHROPIC_API_KEY= AI_STUB=1 SHOP_KEYS_SECRET=$(node -e "process.stdout.write(Buffer.alloc(32,9).toString('base64'))") TEKMETRIC_CLIENT_ID=e2e TEKMETRIC_CLIENT_SECRET=e2e TEKMETRIC_BASE_URL=http://localhost:54331 \
   node --import tsx scripts/dev.mjs & PIDS+=($!)
 sleep 3
 PORT=5179 node tests/e2e/live.e2e.cjs

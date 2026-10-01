@@ -270,4 +270,27 @@ select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
 select t.expect_error($$ select public.set_approval_baseline((select v::uuid from t.ids where k = 'shop'), 10) $$, '%permission%');
 reset role;
 
+-- Shop AI keys: stored only by the server, encrypted; owners see the last four characters, nobody reads the secret.
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
+select t.eq(public.assert_shop_owner((select v::uuid from t.ids where k = 'shop')), true, 'owner may manage AI keys');
+select t.eq((public.shop_ai_key_info((select v::uuid from t.ids where k = 'shop')) ->> 'configured')::boolean, false, 'no key yet');
+select t.expect_error($$ select public.store_shop_ai_key((select v::uuid from t.ids where k = 'shop'), 'openai', 'm', 'v1.a.b', 'wxyz', null) $$, '%permission denied%');
+select t.expect_error($$ select * from public.shop_ai_key $$, '%permission denied%');
+select t.act('service_role', null);
+select public.store_shop_ai_key((select v::uuid from t.ids where k = 'shop'), 'openai', 'gpt-test', 'v1.aXY=.Y3Q=', 'wxyz', '00000000-0000-0000-0000-00000000000a');
+select t.eq(public.shop_ai_key_secret((select v::uuid from t.ids where k = 'insp')) ->> 'secret', 'v1.aXY=.Y3Q=', 'server reads the sealed key for an inspection');
+select t.expect_error($$ select public.store_shop_ai_key((select v::uuid from t.ids where k = 'shop'), 'openai', null, 'plaintext-key', 'abcd', null) $$, '%check%');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
+select t.eq(public.shop_ai_key_info((select v::uuid from t.ids where k = 'shop')) ->> 'last4', 'wxyz', 'owner sees the last four');
+select t.eq(public.shop_ai_key_info((select v::uuid from t.ids where k = 'shop')) ? 'secret', false, 'the secret is never returned');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
+select t.eq(public.shop_ai_key_info((select v::uuid from t.ids where k = 'shop')) ->> 'last4', null, 'technicians do not see key details');
+select t.expect_error($$ select public.assert_shop_owner((select v::uuid from t.ids where k = 'shop')) $$, '%permission%');
+select t.expect_error($$ select public.shop_ai_key_secret((select v::uuid from t.ids where k = 'insp')) $$, '%permission denied%');
+select t.expect_error($$ select public.delete_shop_ai_key((select v::uuid from t.ids where k = 'shop')) $$, '%permission%');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
+select public.delete_shop_ai_key((select v::uuid from t.ids where k = 'shop'));
+select t.eq((public.shop_ai_key_info((select v::uuid from t.ids where k = 'shop')) ->> 'configured')::boolean, false, 'owner removed the key');
+reset role;
+
 \echo ALL DATABASE TESTS PASSED

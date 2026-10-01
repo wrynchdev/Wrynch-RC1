@@ -46,7 +46,7 @@ const esc = (d) => d.replace(/[.]/g, '\\.');
 export const APP_HOST = `(?:[0-9]+\\.|www\\.)?${esc(APP_DOMAIN)}`;
 export const SITE_HOST = `(?:www\\.)?${esc(SITE_DOMAIN)}`;
 
-const ROUTE_NAMES = ['status', 'pilot', 'ai-note', 'template-read', 'template-map', 'ai-sort', 'ai-wording', 'vin', 'report', 'send-report', 'tekmetric-webhook', 'tekmetric-import', 'tekmetric-export'];
+const ROUTE_NAMES = ['status', 'pilot', 'ai-note', 'template-read', 'template-map', 'ai-sort', 'ai-wording', 'vin', 'report', 'send-report', 'tekmetric-webhook', 'tekmetric-import', 'tekmetric-export', 'ai-key'];
 
 async function buildFunctions() {
   const out = '.vercel/output';

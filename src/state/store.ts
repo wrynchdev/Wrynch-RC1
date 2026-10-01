@@ -48,7 +48,9 @@ export interface State {
   toast: { text: string; kind: 'error' | 'info' } | null;
   photoUrls: Record<string, string>;
   /** Live mode: whether real AI photo sorting is available (null until checked). */
-  ai: { on: boolean; model: string; tekmetric?: boolean } | null;
+  ai: { on: boolean; model: string; tekmetric?: boolean; shopKeys?: boolean } | null;
+  /** The shop's own AI key, if the owner saved one (only the provider, model and last four characters). */
+  shopAi: ShopAiInfo | null;
   /** The shop's Tekmetric link and recent sync activity (live mode, loaded on demand). */
   tekmetric: TekmetricLink | null;
   /** Shop dashboard for the chosen range (live: from the server; demo: from the inspections here). */
@@ -66,7 +68,7 @@ const uid = (p: string) => `${p}-${(seq++).toString(36)}`;
 
 function demoInitial(): State {
   return {
-    mode: 'demo', vehicles: structuredClone(VEHICLES), inspections: seedInspections(), role: 'tech', demoNoteStyle: 'customer', tekmetric: null,
+    mode: 'demo', vehicles: structuredClone(VEHICLES), inspections: seedInspections(), role: 'tech', demoNoteStyle: 'customer', tekmetric: null, shopAi: null,
     session: null, workspace: null, jobs: [], loading: 0, busy: null, toast: null, photoUrls: {}, ai: null, dashboard: null,
   };
 }
@@ -109,6 +111,7 @@ export const photoSrc = (url: string) => (state.mode === 'demo' ? url : state.ph
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 // An invite or pilot link survives the email-confirmation round trip (which lands back on the app's home).
+export interface ShopAiInfo { configured: boolean; provider?: 'anthropic' | 'openai'; model?: string | null; last4?: string | null; updatedAt?: string | null }
 export interface TekmetricEvent { at: string; kind: 'import' | 'export' | 'webhook'; roId: number | null; inspectionId: string | null; status: 'ok' | 'error' | 'skipped'; detail: string }
 export interface TekmetricLink { linked: boolean; tekmetricShopId: number | null; enabled: boolean; webhookToken: string | null; events: TekmetricEvent[] }
 export interface TekmetricExportResult { written: boolean; reason?: string; text: string }
@@ -327,6 +330,12 @@ const demoWording = (pointId: string) => (i: Inspection) => {
   else i.notes.push({ pointId, techText: '', aiText: text, status: 'ai_suggested', customerText: null });
 };
 
+/** Live mode: AI can run when Wrynch has a key or the shop saved its own (unknown counts as available). */
+export function aiAvailable(s: State): boolean {
+  if (s.mode !== 'live') return true;
+  return s.ai === null || s.ai.on || !!s.shopAi?.configured;
+}
+
 export const actions = {
   // ---- session & workspace (live)
   async signIn(email: string, password: string) { await auth.signIn(email, password); await actions.loadWorkspace(); },
@@ -356,6 +365,7 @@ export const actions = {
     setThresholds(full.rules?.thresholds ?? []);
     set({ workspace: full, jobs: ws.jobs ?? [], session: getSession() });
     if (!state.ai) void actions.checkAi();
+    void actions.loadShopAi();
   },
   async loadDashboard(days: number) {
     if (state.mode === 'demo') { set({ dashboard: { ...dashFromInspections(state.inspections, state.vehicles), days, baseline: state.demoBaseline ?? null } }); return; }
@@ -374,10 +384,26 @@ export const actions = {
       set({ dashboard: state.dashboard ? { ...state.dashboard, baseline: percent } : null });
     } catch (e) { toast(errText(e), 'error'); }
   },
+  async loadShopAi() {
+    if (state.mode !== 'live' || !state.workspace?.shop) return;
+    try { set({ shopAi: await rpc<ShopAiInfo>('shop_ai_key_info', { p_shop: state.workspace.shop.id }) }); } catch { set({ shopAi: null }); }
+  },
+  /** Owner: save the shop's own AI key. It's checked with the provider and encrypted on the server; it never comes back. */
+  async saveShopAi(provider: 'anthropic' | 'openai', apiKey: string, model: string) {
+    const info = await fn<ShopAiInfo>('ai-key', { shopId: state.workspace!.shop!.id, provider, apiKey, model });
+    set({ shopAi: info });
+    toast(`Saved. Wrynch now uses your ${provider === 'openai' ? 'OpenAI' : 'Anthropic'} account for this shop.`);
+  },
+  async removeShopAi() {
+    await fn('ai-key', { shopId: state.workspace!.shop!.id }, 'DELETE');
+    set({ shopAi: { configured: false } });
+    toast('Your AI key was removed. Wrynch’s AI is used again (if it’s set up).');
+  },
   async checkAi() {
     try {
       const r = await fn<{ ai: boolean; model: string; tekmetric?: boolean }>('status', undefined, 'GET', false);
-      set({ ai: { on: !!r.ai, model: String(r.model ?? ''), tekmetric: !!(r as { tekmetric?: boolean }).tekmetric } });
+      const x = r as { tekmetric?: boolean; shopKeys?: boolean };
+      set({ ai: { on: !!r.ai, model: String(r.model ?? ''), tekmetric: !!x.tekmetric, shopKeys: !!x.shopKeys } });
     } catch { /* unknown: sorting is still attempted and reports its own error */ }
   },
   /** Ask the AI to sort photos that haven't been analysed yet (after a failure, or photos added while AI was off). */
@@ -522,7 +548,7 @@ export const actions = {
         else await rpc('add_media', { p_inspection: inspId, p_media: id, p_section: sectionId, p_path: path, p_label: f.name });
         ids.push(id);
       }
-      if (state.ai && !state.ai.on) toast(`${ids.length} ${ids.length === 1 ? 'photo' : 'photos'} saved. AI sorting isn’t set up, so place them by hand.`);
+      if (!aiAvailable(state)) toast(`${ids.length} ${ids.length === 1 ? 'photo' : 'photos'} saved. AI sorting isn’t set up, so place them by hand.`);
       else await runAiSort(inspId, ids, quiet);
     } catch (e) {
       toast(`${errText(e)}${ids.length && !/saved/.test(errText(e)) ? ` (${ids.length} photos saved; place any unsorted ones by hand)` : ''}`, 'error');

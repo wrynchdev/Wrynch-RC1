@@ -4,6 +4,8 @@ import { buildMappedPoint, candidatesFor, explainAiError, resetAiState, validate
 import { mapVpic } from './vin';
 import { aiNote, aiSort, aiWording, appRoot, pilot, report, sendReport, status, tekmetricExport, tekmetricImport, tekmetricWebhook, templateMap, templateRead } from './routes';
 import { resetTekmetricToken, roIdFromWebhook, toImport } from './tekmetric';
+import { aiKey } from './routes';
+import { openSecret, sealSecret } from './secrets';
 import { resetRateLimits } from './lib';
 import { DEFAULT_TEMPLATE, clsByName, compKey } from '../src/domain/ontology';
 import { seedInspections, vehicle } from '../src/domain/seed';
@@ -124,6 +126,7 @@ beforeEach(() => {
   resetRateLimits();
   delete process.env.PILOT_NOTIFY_EMAIL; delete process.env.RESEND_API_KEY; delete process.env.EMAIL_FROM;
   delete process.env.TWILIO_ACCOUNT_SID;
+  delete process.env.SHOP_KEYS_SECRET;
   delete process.env.TEKMETRIC_CLIENT_ID; delete process.env.TEKMETRIC_CLIENT_SECRET; delete process.env.TEKMETRIC_ENV;
   resetTekmetricToken();
   calls = [];
@@ -152,7 +155,7 @@ test('without an AI key, ai-sort refuses instead of guessing, and status says AI
   const r = await aiSort(post('ai-sort', { inspectionId: 'i-4r-now', mediaIds: ['m1'] }));
   assert.equal(r.status, 503);
   assert.ok(!calls.some((c) => c.url.endsWith('/ai_record_sort')), 'nothing recorded');
-  assert.deepEqual(await (await status(new Request('https://app.test/api/status'))).json(), { ai: false, model: 'off', tekmetric: false });
+  assert.deepEqual(await (await status(new Request('https://app.test/api/status'))).json(), { ai: false, model: 'off', tekmetric: false, shopKeys: false });
   process.env.ANTHROPIC_API_KEY = 'k';
   assert.equal((await (await status(new Request('https://app.test/api/status'))).json()).ai, true);
 });
@@ -568,4 +571,80 @@ test('Tekmetric webhook bodies: the repair order id is found in common shapes', 
   assert.equal(roIdFromWebhook({}), null);
   const imp = toImport({ id: 1, repairOrderNumber: 'A1' }, null, { firstName: 'A', lastName: 'B', email: [{ email: 'a@b.c' }] }, null, {} as never);
   assert.deepEqual([imp.roNumber, imp.vin, imp.customerName, imp.customerEmail, imp.technician], ['A1', '', 'A B', 'a@b.c', '']);
+});
+
+// ---------------------------------------------------------------- shop AI keys
+const MASTER = Buffer.alloc(32, 7).toString('base64');
+
+test('shop keys are sealed with AES-GCM, bound to their shop, and need the server secret', async () => {
+  process.env.SHOP_KEYS_SECRET = MASTER;
+  const sealed = await sealSecret('sk-test-1234567890abcdefWXYZ', 'shop-1');
+  assert.match(sealed, /^v1\./);
+  assert.ok(!sealed.includes('sk-test'), 'no plaintext in the stored value');
+  assert.equal(await openSecret(sealed, 'shop-1'), 'sk-test-1234567890abcdefWXYZ');
+  await assert.rejects(openSecret(sealed, 'shop-2'), /couldn’t be unlocked/, 'a value moved to another shop does not open');
+  process.env.SHOP_KEYS_SECRET = Buffer.alloc(32, 8).toString('base64');
+  await assert.rejects(openSecret(sealed, 'shop-1'), /couldn’t be unlocked/);
+  delete process.env.SHOP_KEYS_SECRET;
+  await assert.rejects(sealSecret('x', 'shop-1'), /SHOP_KEYS_SECRET/);
+});
+
+test('saving a shop key: owner only, checked with the provider, stored sealed, never sent back', async () => {
+  process.env.SHOP_KEYS_SECRET = MASTER;
+  const KEY = 'sk-proj-abcdefghijklmnopqrstuvwxyz0123';
+  respond = (url) => {
+    if (url.endsWith('/assert_shop_owner')) return true;
+    if (url === 'https://api.openai.com/v1/models') return { data: [{ id: 'gpt-vision-x' }, { id: 'other' }] };
+    if (url.endsWith('/shop_ai_key_info')) return { configured: true, provider: 'openai', model: 'gpt-vision-x', last4: '0123' };
+    return null;
+  };
+  const r = await aiKey(post('ai-key', { shopId: 'shop-1', provider: 'openai', apiKey: ` ${KEY} `, model: 'gpt-vision-x' }));
+  const out = await r.json();
+  assert.equal(out.last4, '0123');
+  assert.ok(!JSON.stringify(out).includes(KEY));
+  assert.equal(calls.find((c) => c.url.endsWith('/assert_shop_owner'))!.auth, 'Bearer user-jwt');
+  assert.equal(calls.find((c) => c.url === 'https://api.openai.com/v1/models')!.auth, `Bearer ${KEY}`);
+  const stored = calls.find((c) => c.url.endsWith('/store_shop_ai_key'))!;
+  assert.equal(stored.auth, 'Bearer service');
+  const b = stored.body as { p_secret: string; p_last4: string; p_model: string };
+  assert.ok(b.p_secret.startsWith('v1.') && !b.p_secret.includes(KEY));
+  assert.deepEqual([b.p_last4, b.p_model], ['0123', 'gpt-vision-x']);
+  assert.equal(await openSecret(b.p_secret, 'shop-1'), KEY);
+
+  // A key the provider refuses, or a model the key can't use, is not saved.
+  calls = [];
+  respond = (url) => (url.endsWith('/assert_shop_owner') ? true : url.includes('api.openai.com') ? new Response('{}', { status: 401 }) : null);
+  assert.equal((await aiKey(post('ai-key', { shopId: 'shop-1', provider: 'openai', apiKey: KEY, model: 'gpt-vision-x' }))).status, 400);
+  respond = (url) => (url.endsWith('/assert_shop_owner') ? true : url.includes('api.openai.com') ? { data: [{ id: 'other' }] } : null);
+  assert.equal((await aiKey(post('ai-key', { shopId: 'shop-1', provider: 'openai', apiKey: KEY, model: 'gpt-vision-x' }))).status, 400);
+  assert.ok(!calls.some((c) => c.url.endsWith('/store_shop_ai_key')));
+  // Not an owner: refused before the key goes anywhere.
+  calls = [];
+  respond = (url) => (url.endsWith('/assert_shop_owner') ? new Response(JSON.stringify({ message: 'You don\'t have permission' }), { status: 403 }) : null);
+  assert.equal((await aiKey(post('ai-key', { shopId: 'shop-1', provider: 'openai', apiKey: KEY, model: 'x' }))).status, 403);
+  assert.ok(!calls.some((c) => c.url.includes('openai.com')));
+});
+
+test('a shop with its own OpenAI key: photos are sorted through OpenAI with that key, not Wrynch\'s', async () => {
+  process.env.SHOP_KEYS_SECRET = MASTER;
+  process.env.ANTHROPIC_API_KEY = 'wrynch-key';
+  const sealed = await sealSecret('sk-shop-openai-key-1234567890', 'shop-1');
+  const rotor = compKey(clsByName('brake_rotor').id, 'left_front');
+  respond = (url) => {
+    if (url.endsWith('/shop_ai_key_secret')) return { shopId: 'shop-1', provider: 'openai', model: 'gpt-vision-x', secret: sealed };
+    if (url.endsWith('/get_inspection')) return bundle((i) => { i.media = [{ id: 'm1', sectionId: 'under_car', url: 's/i/m1.jpg', label: 'a.jpg', excluded: false, customerVisible: true, analyzed: false, links: [] }]; });
+    if (url.includes('/storage/v1/object/inspection-media/')) return new Response(new Uint8Array([255, 216, 255]), { headers: { 'content-type': 'image/jpeg' } });
+    if (url === 'https://api.openai.com/v1/chat/completions') return { choices: [{ message: { tool_calls: [{ function: { arguments: JSON.stringify({ parts: [{ part: rotor, confidence: 0.9, condition: 'looks_ok', findings: [] }] }) } }] } }] };
+    return null;
+  };
+  const r = await aiSort(post('ai-sort', { inspectionId: 'i-4r-now', mediaIds: ['m1'] }));
+  assert.equal((await r.json()).parts, 1);
+  const ai = calls.find((c) => c.url === 'https://api.openai.com/v1/chat/completions')!;
+  assert.equal(ai.auth, 'Bearer sk-shop-openai-key-1234567890');
+  const body = ai.body as { model: string; tools: { function: { name: string } }[]; tool_choice: { function: { name: string } }; messages: { content: { type: string; image_url?: { url: string } }[] }[] };
+  assert.equal(body.model, 'gpt-vision-x');
+  assert.equal(body.tool_choice.function.name, body.tools[0].function.name);
+  assert.ok(body.messages.some((m) => Array.isArray(m.content) && m.content.some((p) => p.type === 'image_url' && p.image_url!.url.startsWith('data:image/jpeg;base64,'))));
+  assert.ok(!calls.some((c) => c.url.includes('api.anthropic.com')), 'Wrynch\'s key is not used');
+  assert.ok(calls.some((c) => c.url.endsWith('/ai_record_sort')));
 });

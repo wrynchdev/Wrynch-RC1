@@ -5,6 +5,8 @@ import { aiMode, analyzePhoto, candidatesFor, mapTemplatePoints, mapTemplatePoin
 import { draftNote, pointFacts, type NoteStyle } from '../src/domain/noteDraft';
 import { CORNER_LABEL, isCorner } from '../src/domain/corner';
 import { decodeVin } from './vin';
+import { DEFAULT_ANTHROPIC_MODEL, withShopAi, type AiProvider, type ShopAi } from './aiContext';
+import { lastFour, openSecret, sealSecret, secretsConfigured } from './secrets';
 import { findRepairOrder, loadRepairOrder, roIdFromWebhook, tekmetricConfigured, webhookEvent, type RoImport } from './tekmetric';
 import { buildTekmetricExport } from '../src/domain/tekmetricExport';
 import { bearer, downloadObject, env, HttpError, json, rateLimit, readJson, route, rpc, signUrls, type Handler } from './lib';
@@ -23,9 +25,70 @@ async function pool<T, R>(items: T[], n: number, fn: (t: T) => Promise<R>): Prom
   return out;
 }
 
+// ------------------------------------------------------------------ shop AI keys
+/** The shop's own AI account for an inspection, if the owner saved a key; otherwise null (Wrynch's account is used). */
+async function shopAiFor(inspectionId: unknown): Promise<ShopAi | null> {
+  if (typeof inspectionId !== 'string' || !inspectionId) return null;
+  let row: { shopId: string; provider: AiProvider; model: string | null; secret: string } | null = null;
+  try { row = await rpc('shop_ai_key_secret', { p_inspection: inspectionId }, 'service'); } catch (e) { console.error('shop ai key lookup', e instanceof Error ? e.message : e); }
+  if (!row?.secret) return null;
+  return { provider: row.provider, model: row.model, key: await openSecret(row.secret, row.shopId) };
+}
+/** Run an AI route with the inspection's shop key in scope. Membership is still checked by the route itself
+ * (it loads the inspection as the user) before any AI call is made. */
+const withInspectionAi = (h: Handler): Handler => async (req) => {
+  const body = (await req.clone().json().catch(() => ({}))) as { inspectionId?: unknown };
+  return withShopAi(await shopAiFor(body?.inspectionId), () => h(req));
+};
+
+const PROVIDERS: AiProvider[] = ['anthropic', 'openai'];
+const jwtSubject = (jwt: string): string | null => {
+  try { return JSON.parse(Buffer.from(jwt.split('.')[1], 'base64url').toString()).sub ?? null; } catch { return null; }
+};
+
+/** Check a key with the provider before saving it; returns the model to use. Never logs or returns the key. */
+export async function verifyProviderKey(provider: AiProvider, key: string, modelName: string): Promise<string> {
+  const url = provider === 'openai' ? 'https://api.openai.com/v1/models' : 'https://api.anthropic.com/v1/models?limit=1000';
+  const headers: Record<string, string> = provider === 'openai' ? { authorization: `Bearer ${key}` } : { 'x-api-key': key, 'anthropic-version': '2023-06-01' };
+  let r: Response;
+  try { r = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) }); } catch { throw new HttpError(502, 'Couldn’t reach the AI provider to check the key. Try again.'); }
+  const who = provider === 'openai' ? 'OpenAI' : 'Anthropic';
+  if (r.status === 401 || r.status === 403) throw new HttpError(400, `${who} didn’t accept that key. Copy it again from your ${who} account.`);
+  if (!r.ok) throw new HttpError(502, `${who} couldn’t check the key right now (${r.status}). Try again.`);
+  const ids = (((await r.json()) as { data?: { id?: string }[] }).data ?? []).map((m) => m.id ?? '');
+  const want = modelName.trim() || (provider === 'anthropic' ? env('ANTHROPIC_MODEL') ?? DEFAULT_ANTHROPIC_MODEL : '');
+  if (!want) throw new HttpError(400, 'Choose the model to use with this key (for example one that can read photos).');
+  if (ids.length && !ids.includes(want)) throw new HttpError(400, `This key can’t use the model “${want}”. Available models include: ${ids.slice(0, 6).join(', ')}.`);
+  return want;
+}
+
+// POST /api/ai-key { shopId, provider, apiKey, model } -> key info (provider, model, last four)
+// DELETE /api/ai-key { shopId }
+// Owners only. The key is checked with the provider, encrypted here, and stored; it's never sent back.
+export const aiKey: Handler = route({
+  POST: async (req) => {
+    const jwt = bearer(req);
+    rateLimit(req, 'ai-key', 10, 10 * 60_000);
+    const { shopId, provider, apiKey, model: modelName } = await readJson<{ shopId: string; provider: AiProvider; apiKey: string; model?: string }>(req);
+    if (!shopId || !PROVIDERS.includes(provider)) throw new HttpError(400, 'Choose Anthropic or OpenAI');
+    const key = String(apiKey ?? '').trim();
+    if (key.length < 20 || key.length > 400 || /\s/.test(key)) throw new HttpError(400, 'That doesn’t look like an API key');
+    await rpc('assert_shop_owner', { p_shop: shopId }, jwt);
+    const useModel = await verifyProviderKey(provider, key, String(modelName ?? ''));
+    await rpc('store_shop_ai_key', { p_shop: shopId, p_provider: provider, p_model: useModel, p_secret: await sealSecret(key, shopId), p_last4: lastFour(key), p_user: jwtSubject(jwt) }, 'service');
+    return json(await rpc('shop_ai_key_info', { p_shop: shopId }, jwt));
+  },
+  DELETE: async (req) => {
+    const jwt = bearer(req);
+    const { shopId } = await readJson<{ shopId: string }>(req);
+    await rpc('delete_shop_ai_key', { p_shop: shopId }, jwt);
+    return json({ configured: false });
+  },
+});
+
 // POST /api/ai-sort { inspectionId, mediaIds }
 export const aiSort: Handler = route({
-  POST: async (req) => {
+  POST: withInspectionAi(async (req) => {
     const jwt = bearer(req);
     const { inspectionId, mediaIds } = await readJson<{ inspectionId: string; mediaIds: string[] }>(req);
     if (!inspectionId || !Array.isArray(mediaIds) || mediaIds.length > 60) throw new HttpError(400, 'Send an inspection and up to 60 photos');
@@ -76,14 +139,14 @@ export const aiSort: Handler = route({
       photos: analyses.length, identified: analyses.filter((a) => a.parts.length).length,
       parts: analyses.reduce((n, a) => n + a.parts.length, 0), failed, reason, model: mode === 'claude' ? model() : 'stub',
     });
-  },
+  }),
 });
 
 // POST /api/ai-wording { inspectionId, pointId } -> { text, style }
 // Rewrites the technician note in the shop's note style, or drafts one from confirmed facts when the note is blank.
 // Stored as an ai_suggested note: it reaches the customer only after the technician approves it.
 export const aiWording: Handler = route({
-  POST: async (req) => {
+  POST: withInspectionAi(async (req) => {
     const jwt = bearer(req);
     const { inspectionId, pointId } = await readJson<{ inspectionId: string; pointId: string }>(req);
     const { inspection, vehicle, template } = await loadAsUser(jwt, inspectionId);
@@ -115,14 +178,14 @@ export const aiWording: Handler = route({
     }
     await rpc('ai_record_wording', { p_inspection: inspectionId, p_point: pointId, p_text: text }, 'service');
     return json({ text, style });
-  },
+  }),
 });
 
 // POST /api/ai-note { inspectionId, pointId } -> { text, source: 'ai' | 'rules', basis: { parts, photos } }
 // A draft technician note from the point's confirmed facts and confirmed photos. Nothing is stored: the draft
 // becomes the note only when the technician approves it (set_note), so it can never reach a customer unapproved.
 export const aiNote: Handler = route({
-  POST: async (req) => {
+  POST: withInspectionAi(async (req) => {
     const jwt = bearer(req);
     const { inspectionId, pointId } = await readJson<{ inspectionId: string; pointId: string }>(req);
     const { inspection, vehicle, template } = await loadAsUser(jwt, inspectionId);
@@ -143,7 +206,7 @@ export const aiNote: Handler = route({
       }
     }
     return json({ text: draftNote(facts), source: 'rules', basis });
-  },
+  }),
 });
 
 // GET /api/vin?vin=...
@@ -308,7 +371,7 @@ export const templateMap: Handler = route({
 
 // GET /api/status: whether AI photo sorting is available (no secrets, no sign-in).
 export const status: Handler = route({
-  GET: async () => json({ ai: aiMode() !== 'off', model: aiMode() === 'claude' ? model() : aiMode(), tekmetric: tekmetricConfigured() }),
+  GET: async () => json({ ai: aiMode() !== 'off', model: aiMode() === 'claude' ? model() : aiMode(), tekmetric: tekmetricConfigured(), shopKeys: secretsConfigured() }),
 });
 
 // ------------------------------------------------------------------ Tekmetric
@@ -385,5 +448,5 @@ export const tekmetricExport: Handler = route({
 
 export const ROUTES: Record<string, Handler> = {
   status, pilot, 'ai-note': aiNote, 'template-read': templateRead, 'template-map': templateMap, 'ai-sort': aiSort, 'ai-wording': aiWording, vin, report, 'send-report': sendReport,
-  'tekmetric-webhook': tekmetricWebhook, 'tekmetric-import': tekmetricImport, 'tekmetric-export': tekmetricExport,
+  'ai-key': aiKey, 'tekmetric-webhook': tekmetricWebhook, 'tekmetric-import': tekmetricImport, 'tekmetric-export': tekmetricExport,
 };
