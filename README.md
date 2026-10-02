@@ -29,6 +29,7 @@ the shop controls, and every part keeps its own history across visits.
 | `src/state/` | `store.ts` (every action; demo or live), `remote.ts` (Supabase auth, database functions, storage over fetch). |
 | `src/ui/` | Screens: `tech.tsx`, `advisor.tsx` (advisor, history, rules, customer report), `account.tsx` (sign-in, shop, team, new inspection, template editor), `components.tsx` (component checks), `dashboard.tsx`, `profile.tsx`, `tekmetric.tsx`, `aiKey.tsx`, `training.tsx`, `camera.tsx`. |
 | `server/` | `/api` routes, all served by one Vercel function (`routes.ts`): AI sorting, wording and notes, template reading, VIN decode, reports and sending, pilot applications, shop AI keys, Tekmetric, training data. |
+| `ios/` | The iPhone/iPad app for technicians (SwiftUI). Its rules come from `src/domain` via `ios/bridge/bridge.ts`; see `ios/README.md`. |
 | `training/` | Training script for the part-detection model, using the dataset exported from the labeling screen. |
 | `supabase/migrations/` | Schema, row-level security, and the database functions every write goes through. |
 | `supabase/tests/` | Database rule tests, a Supabase stand-in for local testing, and its shim. |
