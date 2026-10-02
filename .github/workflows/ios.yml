@@ -39,7 +39,12 @@ jobs:
           set -o pipefail
           xcodebuild test -project ios/Wrynch.xcodeproj -scheme Wrynch -destination "id=${{ steps.sim.outputs.udid }}" \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild.log | grep -E "error:|Test Case .*(passed|failed)|\*\* (BUILD|TEST)" || true
-          grep -q "\*\* TEST SUCCEEDED \*\*" xcodebuild.log
+          if ! grep -q "\*\* TEST SUCCEEDED \*\*" xcodebuild.log; then
+            # Show the first problems as annotations on the run (readable without downloading the log).
+            grep -E ": error:|error: -\[|Testing failed|failed \(" xcodebuild.log | sed -E 's#^.*/ios/##' | awk '!seen[$0]++' | head -10 | while IFS= read -r l; do echo "::error::$l"; done
+            grep -E ": error:" xcodebuild.log | sed -E 's#^.*/ios/##' | awk '!seen[$0]++' | sed -n '11,20p' | while IFS= read -r l; do echo "::warning::$l"; done
+            exit 1
+          fi
       - name: Keep the build log
         if: always()
         uses: actions/upload-artifact@v4

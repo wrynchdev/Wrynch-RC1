@@ -195,15 +195,18 @@ enum Labels {
         default: return "Not rated"
         }
     }
-    static let reasons: [(String, String)] = [
-        ("not_accessible", "Not accessible"), ("not_performed_this_visit", "Not done this visit"),
-        ("blocked_by_other_condition", "Blocked by another problem"), ("vehicle_not_road_tested", "Not road tested"),
-        ("customer_declined", "Customer declined"), ("unsafe_to_inspect", "Unsafe to inspect"),
+    struct Option: Hashable { let key: String; let label: String }
+    struct Corner: Hashable { let key: String; let short: String; let label: String }
+    static let reasons: [Option] = [
+        Option(key: "not_accessible", label: "Not accessible"), Option(key: "not_performed_this_visit", label: "Not done this visit"),
+        Option(key: "blocked_by_other_condition", label: "Blocked by another problem"), Option(key: "vehicle_not_road_tested", label: "Not road tested"),
+        Option(key: "customer_declined", label: "Customer declined"), Option(key: "unsafe_to_inspect", label: "Unsafe to inspect"),
     ]
-    static func reason(_ r: String) -> String { reasons.first { $0.0 == r }?.1 ?? r }
+    static func reason(_ r: String) -> String { reasons.first { $0.key == r }?.label ?? r }
     static let severities = ["minor", "moderate", "severe", "critical"]
-    static let corners: [(key: String, short: String, label: String)] = [
-        ("left_front", "LF", "Left front"), ("right_front", "RF", "Right front"), ("left_rear", "LR", "Left rear"), ("right_rear", "RR", "Right rear"),
+    static let corners: [Corner] = [
+        Corner(key: "left_front", short: "LF", label: "Left front"), Corner(key: "right_front", short: "RF", label: "Right front"),
+        Corner(key: "left_rear", short: "LR", label: "Left rear"), Corner(key: "right_rear", short: "RR", label: "Right rear"),
     ]
     static let jobStatus = ["not_started": "Ready to inspect", "in_progress": "In progress", "submitted": "With advisor", "sent": "Sent to customer"]
 }

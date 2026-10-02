@@ -247,8 +247,8 @@ private struct SkipSheet: View {
         NavigationStack {
             Form {
                 Section("Why couldn't you check it?") {
-                    ForEach(Labels.reasons, id: \.0) { r in
-                        Button { reason = r.0 } label: { HStack { Text(r.1); Spacer(); if reason == r.0 { Image(systemName: "checkmark") } } }
+                    ForEach(Labels.reasons, id: \.self) { r in
+                        Button { reason = r.key } label: { HStack { Text(r.label); Spacer(); if reason == r.key { Image(systemName: "checkmark") } } }
                     }
                 }
                 Section {

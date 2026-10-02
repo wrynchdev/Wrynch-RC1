@@ -134,7 +134,7 @@ struct CameraScreen: View {
                 Spacer()
                 if corners {
                     HStack(spacing: 8) {
-                        ForEach(Labels.corners, id: \.key) { c in
+                        ForEach(Labels.corners, id: \.self) { c in
                             let on = corner == c.key
                             Button { corner = on ? nil : c.key } label: {
                                 Text(c.short).font(.headline).frame(width: 56, height: 40)

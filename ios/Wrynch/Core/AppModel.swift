@@ -132,7 +132,7 @@ final class AppModel {
 
     // MARK: the shared rules, per screen
 
-    private func vm<T: Decodable>(_ name: String, _ id: String, _ extra: [JSONValue] = [], as: T.Type) -> T? {
+    private func vm<T: Decodable>(_ name: String, _ id: String, _ extra: [JSONValue] = [], as type: T.Type) -> T? {
         guard let b = inspections[id], let domain else { return nil }
         let key = "\(name)|\(id)|\(b.version)|\(extra.map { $0.string ?? "" }.joined(separator: ","))"
         if let hit = vmCache[key] as? T { return hit }
@@ -175,12 +175,14 @@ final class AppModel {
     func createInspection(_ f: NewInspection) async throws -> String {
         guard let shopId else { throw APIError(status: 400, message: "Pick a shop first") }
         let odo = Int(f.odometer.filter(\.isNumber))
+        let concerns: [JSONValue] = f.concerns.split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.map { JSONValue.string($0) }
         let id = try await self.api.rpc("create_inspection", [
             "p_shop": .string(shopId), "p_vin": .string(f.vin.uppercased()), "p_year": .opt(Int(f.year)), "p_make": .string(f.make),
             "p_model": .string(f.model), "p_trim": .string(f.trim), "p_engine": .string(f.engine), "p_config": f.config,
             "p_customer_name": .string(f.customerName), "p_customer_phone": .string(f.customerPhone), "p_customer_email": .string(f.customerEmail),
             "p_ro": .string(f.ro), "p_odometer": .opt(odo),
-            "p_concerns": .array(f.concerns.split(separator: "\n").map { .string($0.trimmingCharacters(in: .whitespaces)) }.filter { $0.string != "" }),
+            "p_concerns": .array(concerns),
         ])
         guard let newId = id.string else { throw APIError(status: 500, message: "The inspection wasn’t created") }
         await loadInspection(newId)
