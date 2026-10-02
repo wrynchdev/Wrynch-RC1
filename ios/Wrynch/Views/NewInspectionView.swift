@@ -126,17 +126,17 @@ struct SetupView: View {
                             Text("\(vm.na) don't apply to this configuration").font(.footnote).foregroundStyle(Theme.muted)
                         }
                     }
-                    Section {
-                        Button {
-                            model.startInspection(id)
-                            path.removeLast()
-                            path.append(.inspection(id))
-                        } label: { Text(b.status == "not_started" ? "Start inspection" : "Back to inspection") }
-                        .primaryButton()
-                        .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
-                    }
                 }
                 .scrollContentBackground(.hidden)
+                .safeAreaInset(edge: .bottom) {
+                    Button {
+                        model.startInspection(id)
+                        path.removeLast()
+                        path.append(.inspection(id))
+                    } label: { Text(b.status == "not_started" ? "Start inspection" : "Back to inspection") }
+                    .primaryButton()
+                    .padding(.horizontal, 16).padding(.bottom, 8)
+                }
                 .onAppear { if odometer.isEmpty, let o = b.inspection["odometer"]?.number, o > 0 { odometer = String(Int(o)) } }
             } else {
                 ProgressView()
