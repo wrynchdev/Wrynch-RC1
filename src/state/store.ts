@@ -40,7 +40,6 @@ export interface State {
   mode: 'demo' | 'live';
   vehicles: Vehicle[];
   inspections: Inspection[];
-  role: 'tech' | 'advisor' | 'customer';   // demo view switcher
   session: Session | null;
   workspace: Workspace | null;
   jobs: JobHeader[];
@@ -73,7 +72,7 @@ const uid = (p: string) => `${p}-${(seq++).toString(36)}`;
 
 function demoInitial(): State {
   return {
-    mode: 'demo', vehicles: structuredClone(VEHICLES), inspections: seedInspections(), role: 'tech', demoNoteStyle: 'customer', tekmetric: null, shopAi: null, training: null, checksOff: { platform: [], shop: [], admin: false },
+    mode: 'demo', vehicles: structuredClone(VEHICLES), inspections: seedInspections(), demoNoteStyle: 'customer', tekmetric: null, shopAi: null, training: null, checksOff: { platform: [], shop: [], admin: false },
     session: null, workspace: null, jobs: [], loading: 0, busy: null, toast: null, photoUrls: {}, ai: null, dashboard: null,
   };
 }
@@ -99,8 +98,8 @@ const listeners = new Set<() => void>();
 function save() {
   if (state.mode !== 'demo') return;
   try {
-    const { vehicles, inspections, role, demoNoteStyle, demoBaseline } = state;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ vehicles, inspections, role, demoNoteStyle, demoBaseline }));
+    const { vehicles, inspections, demoNoteStyle, demoBaseline } = state;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ vehicles, inspections, demoNoteStyle, demoBaseline }));
   } catch { /* ignore */ }
 }
 function set(patch: Partial<State>) { state = { ...state, ...patch }; save(); listeners.forEach((l) => l()); }
@@ -108,7 +107,6 @@ function set(patch: Partial<State>) { state = { ...state, ...patch }; save(); li
 export function useStore<T>(select: (s: State) => T): T {
   return useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l); }, () => select(state));
 }
-export const getState = () => state;
 export const isLive = () => state.mode === 'live';
 
 /** Photo address to show: demo photos are inline; live photos are signed, expiring storage links. */
@@ -558,7 +556,6 @@ export const actions = {
   },
 
   // ---- vehicle & inspection basics
-  setRole(role: State['role']) { set({ role }); },
   reset() { try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ } setTemplate(structuredClone(DEFAULT_TEMPLATE)); setThresholds([]); setDisabledChecks([], []); set(demoInitial()); },
   setConfig(inspId: string, vehicleId: string, patch: Partial<VehicleConfig>) {
     const v = state.vehicles.find((x) => x.id === vehicleId)!;

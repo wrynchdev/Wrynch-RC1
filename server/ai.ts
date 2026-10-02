@@ -1,4 +1,4 @@
-// Claude vision for photo sorting, and customer wording. Every AI answer is validated against the ontology
+// AI vision for photo sorting (Anthropic or OpenAI), and customer wording. Every AI answer is validated against the ontology
 // and the shop template before it is stored, and everything stored is a pending proposal (rules R4, R10).
 import { cls, compLabel, DEFAULT_TEMPLATE, findingLabel, ONTOLOGY, parseKey, pointComponents } from '../src/domain/ontology';
 import { suggestWording, wordingKeepsFacts, type PartReading, type PhotoAnalysis } from '../src/domain/aiStub';
@@ -100,7 +100,7 @@ const AI_IMAGE_MAX = 5 * 1024 * 1024;
 
 export const model = () => currentAi()?.model ?? env('ANTHROPIC_MODEL') ?? DEFAULT_ANTHROPIC_MODEL;
 /** Real AI when a key is set (the shop's own, or Wrynch's); the rule-based stand-in only when explicitly asked for (tests, local demos). */
-export const aiMode = (): 'claude' | 'stub' | 'off' => (currentAi() ? 'claude' : env('AI_STUB') === '1' ? 'stub' : 'off');
+export const aiMode = (): 'live' | 'stub' | 'off' => (currentAi() ? 'live' : env('AI_STUB') === '1' ? 'stub' : 'off');
 
 // Some models don't accept a forced tool choice. After the first refusal we ask with tool_choice "auto" and an
 // instruction to call the tool instead (per server instance).
@@ -132,7 +132,7 @@ async function send(acct: AiAccount, body: Record<string, unknown>): Promise<Res
   }
 }
 
-async function claude(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function askAi(body: Record<string, unknown>): Promise<Record<string, unknown>> {
   const acct = currentAi();
   if (!acct) throw new HttpError(503, 'AI is not configured');
   if (acct.provider === 'openai') return openaiMessages(acct, body);
@@ -218,7 +218,7 @@ export function resetAiState() { forcedToolUnsupported.clear(); }
 
 const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64');
 
-/** Ask Claude which parts one photo shows and the visible condition of each. */
+/** Ask the AI which parts one photo shows and the visible condition of each. */
 export async function analyzePhoto(image: { bytes: Uint8Array; type: string }, candidates: Candidate[], stageName: string, vehicleText = ''): Promise<unknown> {
   const type = image.type.split(';')[0].trim().toLowerCase();
   if (!AI_IMAGE_TYPES.includes(type)) throw new HttpError(415, `This photo is ${type || 'an unknown format'}; the AI reads JPEG or PNG. Retake it or export it as JPEG.`);
@@ -228,7 +228,7 @@ export async function analyzePhoto(image: { bytes: Uint8Array; type: string }, c
   for (const c of candidates) byPoint.set(c.point, [...(byPoint.get(c.point) ?? []), c]);
   const list = [...byPoint.entries()].map(([point, cs]) => `${point}:\n` + cs.map((c) =>
     `- ${c.key}: ${c.label} (findings: ${c.findings.map((k) => findingLabel(k).toLowerCase()).join(', ')})`).join('\n')).join('\n\n');
-  const res = await claude({
+  const res = await askAi({
     max_tokens: 4000,
     system: [
       'You help automotive technicians inspect vehicles from photos. You only suggest; a technician confirms everything.',
@@ -299,7 +299,7 @@ export async function analyzePhoto(image: { bytes: Uint8Array; type: string }, c
 export async function rewriteNote(note: PointNote, context: string, style: NoteStyle = 'customer'): Promise<string | null> {
   if (currentAi()) {
     try {
-      const res = await claude({
+      const res = await askAi({
         max_tokens: 400,
         system: (style === 'customer'
           ? 'You rewrite a mechanic\'s shorthand note for a vehicle owner who is not a mechanic. Plain, calm, everyday words; explain jargon briefly; short (1–3 sentences). '
@@ -335,7 +335,7 @@ export async function readTemplate(file: { bytes: Uint8Array; type: string }): P
   const block = type === 'application/pdf'
     ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64(file.bytes) } }
     : { type: 'image', source: { type: 'base64', media_type: type, data: b64(file.bytes) } };
-  const res = await claude({
+  const res = await askAi({
     max_tokens: 4000,
     system: 'You read vehicle multi-point inspection (MPI) sheets used by auto repair shops. Transcribe the inspection items exactly as the shop wrote them, grouped under the section headings on the sheet. '
       + 'Include only items a technician inspects or checks (skip customer details, signatures, legends, pricing and marketing text). If there are no section headings, use one section named "Inspection". '
@@ -419,7 +419,7 @@ export function buildMappedPoint(p: DraftPoint, raw: Record<string, unknown> | u
 
 /** Map a batch of a shop's inspection items to the parts behind them. */
 export async function mapTemplatePoints(points: DraftPoint[]): Promise<MappedPoint[]> {
-  const res = await claude({
+  const res = await askAi({
     max_tokens: 6000,
     system: 'You map a repair shop\'s inspection items to the parts a technician actually checks for each item. '
       + 'Prefer the standard inspection points (by id): pick every standard point the item covers. Add extra parts from the catalog only for parts the item clearly covers that its standard points do not. '
@@ -480,7 +480,7 @@ export function mapTemplatePointsStub(points: DraftPoint[]): MappedPoint[] {
 export async function writePointNote(facts: PointFacts, photos: { bytes: Uint8Array; type: string }[], style: NoteStyle = 'technical'): Promise<string | null> {
   const images = photos.filter((p) => AI_IMAGE_TYPES.includes(p.type.split(';')[0].trim().toLowerCase()) && p.bytes.length * 4 / 3 <= AI_IMAGE_MAX).slice(0, 3)
     .map((p) => ({ type: 'image', source: { type: 'base64', media_type: p.type.split(';')[0].trim().toLowerCase(), data: b64(p.bytes) } }));
-  const res = await claude({
+  const res = await askAi({
     max_tokens: 800,
     system: 'You write the note an automotive technician leaves on one inspection point. The customer and service advisor read it. '
       + (style === 'customer'
@@ -509,7 +509,7 @@ export async function writePointNote(facts: PointFacts, photos: { bytes: Uint8Ar
 export async function locateParts(image: { bytes: Uint8Array; type: string }, parts: { key: string; label: string }[]): Promise<{ key: string; x: number; y: number; w: number; h: number }[]> {
   const type = image.type.split(';')[0].trim().toLowerCase();
   if (!AI_IMAGE_TYPES.includes(type)) throw new HttpError(422, `This photo is ${type}; the AI reads JPEG or PNG.`);
-  const res = await claude({
+  const res = await askAi({
     max_tokens: 1200,
     system: 'You locate vehicle parts in a technician\'s inspection photo. For each listed part that is clearly visible, give one tight bounding box '
       + 'as fractions of the image: x and y of the top-left corner, w and h of the size, each between 0 and 1. Leave out parts you cannot see. '

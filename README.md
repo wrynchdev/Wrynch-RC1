@@ -27,8 +27,9 @@ the shop controls, and every part keeps its own history across visits.
 | `ontology/` | Component ontology workbook (v1.3) and the Python that builds it, `src/data/ontology.json` and the catalog migration. **The workbook is the source of truth.** |
 | `src/domain/` | Pure TypeScript: types, template expansion by vehicle, rating rules, AI stand-in, seed data, tests. |
 | `src/state/` | `store.ts` (every action; demo or live), `remote.ts` (Supabase auth, database functions, storage over fetch). |
-| `src/ui/` | Screens: `tech.tsx`, `advisor.tsx` (advisor, history, rules, customer report), `account.tsx` (sign-in, shop, team, new inspection, template editor). |
-| `server/` | `/api` functions (Vercel): `ai-sort`, `ai-wording`, `vin`, `report`, `send-report`. |
+| `src/ui/` | Screens: `tech.tsx`, `advisor.tsx` (advisor, history, rules, customer report), `account.tsx` (sign-in, shop, team, new inspection, template editor), `components.tsx` (component checks), `dashboard.tsx`, `profile.tsx`, `tekmetric.tsx`, `aiKey.tsx`, `training.tsx`, `camera.tsx`. |
+| `server/` | `/api` routes, all served by one Vercel function (`routes.ts`): AI sorting, wording and notes, template reading, VIN decode, reports and sending, pilot applications, shop AI keys, Tekmetric, training data. |
+| `training/` | Training script for the part-detection model, using the dataset exported from the labeling screen. |
 | `supabase/migrations/` | Schema, row-level security, and the database functions every write goes through. |
 | `supabase/tests/` | Database rule tests, a Supabase stand-in for local testing, and its shim. |
 | `tests/e2e/` | Browser test of the connected app from sign-up to customer approval. |
@@ -49,5 +50,5 @@ the finding must be allowed for that part class, and a reworded note is rejected
 
 ## Not built yet
 
-Shop-management-system integrations, payments, appointment scheduling, push notifications, offline capture,
+Shop-management-system integrations other than Tekmetric, payments, appointment scheduling, push notifications, offline capture,
 multi-location reporting, and editing an inspection's template after it has started (it keeps the version it began with).
