@@ -39,6 +39,9 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         NSCameraUsageDescription: Wrynch uses the camera to photograph the parts you inspect.
         ITSAppUsesNonExemptEncryption: false
+        # Plain http only to this device's own network (the local test server); wrynch.app itself is https.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         # Where the app's server lives (its /api routes, and the public database settings it hands out).
         WrynchAppURL: https://wrynch.app
     settings:
@@ -64,7 +67,28 @@ targets:
         # Tests run inside the app, so the bundled rules (wrynch-domain.js) are in Bundle.main.
         TEST_HOST: $(BUILT_PRODUCTS_DIR)/Wrynch.app/Wrynch
         BUNDLE_LOADER: $(TEST_HOST)
+  WrynchUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: WrynchUITests
+    dependencies:
+      - target: Wrynch
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.wrynch.ios.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Wrynch
 schemes:
+  # The whole technician flow against a local test server (see scripts/ios-ui-test.sh).
+  WrynchUI:
+    build:
+      targets:
+        Wrynch: all
+        WrynchUITests: [test]
+    test:
+      targets:
+        - WrynchUITests
   Wrynch:
     build:
       targets:

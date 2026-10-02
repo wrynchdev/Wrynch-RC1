@@ -2,9 +2,9 @@ name: iOS
 # Builds the iOS app and runs its tests on an iPhone simulator (GitHub's Mac machines; no Apple account needed).
 on:
   push:
-    paths: ['ios/**', 'src/domain/**', 'src/data/**', 'scripts/build-ios-domain.mjs', '.github/workflows/ios.yml']
+    paths: ['ios/**', 'src/domain/**', 'src/data/**', 'scripts/build-ios-domain.mjs', 'scripts/ios-ui-test.sh', 'tests/ios/**', '.github/workflows/ios.yml']
   pull_request:
-    paths: ['ios/**', 'src/domain/**', 'src/data/**', 'scripts/build-ios-domain.mjs', '.github/workflows/ios.yml']
+    paths: ['ios/**', 'src/domain/**', 'src/data/**', 'scripts/build-ios-domain.mjs', 'scripts/ios-ui-test.sh', 'tests/ios/**', '.github/workflows/ios.yml']
   workflow_dispatch:
 concurrency:
   group: ios-${{ github.ref }}
@@ -45,9 +45,16 @@ jobs:
             grep -E ": error:" xcodebuild.log | sed -E 's#^.*/ios/##' | awk '!seen[$0]++' | sed -n '11,20p' | while IFS= read -r l; do echo "::warning::$l"; done
             exit 1
           fi
+      - name: Technician flow against a local test server
+        run: |
+          brew install postgresql@16
+          export PATH="$(brew --prefix postgresql@16)/bin:$PATH"
+          bash scripts/ios-ui-test.sh "${{ steps.sim.outputs.udid }}"
       - name: Keep the build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: xcodebuild-log
-          path: xcodebuild.log
+          path: |
+            xcodebuild.log
+            xcodebuild-ui.log

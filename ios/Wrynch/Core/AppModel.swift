@@ -35,7 +35,9 @@ final class AppModel {
     @ObservationIgnored private var photosSignedAt = Date.distantPast
 
     init(api: API? = nil) {
-        let url = URL(string: Bundle.main.object(forInfoDictionaryKey: "WrynchAppURL") as? String ?? "https://wrynch.app")!
+        // WRYNCH_APP_URL points the app at a local test server (UI tests); otherwise it's wrynch.app.
+        let configured = ProcessInfo.processInfo.environment["WRYNCH_APP_URL"] ?? Bundle.main.object(forInfoDictionaryKey: "WrynchAppURL") as? String
+        let url = URL(string: configured ?? "https://wrynch.app") ?? URL(string: "https://wrynch.app")!
         self.api = api ?? API(appURL: url)
         do { domain = try Domain() } catch { message = (error.localizedDescription, true) }
         self.api.onSignedOut = { [weak self] in self?.resetSession() }
