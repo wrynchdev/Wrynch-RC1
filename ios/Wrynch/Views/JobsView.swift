@@ -64,6 +64,13 @@ struct JobsView: View {
 
 private struct JobRow: View {
     let job: JobHeader
+    private var details: String {
+        var parts: [String] = []
+        if let o = job.odometer { parts.append("\(o.formatted()) mi") }
+        if let c = job.vehicle.customer, !c.isEmpty { parts.append(c) }
+        if let t = job.technician, !t.isEmpty { parts.append(t) }
+        return parts.joined(separator: " · ")
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -74,8 +81,7 @@ private struct JobRow: View {
                     .background((job.status == "in_progress" ? Theme.na : Theme.blue).opacity(0.18), in: Capsule())
             }
             Text(job.vehicle.name).font(.title3.weight(.bold))
-            Text([job.odometer.map { "\($0.formatted()) mi" }, job.vehicle.customer, job.technician].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
-                .font(.footnote).foregroundStyle(Theme.muted)
+            Text(details).font(.footnote).foregroundStyle(Theme.muted)
             if let c = job.concerns, !c.isEmpty { Text("Concern: \(c.joined(separator: ", "))").font(.footnote) }
             if let s = job.summary, job.status != "not_started" {
                 HStack(spacing: 12) {

@@ -145,7 +145,11 @@ struct VehicleHeader: Decodable {
     let vin: String?
     let year: Int?
     let make: String?, model: String?, trim: String?, customer: String?
-    var name: String { [year.map(String.init) ?? "", make ?? "", model ?? "", trim ?? ""].filter { !$0.isEmpty }.joined(separator: " ") }
+    var name: String {
+        let y: String = year.map { String($0) } ?? ""
+        let parts: [String] = [y, make ?? "", model ?? "", trim ?? ""]
+        return parts.filter { !$0.isEmpty }.joined(separator: " ")
+    }
 }
 
 struct JobHeader: Decodable, Identifiable {

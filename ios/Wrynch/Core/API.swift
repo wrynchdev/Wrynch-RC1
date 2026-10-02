@@ -232,8 +232,10 @@ final class API {
         guard let h = r as? HTTPURLResponse else { return }
         guard !(200..<300).contains(h.statusCode) else { return }
         let body = try? JSONDecoder().decode(JSONValue.self, from: data)
-        let msg = body?["message"]?.string ?? body?["error_description"]?.string ?? body?["msg"]?.string ?? body?["error"]?.string
-            ?? "Request failed (\(h.statusCode))"
+        var msg = "Request failed (\(h.statusCode))"
+        for key in ["message", "error_description", "msg", "error"] {
+            if let text = body?[key]?.string, !text.isEmpty { msg = text; break }
+        }
         throw APIError.friendly(msg, status: h.statusCode)
     }
 }

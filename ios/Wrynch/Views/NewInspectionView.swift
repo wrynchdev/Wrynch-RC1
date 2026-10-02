@@ -93,8 +93,7 @@ struct SetupView: View {
                     Section {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(b.vehicle["vin"]?.string ?? "").font(.headline.monospaced())
-                            Text([b.vehicle["year"]?.number.map { String(Int($0)) }, b.vehicle["make"]?.string, b.vehicle["model"]?.string, b.vehicle["trim"]?.string]
-                                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")).font(.title3.weight(.bold))
+                            Text(vehicleName(b.vehicle)).font(.title3.weight(.bold))
                             if let e = b.vehicle["engine"]?.string, !e.isEmpty { Text(e).font(.footnote).foregroundStyle(Theme.muted) }
                         }
                         HStack {
@@ -146,5 +145,12 @@ struct SetupView: View {
         .background(Theme.paper)
         .navigationTitle("Set up vehicle")
         .task { if model.bundle(id) == nil { await model.loadInspection(id) } }
+    }
+
+    private func vehicleName(_ v: JSONValue) -> String {
+        var parts: [String] = []
+        if let y = v["year"]?.number { parts.append(String(Int(y))) }
+        for k in ["make", "model", "trim"] { if let s = v[k]?.string, !s.isEmpty { parts.append(s) } }
+        return parts.joined(separator: " ")
     }
 }
