@@ -3,7 +3,7 @@ import {
   cls, compLabel, CONDITIONS, currentTemplate, DEFAULT_TEMPLATE, ONTOLOGY, positionLabel,
 } from '../domain/ontology';
 import type { Template, TemplateComponent, VehicleConfig } from '../domain/types';
-import { VEHICLES } from '../domain/seed';
+import { BLANK_CONFIG } from '../domain/seed';
 import { actions, isLive, noteStyle, setPendingLink, toast, useStore, type Role } from '../state/store';
 import { TekmetricCard, TekmetricPull } from './tekmetric';
 import { AiKeyCard } from './aiKey';
@@ -192,9 +192,6 @@ export function Join({ token }: { token: string }) {
 }
 
 // ------------------------------------------------------------------ new inspection
-const BLANK_CONFIG: VehicleConfig = { ...VEHICLES[0].config, powertrain: 'gasoline', drivetrain: 'fwd', frontSuspension: 'strut', rearSprings: 'coil',
-  frontCvAxles: true, independentRearDrive: false, frontDiff: false, rearDiff: false, transferCase: false, solidAxle: false, twoPieceDriveshaft: false,
-  hydraulicSteering: false, fogLamps: false, rearWiper: false, timing: 'chain', chargePort: null };
 
 export function NewInspection() {
   const [vin, setVin] = useState('');

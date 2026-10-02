@@ -23,9 +23,11 @@
   },
   "include": [
     "src",
-    "server"
+    "server",
+    "ios/bridge"
   ],
   "exclude": [
-    "src/**/*.test.ts"
+    "src/**/*.test.ts",
+    "ios/bridge/*.test.ts"
   ]
 }

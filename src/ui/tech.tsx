@@ -10,6 +10,7 @@ import { actions, isLive, jobList, noteStyle, photoSrc, toast, useStore, type No
 import { autoNotePoints, NOTE_STYLES } from '../domain/noteDraft';
 import { CORNER_LABEL, CORNER_SHORT, CORNERS, type Corner } from '../domain/corner';
 import { CameraSheet } from './camera';
+import { visibleSections } from '../domain/progress';
 import { InspectionClock } from './profile';
 import { AiChip, fmtDate, fmtMi, Icon, Sheet, StateChip, Tile, TopBar } from './kit';
 import { enc, go, pointStatus, useInspection, useVehicleHistory } from './hooks';
@@ -24,10 +25,6 @@ export function Missing() {
   return <div className="phone"><TopBar title="Not found" back="#/jobs" /><div className="body"><p>That page doesn't exist, or you don't have access to it.</p></div></div>;
 }
 
-/** Stages with something to do on this vehicle (the EV stage disappears on a gas car). */
-export function visibleSections(vehicle: Vehicle) {
-  return sections().filter((s) => s.points.some((p) => p.components.length === 0 || pointComponents(p, vehicle.config).some((c) => c.applies)));
-}
 
 // ------------------------------------------------------------------ Jobs
 const STATUS_LABEL = { not_started: 'Ready to inspect', in_progress: 'In progress', submitted: 'With advisor', sent: 'Sent to customer' } as const;
