@@ -1,2 +1,8 @@
-ultralytics>=8.3
+torch>=2.2
+torchvision>=0.17
+transformers>=4.47
+timm
+torchmetrics>=1.4
+pycocotools
+pillow
 onnx

@@ -8,6 +8,8 @@ import { decodeVin } from './vin';
 import { DEFAULT_ANTHROPIC_MODEL, withShopAi, type AiProvider, type ShopAi } from './aiContext';
 import { lastFour, openSecret, sealSecret, secretsConfigured } from './secrets';
 import { findRepairOrder, loadRepairOrder, roIdFromWebhook, tekmetricConfigured, webhookEvent, type RoImport } from './tekmetric';
+import { detectorConfigured, detectParts } from './detector';
+import { cls } from '../src/domain/ontology';
 import { buildTekmetricExport } from '../src/domain/tekmetricExport';
 import { clampBox, labelParts, toYoloManifest, type TrainingBox } from '../src/domain/training';
 import { bearer, downloadObject, env, HttpError, json, rateLimit, readJson, route, rpc, signUrls, type Handler } from './lib';
@@ -372,7 +374,7 @@ export const templateMap: Handler = route({
 
 // GET /api/status: whether AI photo sorting is available (no secrets, no sign-in).
 export const status: Handler = route({
-  GET: async () => json({ ai: aiMode() !== 'off', model: aiMode() === 'live' ? model() : aiMode(), tekmetric: tekmetricConfigured(), shopKeys: secretsConfigured() }),
+  GET: async () => json({ ai: aiMode() !== 'off', model: aiMode() === 'live' ? model() : aiMode(), tekmetric: tekmetricConfigured(), detector: detectorConfigured(), shopKeys: secretsConfigured() }),
 });
 
 // ------------------------------------------------------------------ Tekmetric
@@ -473,13 +475,27 @@ export const trainingSuggest: Handler = route({
     const photo = await rpc<{ path: string; parts: string[] }>('training_photo', { p_media: mediaId }, jwt);
     const parts = labelParts(photo.parts ?? []);
     const mode = aiMode();
-    if (mode === 'off') return json({ boxes: [], note: 'AI isn’t set up, so draw the boxes by hand.' });
-    const found = mode === 'stub' ? locatePartsStub(parts) : await locateParts(await downloadObject(photo.path), parts);
+    // The part detector (Grounding DINO or similar) draws the first guess when it's set up; the chat AI otherwise,
+    // or if the detector fails.
+    let found: { key: string; x: number; y: number; w: number; h: number }[] | null = null;
+    let by: 'detector' | 'ai' = 'ai';
+    let image: { bytes: Uint8Array; type: string } | null = null;
+    if (detectorConfigured()) {
+      try {
+        image = await downloadObject(photo.path);
+        found = await detectParts(image, parts.map((p) => ({ key: p.key, label: cls(p.classId).label })));
+        by = 'detector';
+      } catch (e) { console.error('part detector failed; using the AI instead', e instanceof Error ? e.message : e); }
+    }
+    if (!found) {
+      if (mode === 'off') return json({ boxes: [], note: 'AI isn’t set up, so draw the boxes by hand.' });
+      found = mode === 'stub' ? locatePartsStub(parts) : await locateParts(image ?? await downloadObject(photo.path), parts);
+    }
     const boxes: TrainingBox[] = found.map((b) => {
       const p = parts.find((x) => x.key === b.key)!;
       return clampBox({ classId: p.classId, position: p.position, x: b.x, y: b.y, w: b.w, h: b.h, source: 'ai' as const });
     });
-    return json({ boxes });
+    return json({ boxes, by });
   },
 });
 

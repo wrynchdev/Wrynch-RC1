@@ -1,5 +1,5 @@
 // Training data: Wrynch staff draw boxes around the parts technicians confirmed on photos from shops that share
-// training data. The AI pre-draws a first guess; staff fix, approve or skip; approved boxes are exported for training.
+// training data. The part detector (or the AI) pre-draws a first guess; staff fix, approve or skip; approved boxes are exported for training.
 import { useCallback, useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
 import { clampBox, labelParts, TARGET_PER_CLASS, type TrainingBox } from '../domain/training';
 import { cls } from '../domain/ontology';
@@ -40,7 +40,7 @@ export function Training() {
     setBoxes([]); setSel(null); setArmed(0); setSize({ w: 0, h: 0 });
     if (!item) return;
     let live = true;
-    setBusy('AI is pre-drawing boxes…');
+    setBusy('Pre-drawing boxes…');
     actions.suggestBoxes(item.mediaId)
       .then((r) => { if (live) { setBoxes(r.boxes.map((b) => ({ ...b, id: seq++ }))); if (r.note) toast(r.note); } })
       .catch((e) => { if (live) toast(`${errText(e)} Draw the boxes by hand.`, 'error'); })
