@@ -339,4 +339,38 @@ select t.act('authenticated', '00000000-0000-0000-0000-00000000000c');
 select t.expect_error($$ select public.technician_stats((select v::uuid from t.ids where k = 'shop')) $$, '%permission%');
 reset role;
 
+-- Turning checks off: owners per shop, Wrynch staff for everyone; never the last check on a part; no new checks.
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
+select public.set_shop_check_enabled((select v::uuid from t.ids where k = 'shop'), 'tire.age', false);
+select t.eq(public.disabled_checks((select v::uuid from t.ids where k = 'shop')) -> 'shop', '["tire.age"]'::jsonb, 'owner turned a check off');
+select t.expect_error($$ select public.set_shop_check_enabled((select v::uuid from t.ids where k = 'shop'), 'tire.made_up_check', false) $$, '%Unknown check%');
+select t.expect_error($$ select public.set_check((select v::uuid from t.ids where k = 'tmi'), '4@left_front', 'tire.age', 3, null) $$, '%turned off%');
+select t.eq(public.set_check((select v::uuid from t.ids where k = 'tmi'), '4@left_front', 'tire.tread_depth', 7, null), 'ok', 'checks that are on still record');
+-- Leave only tire.structure on: it can't go off too.
+select public.set_shop_check_enabled((select v::uuid from t.ids where k = 'shop'), 'tire.tread_wear_pattern', false);
+select public.set_shop_check_enabled((select v::uuid from t.ids where k = 'shop'), 'tire.inflation_pressure', false);
+select public.set_shop_check_enabled((select v::uuid from t.ids where k = 'shop'), 'tire.tread_depth', false);
+select t.expect_error($$ select public.set_shop_check_enabled((select v::uuid from t.ids where k = 'shop'), 'tire.structure', false) $$, '%at least one check%');
+-- A result recorded before the check went off can still be corrected; quick OK uses a check that is on.
+select t.eq(public.set_check((select v::uuid from t.ids where k = 'tmi'), '4@left_front', 'tire.tread_depth', 8, null), 'ok', 'existing result can be corrected');
+select public.mark_ok((select v::uuid from t.ids where k = 'tmi'), '[{"key": "4@right_front", "check": "tire.age"}]');
+select t.eq((select check_key from public.check_result c join public.component_instance ci on ci.id = c.component_id
+             where c.inspection_id = (select v::uuid from t.ids where k = 'tmi') and ci.position = 'right_front' and ci.class_id = 4), 'tire.structure', 'quick OK lands on a check that is on');
+select public.set_shop_check_enabled((select v::uuid from t.ids where k = 'shop'), 'tire.tread_depth', true);
+select t.eq(jsonb_array_length(public.disabled_checks((select v::uuid from t.ids where k = 'shop')) -> 'shop'), 3, 'owner turned one back on');
+-- Only owners change shop checks; only staff change Wrynch-wide checks.
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
+select t.expect_error($$ select public.set_shop_check_enabled((select v::uuid from t.ids where k = 'shop'), 'tire.age', true) $$, '%permission%');
+select t.expect_error($$ select public.set_platform_check_enabled('wheel.lug_nuts', false) $$, '%Wrynch staff%');
+select t.eq(public.disabled_checks((select v::uuid from t.ids where k = 'shop')) ->> 'admin', 'false', 'technician reads the list, not staff');
+select t.expect_error($$ select * from public.shop_disabled_check $$, '%permission denied%');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000c');
+select t.expect_error($$ select public.disabled_checks((select v::uuid from t.ids where k = 'shop')) $$, '%permission%');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
+select public.set_platform_check_enabled('tire.age', false);
+select t.eq(public.disabled_checks(null) -> 'platform', '["tire.age"]'::jsonb, 'staff turned a check off for everyone');
+select t.expect_error($$ select public.set_platform_check_enabled((select key from public.condition_check where class_id = 1 limit 1), false) $$, '%at least one check%');
+select public.set_platform_check_enabled('tire.age', true);
+reset role;
+
 \echo ALL DATABASE TESTS PASSED

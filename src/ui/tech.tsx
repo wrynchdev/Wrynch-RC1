@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  cls, compLabel, findingLabel, ONTOLOGY, parseKey, point as getPoint, pointComponents, positionLabel, sections,
+  checkOff, cls, compLabel, findingLabel, ONTOLOGY, parseKey, point as getPoint, pointComponents, positionLabel, sections,
   sectionOfPoint, vehicleComponents,
 } from '../domain/ontology';
 import { completionGate, componentState, findingRating, isPendingAi, mediaPending, photosOf, summarize } from '../domain/rating';
@@ -769,7 +769,9 @@ export function ComponentView({ id, compKeyEnc, pointId }: { id: string; compKey
         )}
 
         <h2 className="h2">Checks</h2>
-        {c.checks.map((k) => <CheckCard key={k} insp={insp} compKey={key} checkKey={k} locked={locked} />)}
+        {/* Checks the shop turned off are hidden, unless this inspection already has a result for one. */}
+        {c.checks.filter((k) => !checkOff(k) || insp.results.some((r) => r.compKey === key && r.checkKey === k))
+          .map((k) => <CheckCard key={k} insp={insp} compKey={key} checkKey={k} locked={locked} />)}
 
         <div className="row between"><h2 className="h2">Findings</h2>{!locked && <button className="linkbtn" onClick={() => setAdding(true)}>+ Add finding</button>}</div>
         {counted.length === 0 && <div className="small muted">None recorded.</div>}

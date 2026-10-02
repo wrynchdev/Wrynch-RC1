@@ -5,7 +5,7 @@ import type {
   CompKey, Inspection, NotInspectedReason, Rating, Severity, Vehicle, VehicleConfig,
 } from './types';
 import { rateValue } from './rating';
-import { ONTOLOGY } from './ontology';
+import { enabledChecks, ONTOLOGY } from './ontology';
 
 const RUNNER_CONFIG: VehicleConfig = {
   powertrain: 'gasoline', drivetrain: '4wd', transmission: 'automatic', rearBrakes: 'disc', steering: 'rack',
@@ -66,10 +66,10 @@ function notChecked(insp: Inspection, name: string, pos: string | null, kind: 'n
   insp.statuses.push({ compKey: key(name, pos), notInspected: { kind, reason }, override: null });
 }
 
-/** The check a tech uses to say "looked at it, fine": the first visual/functional check. */
+/** The check a tech uses to say "looked at it, fine": the first visual/functional check that is on. */
 export function quickCheck(classId: number): string {
-  const c = cls(classId);
-  const pick = c.checks.find((k) => ONTOLOGY.checks[k].valueType !== 'numeric') ?? c.checks[0];
+  const on = enabledChecks(classId);
+  const pick = on.find((k) => ONTOLOGY.checks[k].valueType !== 'numeric') ?? on[0];
   return pick;
 }
 

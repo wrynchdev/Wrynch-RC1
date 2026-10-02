@@ -113,6 +113,24 @@ const B = `${ROOT}/app/`;
       await p.click('button:has-text("Undo")');
       if ((await order()).join('|') !== before.join('|')) errs.push('undo did not restore the order');
     });
+    await step('component-checks', async () => {
+      // The owner turns a tire check off for the shop (saved in the database), then back on. A part's last check can't go off.
+      const q = (sql) => require('child_process').spawnSync('psql', ['-Atc', sql, PGURL], { encoding: 'utf8' }).stdout.trim();
+      await p.goto(B + '#/settings/components'); await p.waitForSelector('#cc-q');
+      await p.fill('#cc-q', 'tire age');
+      const sw = p.getByRole('switch', { name: 'Tire age (DOT date code)' }).first();
+      await sw.waitFor();
+      if (!(await sw.isChecked())) errs.push('tire age should start on');
+      await sw.uncheck();
+      await p.waitForTimeout(800);
+      if (q("select count(*) from shop_disabled_check where check_key = 'tire.age'") !== '1') errs.push('turning a check off was not saved');
+      await shot('L04e-component-checks');
+      await sw.check();
+      await p.waitForTimeout(800);
+      if (q("select count(*) from shop_disabled_check where check_key = 'tire.age'") !== '0') errs.push('turning a check back on was not saved');
+      await p.fill('#cc-q', 'vin label'); await p.uncheck('text=Only parts with more than one check');
+      if (!(await p.getByRole('switch').first().isDisabled())) errs.push('a part\'s only check can be turned off');
+    });
     await step('invite', async () => {
       await p.goto(B + '#/settings/team'); await p.waitForSelector('text=Invite someone');
       await p.fill('#ie', 'tech@shop.test'); await p.click('button:has-text("Create invite link")');

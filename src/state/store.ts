@@ -6,7 +6,7 @@
 //    function that enforces the rules, then the inspection is reloaded from the server (the source of truth).
 import { useSyncExternalStore } from 'react';
 import {
-  DEFAULT_TEMPLATE, ONTOLOGY, parseKey, point as getPoint, pointComponents, setTemplate, setThresholds, type Threshold,
+  DEFAULT_TEMPLATE, ONTOLOGY, parseKey, point as getPoint, pointComponents, setDisabledChecks, setTemplate, setThresholds, type Threshold,
 } from '../domain/ontology';
 import { completionGate, rateValue, summarize, type Summary } from '../domain/rating';
 import { applyUnderCarExample, quickCheck, seedInspections, VEHICLES } from '../domain/seed';
@@ -52,6 +52,8 @@ export interface State {
   ai: { on: boolean; model: string; tekmetric?: boolean; shopKeys?: boolean } | null;
   /** The shop's own AI key, if the owner saved one (only the provider, model and last four characters). */
   shopAi: ShopAiInfo | null;
+  /** Checks turned off Wrynch-wide (by staff) and for this shop (by the owner); `admin` = the user is Wrynch staff. */
+  checksOff: ChecksOff;
   /** Whether this shop shares confirmed photos for training, and whether the user is Wrynch staff. */
   training: { shared: boolean; admin: boolean } | null;
   /** The shop's Tekmetric link and recent sync activity (live mode, loaded on demand). */
@@ -71,7 +73,7 @@ const uid = (p: string) => `${p}-${(seq++).toString(36)}`;
 
 function demoInitial(): State {
   return {
-    mode: 'demo', vehicles: structuredClone(VEHICLES), inspections: seedInspections(), role: 'tech', demoNoteStyle: 'customer', tekmetric: null, shopAi: null, training: null,
+    mode: 'demo', vehicles: structuredClone(VEHICLES), inspections: seedInspections(), role: 'tech', demoNoteStyle: 'customer', tekmetric: null, shopAi: null, training: null, checksOff: { platform: [], shop: [], admin: false },
     session: null, workspace: null, jobs: [], loading: 0, busy: null, toast: null, photoUrls: {}, ai: null, dashboard: null,
   };
 }
@@ -114,6 +116,7 @@ export const photoSrc = (url: string) => (state.mode === 'demo' ? url : state.ph
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 // An invite or pilot link survives the email-confirmation round trip (which lands back on the app's home).
+export interface ChecksOff { platform: string[]; shop: string[]; admin: boolean }
 export interface TechStats {
   userId: string; name: string; role: Role; inspections: number; last30: number; timed: number; avgSeconds: number | null; inProgress: number;
   recent: { id: string; ro: string; vehicle: string; startedAt: string | null; submittedAt: string; seconds: number | null }[];
@@ -376,6 +379,7 @@ export const actions = {
     if (!state.ai) void actions.checkAi();
     void actions.loadShopAi();
     void actions.loadTrainingInfo();
+    void actions.loadChecksOff();
   },
   async loadDashboard(days: number) {
     if (state.mode === 'demo') { set({ dashboard: { ...dashFromInspections(state.inspections, state.vehicles), days, baseline: state.demoBaseline ?? null } }); return; }
@@ -396,6 +400,26 @@ export const actions = {
   },
   /** Inspection counts and times per technician (technicians only ever get their own). */
   techStats: (userId?: string) => rpc<TechStats[]>('technician_stats', { p_shop: state.workspace!.shop!.id, p_user: userId ?? null }),
+  // ---- component checks (owners turn checks off for the shop; Wrynch staff for every shop)
+  async loadChecksOff() {
+    if (state.mode !== 'live' || !state.workspace?.shop) return;
+    try {
+      const c = await rpc<ChecksOff>('disabled_checks', { p_shop: state.workspace.shop.id });
+      setDisabledChecks(c.platform, c.shop); set({ checksOff: c });
+    } catch { /* keep what we have: every check stays available */ }
+  },
+  async setCheckEnabled(checkKey: string, on: boolean, scope: 'shop' | 'platform' = 'shop') {
+    const before = state.checksOff;
+    const list = new Set(before[scope]);
+    if (on) list.delete(checkKey); else list.add(checkKey);
+    const next = { ...before, [scope]: [...list].sort() };
+    setDisabledChecks(next.platform, next.shop); set({ checksOff: next }); // show it right away; undone below if saving fails
+    if (state.mode === 'demo') return;
+    try {
+      if (scope === 'platform') await rpc('set_platform_check_enabled', { p_check: checkKey, p_enabled: on });
+      else await rpc('set_shop_check_enabled', { p_shop: state.workspace!.shop!.id, p_check: checkKey, p_enabled: on });
+    } catch (e) { setDisabledChecks(before.platform, before.shop); set({ checksOff: before }); toast(errText(e), 'error'); }
+  },
   // ---- training data (owners share; Wrynch staff label)
   async loadTrainingInfo() {
     if (state.mode !== 'live' || !state.workspace?.shop) return;
@@ -535,7 +559,7 @@ export const actions = {
 
   // ---- vehicle & inspection basics
   setRole(role: State['role']) { set({ role }); },
-  reset() { try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ } setTemplate(structuredClone(DEFAULT_TEMPLATE)); setThresholds([]); set(demoInitial()); },
+  reset() { try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ } setTemplate(structuredClone(DEFAULT_TEMPLATE)); setThresholds([]); setDisabledChecks([], []); set(demoInitial()); },
   setConfig(inspId: string, vehicleId: string, patch: Partial<VehicleConfig>) {
     const v = state.vehicles.find((x) => x.id === vehicleId)!;
     const config = { ...v.config, ...patch };
