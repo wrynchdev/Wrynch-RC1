@@ -777,6 +777,14 @@ test('labeling pre-draw uses the part detector when it is set up, and the AI whe
   assert.equal((await (await status(new Request('https://app.test/api/status'))).json()).detector, true);
 });
 
+test('app-config gives the iOS app the public database settings, and nothing secret', async () => {
+  const out = await (await apiRouter(new Request('https://app.test/api/app-config'))).json();
+  assert.deepEqual(out, { supabaseUrl: 'https://db.test', supabaseAnonKey: 'anon', appDomain: 'wrynch.app' });
+  assert.ok(!JSON.stringify(out).includes('service'), 'never the service key');
+  delete process.env.SUPABASE_ANON_KEY;
+  assert.equal((await apiRouter(new Request('https://app.test/api/app-config'))).status, 503);
+});
+
 // ---------------------------------------------------------------- one function for all routes
 test('every route is served through the single router, with its query and body intact', async () => {
   const listed = JSON.parse(/const ROUTE_NAMES = (\[[^\]]*\])/.exec(readFileSync('scripts/build.mjs', 'utf8'))![1].replace(/'/g, '"'));

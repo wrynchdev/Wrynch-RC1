@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react';
 import { actions, useStore } from '../state/store';
-import { pointComponents, point as getPoint } from '../domain/ontology';
-import { componentState, isPendingAi, pointState } from '../domain/rating';
 import type { Inspection, Vehicle } from '../domain/types';
 
 export function useHash(): string[] {
@@ -39,21 +37,4 @@ export function useVehicleHistory(vehicleId: string) {
   }, [vehicleId, mode]);
 }
 
-/** Status of one template point on this inspection. */
-export function pointStatus(insp: Inspection, vehicle: Vehicle, pointId: string) {
-  const comps = pointComponents(getPoint(pointId), vehicle.config).filter((c) => c.applies);
-  const keys = comps.map((c) => c.key);
-  const states = keys.map((k) => componentState(insp, k));
-  const requiredUnrated = comps.filter((c) => c.required && componentState(insp, c.key) === 'unrated').length;
-  const anyRated = states.some((s) => s !== 'unrated');
-  const pendingFindings = insp.findings.filter((f) => isPendingAi(f) && keys.includes(f.compKey)).length;
-  // A photo belongs to every point whose parts it shows.
-  const shown = insp.media.filter((m) => !m.excluded && m.links.some((l) => keys.includes(l.compKey)));
-  const pendingPhotos = shown.filter((m) => m.links.some((l) => l.status === 'ai_proposed' && keys.includes(l.compKey))).length;
-  const photos = shown.length;
-  const pendingOk = insp.observations.filter((o) => o.status === 'pending' && keys.includes(o.compKey)
-    && componentState(insp, o.compKey) === 'unrated').length;
-  // A point with no parts (e.g. "Noise, vibration or pulling") is a symptom check and never blocks.
-  const done = comps.length === 0 || (requiredUnrated === 0 && (comps.some((c) => c.required) || anyRated));
-  return { keys, state: pointState(insp, keys), done, pendingFindings, pendingPhotos, pendingOk, photos, count: keys.length };
-}
+export { pointStatus } from '../domain/progress';

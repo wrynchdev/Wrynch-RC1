@@ -1,0 +1,789 @@
+{
+ "inspection": {
+  "technician": "Marcus T.",
+  "status": "in_progress",
+  "concerns": [
+   "Check engine light on"
+  ],
+  "dtcs": [
+   {
+    "code": "P0128",
+    "description": "Coolant temperature below thermostat regulating temperature",
+    "compKey": "281@"
+   },
+   {
+    "code": "P0420",
+    "description": "Catalyst system efficiency below threshold (bank 1)",
+    "compKey": "132@"
+   }
+  ],
+  "results": [
+   {
+    "compKey": "280@",
+    "checkKey": "warning_indicator.status",
+    "value": null,
+    "rating": "monitor",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "10@center",
+    "checkKey": "cabin_air_vent.ac_performance",
+    "value": null,
+    "rating": "monitor",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "238@",
+    "checkKey": "engine_oil.level",
+    "value": null,
+    "rating": "monitor",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "240@",
+    "checkKey": "brake_fluid.copper",
+    "value": 210,
+    "rating": "immediate",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "48@",
+    "checkKey": "low_voltage_battery.measured_cca",
+    "value": 75,
+    "rating": "monitor",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "0@",
+    "checkKey": "vehicle_exterior.visual",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "1@",
+    "checkKey": "vin_label.visual",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "3@",
+    "checkKey": "tire_placard.visual",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "262@",
+    "checkKey": "starter_motor.crank",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "6@",
+    "checkKey": "instrument_cluster.gauges",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "7@left_front",
+    "checkKey": "wiper_blade.wipe",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "7@right_front",
+    "checkKey": "wiper_blade.wipe",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "7@rear",
+    "checkKey": "wiper_blade.wipe",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "250@front",
+    "checkKey": "wiper_motor.operation",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "266@",
+    "checkKey": "cabin_blower_motor.operation",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "11@",
+    "checkKey": "horn.operation",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "12@left",
+    "checkKey": "headlamp.operation",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "12@right",
+    "checkKey": "headlamp.operation",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "13@left",
+    "checkKey": "tail_lamp.operation",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "13@right",
+    "checkKey": "tail_lamp.operation",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "14@left_front",
+    "checkKey": "turn_signal_lamp.operation",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "14@right_front",
+    "checkKey": "turn_signal_lamp.operation",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "14@left_rear",
+    "checkKey": "turn_signal_lamp.operation",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "14@right_rear",
+    "checkKey": "turn_signal_lamp.operation",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "17@",
+    "checkKey": "high_mount_brake_lamp.operation",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "16@left",
+    "checkKey": "reverse_lamp.operation",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "16@right",
+    "checkKey": "reverse_lamp.operation",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "18@",
+    "checkKey": "license_plate_lamp.operation",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "19@left_front",
+    "checkKey": "side_marker_lamp.operation",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "19@right_front",
+    "checkKey": "side_marker_lamp.operation",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "19@left_rear",
+    "checkKey": "side_marker_lamp.operation",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "19@right_rear",
+    "checkKey": "side_marker_lamp.operation",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "15@left",
+    "checkKey": "fog_lamp.operation",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "15@right",
+    "checkKey": "fog_lamp.operation",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "20@",
+    "checkKey": "hood_latch.secondary",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "22@",
+    "checkKey": "hood_release_cable.visual",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "21@",
+    "checkKey": "hood_striker.visual",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "25@",
+    "checkKey": "coolant_reservoir.visual",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "241@",
+    "checkKey": "automatic_transmission_fluid.level_condition",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "243@",
+    "checkKey": "power_steering_fluid.level_condition",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "38@",
+    "checkKey": "brake_fluid_reservoir.visual",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "42@",
+    "checkKey": "accessory_drive_belt.wear",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "43@",
+    "checkKey": "belt_tensioner.noise_play",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "44@",
+    "checkKey": "idler_pulley.noise_play",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "28@",
+    "checkKey": "coolant_hose.visual",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "40@",
+    "checkKey": "vacuum_hose.visual",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "49@",
+    "checkKey": "battery_terminal.condition",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "50@",
+    "checkKey": "battery_cable.visual",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "51@",
+    "checkKey": "battery_hold_down.security",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "57@",
+    "checkKey": "spark_plug.visual",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "58@",
+    "checkKey": "ignition_coil.visual",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "65@",
+    "checkKey": "fuel_line.leak",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   },
+   {
+    "compKey": "68@",
+    "checkKey": "fuel_injector.visual",
+    "value": null,
+    "rating": "ok",
+    "at": "2026-09-26"
+   }
+  ],
+  "findings": [
+   {
+    "id": "f-3",
+    "compKey": "280@",
+    "key": "warning_indicator_on",
+    "severity": "minor",
+    "source": "technician",
+    "status": "confirmed",
+    "confidence": null,
+    "rationale": null,
+    "mediaId": null,
+    "reviewedAt": "2026-09-26",
+    "aiOriginal": null
+   },
+   {
+    "id": "f-4",
+    "compKey": "263@",
+    "key": "inoperative",
+    "severity": "moderate",
+    "source": "technician",
+    "status": "confirmed",
+    "confidence": null,
+    "rationale": null,
+    "mediaId": null,
+    "reviewedAt": "2026-09-26",
+    "aiOriginal": null
+   },
+   {
+    "id": "f-5",
+    "compKey": "263@",
+    "key": "heat_damage",
+    "severity": "moderate",
+    "source": "technician",
+    "status": "confirmed",
+    "confidence": null,
+    "rationale": null,
+    "mediaId": null,
+    "reviewedAt": "2026-09-26",
+    "aiOriginal": null
+   },
+   {
+    "id": "f-6",
+    "compKey": "238@",
+    "key": "overfilled",
+    "severity": "minor",
+    "source": "technician",
+    "status": "confirmed",
+    "confidence": null,
+    "rationale": null,
+    "mediaId": null,
+    "reviewedAt": "2026-09-26",
+    "aiOriginal": null
+   },
+   {
+    "id": "f-7",
+    "compKey": "239@",
+    "key": "degraded_fluid",
+    "severity": "minor",
+    "source": "technician",
+    "status": "confirmed",
+    "confidence": null,
+    "rationale": null,
+    "mediaId": null,
+    "reviewedAt": "2026-09-26",
+    "aiOriginal": null
+   },
+   {
+    "id": "f-8",
+    "compKey": "281@",
+    "key": "failed_test",
+    "severity": "minor",
+    "source": "technician",
+    "status": "confirmed",
+    "confidence": null,
+    "rationale": null,
+    "mediaId": null,
+    "reviewedAt": "2026-09-26",
+    "aiOriginal": null
+   },
+   {
+    "id": "f-9",
+    "compKey": "46@",
+    "key": "broken",
+    "severity": "moderate",
+    "source": "technician",
+    "status": "confirmed",
+    "confidence": null,
+    "rationale": null,
+    "mediaId": null,
+    "reviewedAt": "2026-09-26",
+    "aiOriginal": null
+   },
+   {
+    "id": "ai-m-4-4@right_front-dry_rot",
+    "compKey": "4@right_front",
+    "key": "dry_rot",
+    "severity": "moderate",
+    "source": "ai",
+    "status": "pending",
+    "confidence": 0.75,
+    "rationale": "Suggested from photo \"under-car-4.jpg\". Stand-in model: confirm against the part itself.",
+    "mediaId": "m-4",
+    "reviewedAt": null,
+    "aiOriginal": {
+     "key": "dry_rot",
+     "severity": "moderate"
+    }
+   }
+  ],
+  "media": [
+   {
+    "id": "m-1",
+    "sectionId": "under_car",
+    "url": "shop/i-4r-now/m-1.jpg",
+    "label": "under-car-1.jpg",
+    "excluded": false,
+    "customerVisible": true,
+    "analyzed": true,
+    "links": [
+     {
+      "compKey": "72@left_rear",
+      "status": "ai_proposed",
+      "confidence": 0.99
+     },
+     {
+      "compKey": "73@left_rear",
+      "status": "ai_proposed",
+      "confidence": 0.94
+     }
+    ],
+    "pointId": null,
+    "corner": null
+   },
+   {
+    "id": "m-2",
+    "sectionId": "under_car",
+    "url": "shop/i-4r-now/m-2.jpg",
+    "label": "under-car-2.jpg",
+    "excluded": false,
+    "customerVisible": true,
+    "analyzed": true,
+    "links": [],
+    "pointId": null,
+    "corner": null
+   },
+   {
+    "id": "m-3",
+    "sectionId": "under_car",
+    "url": "shop/i-4r-now/m-3.jpg",
+    "label": "under-car-3.jpg",
+    "excluded": false,
+    "customerVisible": true,
+    "analyzed": true,
+    "links": [
+     {
+      "compKey": "83@right_front",
+      "status": "ai_proposed",
+      "confidence": 0.85
+     }
+    ],
+    "pointId": null,
+    "corner": null
+   },
+   {
+    "id": "m-4",
+    "sectionId": "under_car",
+    "url": "shop/i-4r-now/m-4.jpg",
+    "label": "under-car-4.jpg",
+    "excluded": false,
+    "customerVisible": true,
+    "analyzed": true,
+    "links": [
+     {
+      "compKey": "108@right_front",
+      "status": "ai_proposed",
+      "confidence": 0.63
+     },
+     {
+      "compKey": "4@right_front",
+      "status": "ai_proposed",
+      "confidence": 0.58
+     }
+    ],
+    "pointId": null,
+    "corner": null
+   },
+   {
+    "id": "m-5",
+    "sectionId": "under_car",
+    "url": "shop/i-4r-now/m-5.jpg",
+    "label": "under-car-5.jpg",
+    "excluded": false,
+    "customerVisible": true,
+    "analyzed": true,
+    "links": [
+     {
+      "compKey": "89@right_rear",
+      "status": "ai_proposed",
+      "confidence": 0.6
+     }
+    ],
+    "pointId": null,
+    "corner": null
+   },
+   {
+    "id": "m-6",
+    "sectionId": "under_car",
+    "url": "shop/i-4r-now/m-6.jpg",
+    "label": "under-car-6.jpg",
+    "excluded": false,
+    "customerVisible": true,
+    "analyzed": true,
+    "links": [
+     {
+      "compKey": "244@front",
+      "status": "ai_proposed",
+      "confidence": 0.79
+     },
+     {
+      "compKey": "110@front",
+      "status": "ai_proposed",
+      "confidence": 0.74
+     },
+     {
+      "compKey": "123@front",
+      "status": "ai_proposed",
+      "confidence": 0.69
+     }
+    ],
+    "pointId": null,
+    "corner": null
+   }
+  ],
+  "observations": [
+   {
+    "id": "obs-m-1-72@left_rear",
+    "mediaId": "m-1",
+    "compKey": "72@left_rear",
+    "verdict": "looks_ok",
+    "note": "No visible damage, leaks or wear in the photo (stand-in model).",
+    "confidence": 0.99,
+    "status": "pending"
+   },
+   {
+    "id": "obs-m-1-73@left_rear",
+    "mediaId": "m-1",
+    "compKey": "73@left_rear",
+    "verdict": "looks_ok",
+    "note": "No visible damage, leaks or wear in the photo (stand-in model).",
+    "confidence": 0.94,
+    "status": "pending"
+   },
+   {
+    "id": "obs-m-3-83@right_front",
+    "mediaId": "m-3",
+    "compKey": "83@right_front",
+    "verdict": "looks_ok",
+    "note": "No visible damage, leaks or wear in the photo (stand-in model).",
+    "confidence": 0.85,
+    "status": "pending"
+   },
+   {
+    "id": "obs-m-4-108@right_front",
+    "mediaId": "m-4",
+    "compKey": "108@right_front",
+    "verdict": "looks_ok",
+    "note": "No visible damage, leaks or wear in the photo (stand-in model).",
+    "confidence": 0.63,
+    "status": "pending"
+   },
+   {
+    "id": "obs-m-5-89@right_rear",
+    "mediaId": "m-5",
+    "compKey": "89@right_rear",
+    "verdict": "looks_ok",
+    "note": "No visible damage, leaks or wear in the photo (stand-in model).",
+    "confidence": 0.6,
+    "status": "pending"
+   },
+   {
+    "id": "obs-m-6-244@front",
+    "mediaId": "m-6",
+    "compKey": "244@front",
+    "verdict": "looks_ok",
+    "note": "No visible damage, leaks or wear in the photo (stand-in model).",
+    "confidence": 0.79,
+    "status": "pending"
+   },
+   {
+    "id": "obs-m-6-110@front",
+    "mediaId": "m-6",
+    "compKey": "110@front",
+    "verdict": "looks_ok",
+    "note": "No visible damage, leaks or wear in the photo (stand-in model).",
+    "confidence": 0.74,
+    "status": "pending"
+   },
+   {
+    "id": "obs-m-6-123@front",
+    "mediaId": "m-6",
+    "compKey": "123@front",
+    "verdict": "looks_ok",
+    "note": "No visible damage, leaks or wear in the photo (stand-in model).",
+    "confidence": 0.69,
+    "status": "pending"
+   }
+  ],
+  "statuses": [
+   {
+    "compKey": "259@",
+    "notInspected": {
+     "kind": "not_inspected",
+     "reason": "vehicle_not_road_tested"
+    },
+    "override": null
+   },
+   {
+    "compKey": "45@",
+    "notInspected": {
+     "kind": "unable_to_assess",
+     "reason": "blocked_by_other_condition"
+    },
+    "override": null
+   },
+   {
+    "compKey": "53@",
+    "notInspected": {
+     "kind": "not_inspected",
+     "reason": "not_accessible"
+    },
+    "override": null
+   },
+   {
+    "compKey": "60@",
+    "notInspected": {
+     "kind": "not_inspected",
+     "reason": "not_performed_this_visit"
+    },
+    "override": null
+   }
+  ],
+  "notes": [
+   {
+    "pointId": "S14",
+    "techText": "recommend flush. copper 210 ppm",
+    "aiText": null,
+    "status": "technician_original",
+    "customerText": "Brake fluid tested at 210 ppm copper. Replace at 200 ppm or more."
+   }
+  ],
+  "extraComponents": [
+   "280@",
+   "281@"
+  ],
+  "customerApprovals": [],
+  "estimate": [],
+  "id": "i-4r-now",
+  "ro": "48213",
+  "vehicleId": "v-4runner",
+  "odometer": 164210,
+  "date": "2026-09-26"
+ },
+ "vehicle": {
+  "id": "v-4runner",
+  "vin": "JTEBU5JR4B5012345",
+  "year": 2011,
+  "make": "Toyota",
+  "model": "4Runner",
+  "trim": "SR5",
+  "engine": "4.0L V6 · 5-speed automatic · part-time 4WD",
+  "customer": "Dana Reyes",
+  "config": {
+   "powertrain": "gasoline",
+   "drivetrain": "4wd",
+   "transmission": "automatic",
+   "rearBrakes": "disc",
+   "steering": "rack",
+   "hydraulicSteering": true,
+   "frontSuspension": "strut",
+   "rearSuspension": "shock",
+   "rearSprings": "coil",
+   "frontCvAxles": true,
+   "independentRearDrive": false,
+   "frontDiff": true,
+   "rearDiff": true,
+   "transferCase": true,
+   "twoPieceDriveshaft": false,
+   "solidAxle": true,
+   "timing": "chain",
+   "fogLamps": true,
+   "rearWiper": true,
+   "cabinFilter": true,
+   "fuelFilter": false,
+   "chargePort": null
+  }
+ }
+}

@@ -372,6 +372,16 @@ export const templateMap: Handler = route({
   },
 });
 
+// GET /api/app-config: the public settings the iOS app needs to reach the database (the same ones the web app has
+// built in), so no keys are compiled into the app.
+export const appConfig: Handler = route({
+  GET: async () => {
+    const supabaseUrl = env('SUPABASE_URL') ?? '', supabaseAnonKey = env('SUPABASE_ANON_KEY') ?? '';
+    if (!supabaseUrl || !supabaseAnonKey) throw new HttpError(503, 'The server isn’t connected to its database yet.');
+    return json({ supabaseUrl: supabaseUrl.replace(/\/+$/, ''), supabaseAnonKey, appDomain: env('APP_DOMAIN') ?? 'wrynch.app' });
+  },
+});
+
 // GET /api/status: whether AI photo sorting is available (no secrets, no sign-in).
 export const status: Handler = route({
   GET: async () => json({ ai: aiMode() !== 'off', model: aiMode() === 'live' ? model() : aiMode(), tekmetric: tekmetricConfigured(), detector: detectorConfigured(), shopKeys: secretsConfigured() }),
@@ -515,7 +525,7 @@ export const trainingExport: Handler = route({
 });
 
 export const ROUTES: Record<string, Handler> = {
-  status, pilot, 'ai-note': aiNote, 'template-read': templateRead, 'template-map': templateMap, 'ai-sort': aiSort, 'ai-wording': aiWording, vin, report, 'send-report': sendReport,
+  'app-config': appConfig, status, pilot, 'ai-note': aiNote, 'template-read': templateRead, 'template-map': templateMap, 'ai-sort': aiSort, 'ai-wording': aiWording, vin, report, 'send-report': sendReport,
   'ai-key': aiKey, training, 'training-suggest': trainingSuggest, 'training-export': trainingExport, 'tekmetric-webhook': tekmetricWebhook, 'tekmetric-import': tekmetricImport, 'tekmetric-export': tekmetricExport,
 };
 

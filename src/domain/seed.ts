@@ -176,3 +176,8 @@ export function vehicle(idv: string): Vehicle {
 }
 
 export { allPoints, vehicleComponents };
+
+/** A new vehicle's setup before the VIN is decoded: a common front-wheel-drive gas car. The tech confirms it. */
+export const BLANK_CONFIG: VehicleConfig = { ...VEHICLES[0].config, powertrain: 'gasoline', drivetrain: 'fwd', frontSuspension: 'strut', rearSprings: 'coil',
+  frontCvAxles: true, independentRearDrive: false, frontDiff: false, rearDiff: false, transferCase: false, solidAxle: false, twoPieceDriveshaft: false,
+  hydraulicSteering: false, fogLamps: false, rearWiper: false, timing: 'chain', chargePort: null };

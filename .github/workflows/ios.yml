@@ -1,0 +1,48 @@
+name: iOS
+# Builds the iOS app and runs its tests on an iPhone simulator (GitHub's Mac machines; no Apple account needed).
+on:
+  push:
+    paths: ['ios/**', 'src/domain/**', 'src/data/**', 'scripts/build-ios-domain.mjs', '.github/workflows/ios.yml']
+  pull_request:
+    paths: ['ios/**', 'src/domain/**', 'src/data/**', 'scripts/build-ios-domain.mjs', '.github/workflows/ios.yml']
+  workflow_dispatch:
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Bundle the shared inspection rules for the app
+        run: npm run ios:domain
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          cd ios && xcodegen generate
+      - name: Pick an iPhone simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)['devices']
+          phones = [x for k, v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone')]
+          print(phones[-1]['udid'])")
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+      - name: Build and test
+        run: |
+          set -o pipefail
+          xcodebuild test -project ios/Wrynch.xcodeproj -scheme Wrynch -destination "id=${{ steps.sim.outputs.udid }}" \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild.log | grep -E "error:|Test Case .*(passed|failed)|\*\* (BUILD|TEST)" || true
+          grep -q "\*\* TEST SUCCEEDED \*\*" xcodebuild.log
+      - name: Keep the build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
