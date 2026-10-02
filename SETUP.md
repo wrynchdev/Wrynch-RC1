@@ -159,3 +159,19 @@ need to enter their key again. A shop without its own key uses Wrynch's (`OPENAI
 3. Shop owners opt in under **Settings → Help improve Wrynch’s AI** (off by default). Only technician-confirmed
    photos from opted-in shops are offered for labeling, and a shop that turns it off drops out of future exports.
 4. Label in **Training data**, then **Export dataset** and train with `training/train.py` (see `training/README.md`).
+
+### Part detector for pre-drawn boxes (optional)
+
+The labeling screen pre-draws a first guess at each box. By default the AI (OpenAI or Anthropic) does it, which is a
+paid call per photo and not very precise. A detection model made for boxes does it better and cheaper:
+
+1. On Hugging Face, create an **Inference Endpoint** (a GPU instance; it can scale to zero when idle) for the model
+   `IDEA-Research/grounding-dino-base` (Apache 2.0). `google/owlv2-base-patch16-ensemble` (Apache 2.0) also works.
+   The task is **Zero-Shot Object Detection**.
+2. In Vercel, add `DETECTOR_URL` (the endpoint's address) and `DETECTOR_TOKEN` (a Hugging Face access token that can
+   call it), then redeploy. Optional: `DETECTOR_MIN_SCORE` (default `0.25`; lower draws more, less certain boxes).
+3. Check `https://<your-app>/api/status`: it shows `"detector":true`.
+
+Wrynch sends the photo and the part names (`{"inputs": <base64 photo>, "parameters": {"candidate_labels": [...]}}`)
+and reads `[{score, label, box: {xmin, ymin, xmax, ymax}}]` back. If the endpoint is off, slow to wake, or answers in
+another shape, the labeling screen falls back to the AI's boxes, so nothing stops working.

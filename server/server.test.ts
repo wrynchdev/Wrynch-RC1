@@ -6,6 +6,7 @@ import { aiNote, aiSort, aiWording, appRoot, pilot, report, sendReport, status, 
 import { resetTekmetricToken, roIdFromWebhook, toImport } from './tekmetric';
 import { aiKey, apiRouter, ROUTES, training, trainingExport, trainingSuggest } from './routes';
 import { readFileSync } from 'node:fs';
+import { imageSize } from './detector';
 import { openSecret, sealSecret } from './secrets';
 import { resetRateLimits } from './lib';
 import { DEFAULT_TEMPLATE, clsByName, compKey } from '../src/domain/ontology';
@@ -123,6 +124,7 @@ beforeEach(() => {
   delete process.env.ANTHROPIC_API_KEY;
   delete process.env.OPENAI_API_KEY; delete process.env.OPENAI_MODEL; delete process.env.AI_PROVIDER;
   delete process.env.AI_STUB;
+  delete process.env.DETECTOR_URL; delete process.env.DETECTOR_TOKEN; delete process.env.DETECTOR_MIN_SCORE;
   delete process.env.ANTHROPIC_WORKSPACE_ID;
   resetAiState();
   resetRateLimits();
@@ -157,7 +159,7 @@ test('without an AI key, ai-sort refuses instead of guessing, and status says AI
   const r = await aiSort(post('ai-sort', { inspectionId: 'i-4r-now', mediaIds: ['m1'] }));
   assert.equal(r.status, 503);
   assert.ok(!calls.some((c) => c.url.endsWith('/ai_record_sort')), 'nothing recorded');
-  assert.deepEqual(await (await status(new Request('https://app.test/api/status'))).json(), { ai: false, model: 'off', tekmetric: false, shopKeys: false });
+  assert.deepEqual(await (await status(new Request('https://app.test/api/status'))).json(), { ai: false, model: 'off', tekmetric: false, detector: false, shopKeys: false });
   process.env.ANTHROPIC_API_KEY = 'k';
   assert.equal((await (await status(new Request('https://app.test/api/status'))).json()).ai, true);
 });
@@ -727,6 +729,52 @@ test('training export: a YOLO manifest with signed links, as a download', async 
   assert.deepEqual(m.classes[0].classId, rotor);
   assert.deepEqual(m.images[0].labels, [[0, 0.2, 0.3, 0.2, 0.2]]);
   assert.equal((calls.find((c) => c.url.includes('/object/sign/'))!.body as { expiresIn: number }).expiresIn, 7 * 24 * 3600);
+});
+
+// ---------------------------------------------------------------- part detector (labeling pre-draw)
+const pngHeader = (w: number, h: number) => { const b = new Uint8Array(33); b.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]); const v = new DataView(b.buffer); v.setUint32(16, w); v.setUint32(20, h); return b; };
+
+test('photo size is read from JPEG and PNG headers', () => {
+  assert.deepEqual(imageSize(pngHeader(800, 600)), { w: 800, h: 600 });
+  // SOI, an APP0 segment, then SOF0 with height 1080 and width 1920.
+  const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x04, 0x38, 0x07, 0x80, 0x03, 0x01, 0x22, 0x00]);
+  assert.deepEqual(imageSize(jpeg), { w: 1920, h: 1080 });
+  assert.equal(imageSize(new Uint8Array([1, 2, 3])), null);
+});
+
+test('labeling pre-draw uses the part detector when it is set up, and the AI when the detector fails', async () => {
+  process.env.DETECTOR_URL = 'https://detector.test/'; process.env.DETECTOR_TOKEN = 'hf-token';
+  process.env.AI_STUB = '1';
+  const lf = compKey(clsByName('brake_rotor').id, 'left_front');
+  const rf = compKey(clsByName('brake_rotor').id, 'right_front');
+  const pad = compKey(clsByName('brake_pad').id, 'left_front');
+  let detector: () => unknown = () => [
+    { score: 0.9, label: 'brake rotor', box: { xmin: 80, ymin: 60, xmax: 400, ymax: 360 } },
+    { score: 0.6, label: 'brake rotor', box: { xmin: 420, ymin: 60, xmax: 780, ymax: 360 } },
+    { score: 0.1, label: 'brake pad', box: { xmin: 0, ymin: 0, xmax: 10, ymax: 10 } },
+    { score: 0.8, label: 'tire', box: { xmin: 0, ymin: 0, xmax: 800, ymax: 600 } },
+  ];
+  respond = (url) => {
+    if (url.endsWith('/training_photo')) return { path: 's/i/m1.png', parts: [lf, rf, pad] };
+    if (url.includes('/storage/v1/object/inspection-media/')) return new Response(pngHeader(800, 600), { headers: { 'content-type': 'image/png' } });
+    if (url === 'https://detector.test/') return detector();
+    return null;
+  };
+  const r = await (await trainingSuggest(post('training-suggest', { mediaId: 'm1' }))).json();
+  assert.equal(r.by, 'detector');
+  const call = calls.find((c) => c.url === 'https://detector.test/')!;
+  assert.equal(call.auth, 'Bearer hf-token');
+  assert.deepEqual((call.body as { parameters: { candidate_labels: string[] } }).parameters.candidate_labels, ['brake rotor', 'brake pad']);
+  assert.equal(r.boxes.length, 2, 'low-score and unasked-for detections are dropped');
+  assert.deepEqual([r.boxes[0].position, r.boxes[0].x, r.boxes[0].y, r.boxes[0].w, r.boxes[0].h], ['left_front', 0.1, 0.1, 0.4, 0.5], 'pixels become fractions');
+  assert.equal(r.boxes[1].position, 'right_front', 'the second rotor takes the next box');
+  assert.ok(!calls.some((c) => c.url.endsWith('/training_save')));
+
+  detector = () => new Response('busy', { status: 503 });
+  const fallback = await (await trainingSuggest(post('training-suggest', { mediaId: 'm1' }))).json();
+  assert.equal(fallback.by, 'ai');
+  assert.equal(fallback.boxes.length, 3, 'the stand-in AI drew one box per part');
+  assert.equal((await (await status(new Request('https://app.test/api/status'))).json()).detector, true);
 });
 
 // ---------------------------------------------------------------- one function for all routes
