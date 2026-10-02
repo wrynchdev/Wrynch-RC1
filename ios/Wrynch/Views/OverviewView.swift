@@ -103,7 +103,7 @@ struct OverviewView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(p.name).font(.subheadline.weight(.semibold)).multilineTextAlignment(.leading)
-                                Text("\(p.parts) parts\(p.photos > 0 ? " · \(p.photos) photos" : "")").font(.caption).foregroundStyle(Theme.muted)
+                                Text("\(p.parts) \(p.parts == 1 ? "part" : "parts")\(p.photos > 0 ? " · \(p.photos) \(p.photos == 1 ? "photo" : "photos")" : "")").font(.caption).foregroundStyle(Theme.muted)
                             }
                             Spacer()
                             if let badge = p.badge {

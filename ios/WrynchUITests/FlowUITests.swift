@@ -40,8 +40,9 @@ final class FlowUITests: XCTestCase {
         start.tap()
 
         // Overview: the first unfinished stage is open; open its first point.
-        let progress = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '0 of '")).firstMatch
+        let progress = app.staticTexts.matching(NSPredicate(format: "label ENDSWITH 'points done'")).firstMatch
         XCTAssertTrue(progress.waitForExistence(timeout: 20), "overview with progress — " + screen(app))
+        let before = Int(progress.label.split(separator: " ").first ?? "") ?? -1
         let point = app.staticTexts["Walkaround, VIN, and tire placard photos"]
         XCTAssertTrue(point.waitForExistence(timeout: 10), "road test stage open — " + screen(app))
         point.tap()
@@ -56,8 +57,8 @@ final class FlowUITests: XCTestCase {
 
         // Back on the overview, the point counts as done and Finish is still locked.
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        let done = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '1 of '")).firstMatch
-        XCTAssertTrue(done.waitForExistence(timeout: 20), "one point done — " + screen(app))
+        let done = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "\(before + 1) of ")).firstMatch
+        XCTAssertTrue(done.waitForExistence(timeout: 20), "one more point done — " + screen(app))
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS 'items left'")).firstMatch.exists, "finish locked until everything is rated")
 
         let shot = XCTAttachment(screenshot: app.screenshot())
