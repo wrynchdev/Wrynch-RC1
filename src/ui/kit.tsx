@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { ComponentState } from '../domain/types';
-import { MARK, WORDMARK } from './logoPaths';
+import { WORDMARK } from './logoPaths';
 
 const P: Record<string, ReactNode> = {
   back: <path d="M15 6l-6 6 6 6" />,
@@ -48,14 +48,6 @@ export function Icon({ name, size = 18, label, stroke = 2.2 }: { name: keyof typ
 }
 
 /** The Wrynch wrench (from the official logo). Takes the text color. */
-export function Logo({ size = 28 }: { size?: number }) {
-  return (
-    <svg height={size} width={(size * MARK.w) / MARK.h} viewBox={`0 0 ${MARK.w} ${MARK.h}`} aria-hidden="true">
-      <path fill="currentColor" fillRule="evenodd" d={MARK.d} />
-    </svg>
-  );
-}
-
 /** The full WRYNCH wordmark (official logo). Takes the text color. */
 export function Wordmark({ height = 32 }: { height?: number }) {
   return (

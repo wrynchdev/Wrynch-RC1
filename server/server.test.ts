@@ -561,6 +561,7 @@ test('Tekmetric export: only after review, with approved notes, photo counts, es
   assert.match(out.text, /NEEDS ATTENTION NOW\n- Brake fluid: Brake fluid tested at 210 ppm copper\./);
   assert.match(out.text, /Brake fluid exchange \(Brake fluid\): \$119\.00 · approved by customer/);
   assert.ok(!out.text.includes('recommend flush'), 'the tech shorthand is replaced by the approved note');
+  assert.ok(calls.some((c) => c.url.endsWith('/tekmetric_mark_exported')), 'the export time is recorded');
 
   respond = (url) => (url.endsWith('/tekmetric_export_info') ? { shopId: 'shop-1', roId: 55, status: 'in_progress' } : null);
   assert.equal((await tekmetricExport(post('tekmetric-export', { inspectionId: 'i-4r-now' }))).status, 409);

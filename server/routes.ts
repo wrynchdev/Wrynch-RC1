@@ -112,7 +112,7 @@ export const aiSort: Handler = route({
       const [sectionId, pointPart, cornerPart] = group.split('|');
       const pointId = pointPart || null;
       const corner = isCorner(cornerPart) ? cornerPart : null;
-      if (mode === 'claude') {
+      if (mode === 'live') {
         const candidates = candidatesFor(template, sectionId, vehicle.config, pointId, corner);
         const sec = template.sections.find((s) => s.id === sectionId);
         const pointName = pointId ? sec?.points.find((p) => p.id === pointId)?.name : undefined;
@@ -138,7 +138,7 @@ export const aiSort: Handler = route({
     if (analyses.length) await rpc('ai_record_sort', { p_inspection: inspectionId, p_items: analyses }, 'service');
     return json({
       photos: analyses.length, identified: analyses.filter((a) => a.parts.length).length,
-      parts: analyses.reduce((n, a) => n + a.parts.length, 0), failed, reason, model: mode === 'claude' ? model() : 'stub',
+      parts: analyses.reduce((n, a) => n + a.parts.length, 0), failed, reason, model: mode === 'live' ? model() : 'stub',
     });
   }),
 });
@@ -166,7 +166,7 @@ export const aiWording: Handler = route({
       const facts = pointFacts(inspection, vehicle, point);
       if (!facts.parts.some((p) => p.state !== 'unrated')) throw new HttpError(400, 'Nothing confirmed on this point to write about');
       text = null;
-      if (aiMode() === 'claude') {
+      if (aiMode() === 'live') {
         try {
           const media = inspection.media.filter((m) => facts.photoIds.includes(m.id)).slice(0, 3);
           const photos = (await Promise.all(media.map((m) => downloadObject(m.url).catch(() => null)))).filter((x): x is { bytes: Uint8Array; type: string } => !!x);
@@ -196,7 +196,7 @@ export const aiNote: Handler = route({
     const facts = pointFacts(inspection, vehicle, point);
     if (!facts.parts.some((p) => p.state !== 'unrated')) throw new HttpError(400, 'Rate a part or confirm a photo on this point first');
     const basis = { parts: facts.parts.filter((p) => p.state !== 'unrated').length, photos: facts.photoIds.length };
-    if (aiMode() === 'claude') {
+    if (aiMode() === 'live') {
       try {
         const media = inspection.media.filter((m) => facts.photoIds.includes(m.id)).slice(0, 3);
         const photos = (await Promise.all(media.map((m) => downloadObject(m.url).catch(() => null)))).filter((x): x is { bytes: Uint8Array; type: string } => !!x);
@@ -372,7 +372,7 @@ export const templateMap: Handler = route({
 
 // GET /api/status: whether AI photo sorting is available (no secrets, no sign-in).
 export const status: Handler = route({
-  GET: async () => json({ ai: aiMode() !== 'off', model: aiMode() === 'claude' ? model() : aiMode(), tekmetric: tekmetricConfigured(), shopKeys: secretsConfigured() }),
+  GET: async () => json({ ai: aiMode() !== 'off', model: aiMode() === 'live' ? model() : aiMode(), tekmetric: tekmetricConfigured(), shopKeys: secretsConfigured() }),
 });
 
 // ------------------------------------------------------------------ Tekmetric
@@ -443,6 +443,8 @@ export const tekmetricExport: Handler = route({
     const out = buildTekmetricExport(inspection, vehicle, template, `${appRoot(req)}#/r/${inspection.reportToken}`);
     await rpc('tekmetric_log', { p_shop: info.shopId, p_kind: 'export', p_ro: info.roId, p_inspection: inspectionId, p_status: 'skipped',
       p_detail: `RO ${inspection.ro || info.roId}: ${out.points.length} points prepared to paste into Tekmetric` }, 'service');
+    // Remembered so the advisor sees "Export to Tekmetric again" next time.
+    await rpc('tekmetric_mark_exported', { p_inspection: inspectionId }, 'service');
     return json({ written: false, reason: 'Writing to Tekmetric isn’t switched on yet, so copy this into the repair order.', text: out.text, export: out });
   },
 });
