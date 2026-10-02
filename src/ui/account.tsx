@@ -301,6 +301,7 @@ export function Settings() {
       <div className="card list">
         {(role === 'owner' || !isLive()) && <a className="item" href="#/settings/team"><div className="grow"><div className="t">Team</div><div className="d">Invite technicians and advisors; change roles</div></div><Icon name="next" /></a>}
         <a className="item" href="#/settings/template"><div className="grow"><div className="t">Inspection template</div><div className="d">Stages, points and the parts behind each point</div></div><Icon name="next" /></a>
+        <a className="item" href="#/settings/components"><div className="grow"><div className="t">Component checks</div><div className="d">Turn off checks your shop doesn’t do</div></div><Icon name="next" /></a>
         <a className="item" href="#/rules"><div className="grow"><div className="t">Rating rules</div><div className="d">What OK, Monitor and Immediate mean for measured checks</div></div><Icon name="next" /></a>
       </div>
       {isLive() && (

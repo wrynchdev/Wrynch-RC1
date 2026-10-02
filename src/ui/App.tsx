@@ -3,6 +3,7 @@ import { Training } from './training';
 import { Profile } from './profile';
 import { actions, getPendingLink, jobList, useStore } from '../state/store';
 import { hostInfo, shopUrl } from '../state/remote';
+import { ComponentChecks } from './components';
 import { Join, NewInspection, NoShop, Pilot, SetPassword, Settings, SignIn, Team, TemplateEditor } from './account';
 import { AdvisorList, AdvisorResults, DemoReport, LiveReport, Rules, VehicleHistory } from './advisor';
 import { go, useHash } from './hooks';
@@ -33,7 +34,7 @@ function route(p: string[], home: 'dashboard' | 'jobs') {
   if (a === 'report' && b) return <DemoReport id={b} />;
   if (a === 'training') return <Training />;
   if (a === 'profile') return <Profile userId={b} />;
-  if (a === 'settings') return b === 'team' ? <Team /> : b === 'template' ? <TemplateEditor /> : <Settings />;
+  if (a === 'settings') return b === 'team' ? <Team /> : b === 'template' ? <TemplateEditor /> : b === 'components' ? <ComponentChecks /> : <Settings />;
   if (a === 'account' && b === 'password') return <SetPassword />;
   return <Missing />;
 }
@@ -138,6 +139,7 @@ export function App() {
           <span className="cap">Shop</span>
           {canAdvise && link('rules', '#/rules', 'sliders', 'Rating rules')}
           {canAdvise && link('template', '#/settings/template', 'layers', 'Inspection template')}
+          {canAdvise && link('components', '#/settings/components', 'check', 'Component checks')}
           {s.mode === 'live' && role === 'owner' && link('team', '#/settings/team', 'users', 'Team')}
           {link('settings', '#/settings', 'gear', 'Settings')}
           {s.training?.admin && link('training', '#/training', 'layers', 'Training data')}

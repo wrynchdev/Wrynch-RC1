@@ -20,6 +20,27 @@ export function setThresholds(list: Threshold[]) {
 }
 export function defaultThreshold(checkKey: string) { return DEFAULT_AUTO[checkKey] ?? null; }
 
+// Checks turned off for every shop (by Wrynch staff) and for this shop (by its owner). Nothing can be added here:
+// only catalog checks can be turned off, and a part always keeps at least one check.
+let checksOff = { platform: new Set<string>(), shop: new Set<string>() };
+export function setDisabledChecks(platform: string[], shop: string[]) { checksOff = { platform: new Set(platform), shop: new Set(shop) }; }
+/** 'platform' or 'shop' when the check is turned off (and by whom), else null. */
+export function checkOff(checkKey: string): 'platform' | 'shop' | null {
+  return checksOff.platform.has(checkKey) ? 'platform' : checksOff.shop.has(checkKey) ? 'shop' : null;
+}
+/** Whether a check can be turned off: some other check on the same part has to stay on. */
+export function canTurnOff(checkKey: string, scope: 'platform' | 'shop' = 'shop'): boolean {
+  const c = ONTOLOGY.checks[checkKey];
+  if (!c) return false;
+  return cls(c.classId).checks.some((k) => k !== checkKey && (scope === 'platform' ? !checksOff.platform.has(k) : !checkOff(k)));
+}
+/** The part's checks that are on, in catalog order (all of them if every one is off). */
+export function enabledChecks(classId: number): string[] {
+  const all = cls(classId).checks;
+  const on = all.filter((k) => !checkOff(k));
+  return on.length ? on : all;
+}
+
 const byId = new Map<number, OntologyClass>(ONTOLOGY.classes.map((c) => [c.id, c]));
 const byName = new Map<string, OntologyClass>(ONTOLOGY.classes.map((c) => [c.name, c]));
 
