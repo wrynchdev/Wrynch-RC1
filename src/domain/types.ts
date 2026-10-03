@@ -45,7 +45,13 @@ export type Condition = string; // predicate id, see ontology.ts CONDITIONS
 export interface TemplateComponent { classId: number; position: string | null; required: boolean; when: Condition }
 export interface TemplatePoint { id: string; name: string; note: string | null; components: TemplateComponent[] }
 export interface TemplateSection { id: string; name: string; points: TemplatePoint[] }
-export interface Template { id: string; name: string; sections: TemplateSection[] }
+export interface Template {
+  id: string;
+  name: string;
+  sections: TemplateSection[];
+  /** Catalog checks turned off for inspections on this template (a courtesy check can skip the brake measurements). */
+  checksOff?: string[];
+}
 
 export interface Ontology {
   version: string;
@@ -201,6 +207,8 @@ export interface Inspection {
   extraComponents: CompKey[]; // on-demand components added by the tech (e.g. a warning lamp)
   customerApprovals: CompKey[];
   estimate: EstimateLine[];
+  /** The template version this inspection uses (the server's template row id; demo ids look like `t-std-1`). */
+  templateId?: string | null;
   /** Secret token for the customer's report link (server-issued). */
   reportToken?: string | null;
   /** Set by the database: when work started (first change) and when it was first sent to the advisor. */

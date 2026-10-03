@@ -750,7 +750,8 @@
   "ro": "48213",
   "vehicleId": "v-4runner",
   "odometer": 164210,
-  "date": "2026-09-26"
+  "date": "2026-09-26",
+  "templateId": "t-std-1"
  },
  "vehicle": {
   "id": "v-4runner",

@@ -6,7 +6,7 @@ import {
 import { completionGate, componentState, findingRating, isPendingAi, mediaPending, photosOf, summarize } from '../domain/rating';
 import type { CompKey, Finding, Inspection, Media, NotInspectedReason, Rating, Severity, Vehicle, VehicleConfig } from '../domain/types';
 import { SEVERITIES, SIDE_UNSURE_CONFIDENCE } from '../domain/types';
-import { actions, isLive, jobList, noteStyle, photoSrc, toast, useStore, type NoteDraft } from '../state/store';
+import { actions, isLive, jobList, noteStyle, photoSrc, templateList, templateSwitchable, toast, useStore, type NoteDraft } from '../state/store';
 import { autoNotePoints, NOTE_STYLES } from '../domain/noteDraft';
 import { CORNER_LABEL, CORNER_SHORT, CORNERS, type Corner } from '../domain/corner';
 import { CameraSheet } from './camera';
@@ -36,6 +36,7 @@ export function Jobs() {
     ? all.filter((j) => j.date === '2026-09-26' || j.date === today)
     : all.filter((j) => j.status !== 'sent' || j.date === today);
   const name = s.workspace?.me?.name ?? 'Marcus T.';
+  const manyTemplates = templateList(s).length > 1;
   return (
     <div className="phone">
       <div className="body">
@@ -58,7 +59,7 @@ export function Jobs() {
               </div>
               <div>
                 <div style={{ fontSize: 20, fontWeight: 700 }}>{vname(v)}</div>
-                <div className="small muted">{fmtMi(j.odometer)}{v.customer ? ` · ${v.customer}` : ''}{j.technician ? ` · ${j.technician}` : ''}</div>
+                <div className="small muted">{fmtMi(j.odometer)}{v.customer ? ` · ${v.customer}` : ''}{j.technician ? ` · ${j.technician}` : ''}{manyTemplates && j.templateName ? ` · ${j.templateName}` : ''}</div>
               </div>
               {j.concerns.length > 0 && <div className="small">Concern: {j.concerns.join(', ')}</div>}
               {j.summary && j.status !== 'not_started' && (
@@ -101,6 +102,7 @@ const CONFIG_FLAGS: [keyof VehicleConfig, string][] = [
 
 export function Setup({ id }: { id: string }) {
   const data = useInspection(id);
+  const templates = useStore((x) => templateList(x));
   const [odo, setOdo] = useState<string | null>(null);
   if (!data) return <Missing />;
   const { insp, vehicle } = data;
@@ -118,6 +120,20 @@ export function Setup({ id }: { id: string }) {
           <strong style={{ fontSize: 18 }}>{vname(vehicle)}</strong>
           <span className="small muted">{vehicle.engine}</span>
         </div>
+        {templates.length > 1 && (
+          <div className="card pad field">
+            <label htmlFor="insp-tpl">Inspection type</label>
+            {templateSwitchable(insp) ? (
+              <select id="insp-tpl" className="input" value={templates.find((t) => t.id === insp.templateId)?.family ?? ''}
+                onChange={(e) => void actions.setInspectionTemplate(id, e.target.value)}>
+                {!templates.some((t) => t.id === insp.templateId) && <option value="">{ONTOLOGY.template.name}</option>}
+                {templates.map((t) => <option key={t.family} value={t.family}>{t.name}</option>)}
+              </select>
+            ) : (
+              <span id="insp-tpl"><strong>{ONTOLOGY.template.name}</strong> <span className="small muted">· can’t change once work is recorded</span></span>
+            )}
+          </div>
+        )}
         <div className="card pad field">
           <label htmlFor="odo">Odometer (mi)</label>
           <div className="row">

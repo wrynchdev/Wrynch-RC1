@@ -339,31 +339,68 @@ select t.act('authenticated', '00000000-0000-0000-0000-00000000000c');
 select t.expect_error($$ select public.technician_stats((select v::uuid from t.ids where k = 'shop')) $$, '%permission%');
 reset role;
 
--- Turning checks off: owners per shop, Wrynch staff for everyone; never the last check on a part; no new checks.
+-- Several templates, and checks turned off per template (owners) or for every shop (Wrynch staff).
 select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
-select public.set_shop_check_enabled((select v::uuid from t.ids where k = 'shop'), 'tire.age', false);
-select t.eq(public.disabled_checks((select v::uuid from t.ids where k = 'shop')) -> 'shop', '["tire.age"]'::jsonb, 'owner turned a check off');
-select t.expect_error($$ select public.set_shop_check_enabled((select v::uuid from t.ids where k = 'shop'), 'tire.made_up_check', false) $$, '%Unknown check%');
-select t.expect_error($$ select public.set_check((select v::uuid from t.ids where k = 'tmi'), '4@left_front', 'tire.age', 3, null) $$, '%turned off%');
-select t.eq(public.set_check((select v::uuid from t.ids where k = 'tmi'), '4@left_front', 'tire.tread_depth', 7, null), 'ok', 'checks that are on still record');
--- Leave only tire.structure on: it can't go off too.
-select public.set_shop_check_enabled((select v::uuid from t.ids where k = 'shop'), 'tire.tread_wear_pattern', false);
-select public.set_shop_check_enabled((select v::uuid from t.ids where k = 'shop'), 'tire.inflation_pressure', false);
-select public.set_shop_check_enabled((select v::uuid from t.ids where k = 'shop'), 'tire.tread_depth', false);
-select t.expect_error($$ select public.set_shop_check_enabled((select v::uuid from t.ids where k = 'shop'), 'tire.structure', false) $$, '%at least one check%');
--- A result recorded before the check went off can still be corrected; quick OK uses a check that is on.
-select t.eq(public.set_check((select v::uuid from t.ids where k = 'tmi'), '4@left_front', 'tire.tread_depth', 8, null), 'ok', 'existing result can be corrected');
-select public.mark_ok((select v::uuid from t.ids where k = 'tmi'), '[{"key": "4@right_front", "check": "tire.age"}]');
+select t.eq(jsonb_array_length(public.get_workspace((select v::uuid from t.ids where k = 'shop')) -> 'templates'), 1, 'the shop starts with one template');
+select t.eq(public.get_workspace((select v::uuid from t.ids where k = 'shop')) -> 'templates' -> 0 ->> 'isDefault', 'true', 'and it is the default');
+insert into t.ids select 'std', family::text from public.template where shop_id = (select v::uuid from t.ids where k = 'shop') and is_active;
+insert into t.ids select 'std_data', data::text from public.template where shop_id = (select v::uuid from t.ids where k = 'shop') and is_active;
+-- A courtesy check: the same points, with tire age and the brake pad measurements off (the visual pad check stays).
+insert into t.ids select 'courtesy', public.save_template((select v::uuid from t.ids where k = 'shop'), null,
+  (select v::jsonb from t.ids where k = 'std_data') || '{"name":"Courtesy check","checksOff":["tire.age","brake_pad.lining_thickness","brake_pad.wear_pattern"]}') ->> 'family';
+select t.expect_error($$ select public.save_template((select v::uuid from t.ids where k = 'shop'), null, (select v::jsonb from t.ids where k = 'std_data') || '{"name":"Bad","checksOff":["tire.made_up_check"]}') $$, '%Unknown checks%');
+select t.expect_error($$ select public.save_template((select v::uuid from t.ids where k = 'shop'), null, (select v::jsonb from t.ids where k = 'std_data')
+  || '{"name":"Bad","checksOff":["brake_pad.lining_thickness","brake_pad.wear_pattern","brake_pad.visual"]}') $$, '%at least one check%');
+select t.expect_error($$ select public.save_template((select v::uuid from t.ids where k = 'shop'), null, (select v::jsonb from t.ids where k = 'std_data') || '{"name":"courtesy CHECK"}') $$, '%already have a template%');
+select t.expect_error($$ select public.save_template((select v::uuid from t.ids where k = 'shop'), null, (select v::jsonb from t.ids where k = 'std_data') || '{"name":"  "}') $$, '%name%');
+select t.eq(jsonb_array_length(public.get_workspace((select v::uuid from t.ids where k = 'shop')) -> 'templates'), 2, 'two templates');
+select t.eq(public.get_workspace((select v::uuid from t.ids where k = 'shop')) -> 'templates' -> 0 ->> 'family', (select v from t.ids where k = 'std'), 'the default is listed first');
+select t.eq(public.disabled_checks((select v::uuid from t.ids where k = 'shop')) -> 'shop', '[]'::jsonb, 'nothing is turned off shop-wide any more');
+-- A new version keeps the family; inspections already started keep the version they began with.
+select t.eq((public.save_template((select v::uuid from t.ids where k = 'shop'), (select v::uuid from t.ids where k = 'courtesy'),
+  (select data from public.template where family = (select v::uuid from t.ids where k = 'courtesy') and is_active) || '{"note":"v2"}') ->> 'version')::int, 2, 'second version');
+select t.eq((select count(*)::int from public.template where family = (select v::uuid from t.ids where k = 'courtesy') and is_active), 1, 'one version in use');
+-- An inspection on the courtesy check can't record a check that's off there; a quick OK lands on one that's on.
+insert into t.ids select 'cinsp', public.create_inspection((select v::uuid from t.ids where k = 'shop'), '1FTFW1E50JFA00001', 2018, 'Ford', 'F-150', 'XLT', '5.0L V8',
+  '{"rearBrakes":"disc"}', 'Lee Carter', '555-0123', '', '48400', 72000, '{}', (select v::uuid from t.ids where k = 'courtesy'));
+select t.eq((select t2.family::text from public.inspection i join public.template t2 on t2.id = i.template_id where i.id = (select v::uuid from t.ids where k = 'cinsp')),
+  (select v from t.ids where k = 'courtesy'), 'new inspection uses the chosen template');
+select t.expect_error($$ select public.set_check((select v::uuid from t.ids where k = 'cinsp'), '73@left_front', 'brake_pad.lining_thickness', 4, null) $$, '%turned off%');
+select t.eq(public.set_check((select v::uuid from t.ids where k = 'cinsp'), '73@left_front', 'brake_pad.visual', null, 'monitor'), 'monitor', 'the visual check still records');
+select public.mark_ok((select v::uuid from t.ids where k = 'cinsp'), '[{"key": "73@right_front", "check": "brake_pad.lining_thickness"}]');
 select t.eq((select check_key from public.check_result c join public.component_instance ci on ci.id = c.component_id
-             where c.inspection_id = (select v::uuid from t.ids where k = 'tmi') and ci.position = 'right_front' and ci.class_id = 4), 'tire.structure', 'quick OK lands on a check that is on');
-select public.set_shop_check_enabled((select v::uuid from t.ids where k = 'shop'), 'tire.tread_depth', true);
-select t.eq(jsonb_array_length(public.disabled_checks((select v::uuid from t.ids where k = 'shop')) -> 'shop'), 3, 'owner turned one back on');
--- Only owners change shop checks; only staff change Wrynch-wide checks.
+             where c.inspection_id = (select v::uuid from t.ids where k = 'cinsp') and ci.position = 'right_front' and ci.class_id = 73), 'brake_pad.visual', 'quick OK lands on a check that is on');
+select t.expect_error($$ select public.set_inspection_template((select v::uuid from t.ids where k = 'cinsp'), (select v::uuid from t.ids where k = 'std')) $$, '%already been recorded%');
+-- The standard template still measures pads; a fresh inspection can switch to the courtesy check before work starts.
+insert into t.ids select 'sinsp', public.create_inspection((select v::uuid from t.ids where k = 'shop'), '1FTFW1E50JFA00001', null, null, null, null, null, null, '', '', '', '48401', 72100, '{}');
+select t.eq(public.set_check((select v::uuid from t.ids where k = 'sinsp'), '73@left_front', 'brake_pad.lining_thickness', 4, null), 'monitor', 'standard template measures pads');
+insert into t.ids select 'sinsp2', public.create_inspection((select v::uuid from t.ids where k = 'shop'), '1FTFW1E50JFA00001', null, null, null, null, null, null, '', '', '', '48402', 72100, '{}');
+select public.set_inspection_template((select v::uuid from t.ids where k = 'sinsp2'), (select v::uuid from t.ids where k = 'courtesy'));
+select t.eq((select status from public.inspection where id = (select v::uuid from t.ids where k = 'sinsp2')), 'not_started', 'switching template does not start the inspection');
+select t.expect_error($$ select public.set_check((select v::uuid from t.ids where k = 'sinsp2'), '73@left_front', 'brake_pad.lining_thickness', 4, null) $$, '%turned off%');
+-- Default and retiring: the default can't be retired; a retired template can't start inspections, old ones keep it.
+select public.set_default_template((select v::uuid from t.ids where k = 'shop'), (select v::uuid from t.ids where k = 'courtesy'));
+select t.eq(public.get_workspace((select v::uuid from t.ids where k = 'shop')) -> 'template' -> 'data' ->> 'name', 'Courtesy check', 'courtesy check is now the default');
+insert into t.ids select 'dinsp', public.create_inspection((select v::uuid from t.ids where k = 'shop'), '1FTFW1E50JFA00001', null, null, null, null, null, null, '', '', '', '48403', 72100, '{}');
+select t.eq((select t2.family::text from public.inspection i join public.template t2 on t2.id = i.template_id where i.id = (select v::uuid from t.ids where k = 'dinsp')),
+  (select v from t.ids where k = 'courtesy'), 'new inspections use the default');
+select t.expect_error($$ select public.archive_template((select v::uuid from t.ids where k = 'shop'), (select v::uuid from t.ids where k = 'courtesy')) $$, '%another default%');
+select public.set_default_template((select v::uuid from t.ids where k = 'shop'), (select v::uuid from t.ids where k = 'std'));
+select public.archive_template((select v::uuid from t.ids where k = 'shop'), (select v::uuid from t.ids where k = 'courtesy'));
+select t.eq(jsonb_array_length(public.get_workspace((select v::uuid from t.ids where k = 'shop')) -> 'templates'), 1, 'retired template is gone from the list');
+select t.expect_error($$ select public.create_inspection((select v::uuid from t.ids where k = 'shop'), '1FTFW1E50JFA00001', null, null, null, null, null, null, '', '', '', '48404', 1, '{}', (select v::uuid from t.ids where k = 'courtesy')) $$, '%isn''t available%');
+select t.eq(public.get_inspection((select v::uuid from t.ids where k = 'cinsp')) -> 'template' ->> 'name', 'Courtesy check', 'started inspections keep their template');
+select t.expect_error($$ select public.save_template((select v::uuid from t.ids where k = 'shop'), (select v::uuid from t.ids where k = 'courtesy'), (select v::jsonb from t.ids where k = 'std_data')) $$, '%isn''t available%');
+-- The one-argument save still versions the default template.
+select public.save_template((select v::uuid from t.ids where k = 'shop'), (select v::jsonb from t.ids where k = 'std_data') || '{"checksOff":["tire.age"]}');
+select t.eq((select data -> 'checksOff' from public.template where family = (select v::uuid from t.ids where k = 'std') and is_active), '["tire.age"]'::jsonb, 'default template saved');
+-- Only owners manage templates; technicians can still pick one for a new inspection.
 select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
-select t.expect_error($$ select public.set_shop_check_enabled((select v::uuid from t.ids where k = 'shop'), 'tire.age', true) $$, '%permission%');
+select t.expect_error($$ select public.save_template((select v::uuid from t.ids where k = 'shop'), null, (select v::jsonb from t.ids where k = 'std_data') || '{"name":"Tech"}') $$, '%permission%');
+select t.expect_error($$ select public.set_default_template((select v::uuid from t.ids where k = 'shop'), (select v::uuid from t.ids where k = 'std')) $$, '%permission%');
+select t.expect_error($$ select public.archive_template((select v::uuid from t.ids where k = 'shop'), (select v::uuid from t.ids where k = 'std')) $$, '%permission%');
 select t.expect_error($$ select public.set_platform_check_enabled('wheel.lug_nuts', false) $$, '%Wrynch staff%');
 select t.eq(public.disabled_checks((select v::uuid from t.ids where k = 'shop')) ->> 'admin', 'false', 'technician reads the list, not staff');
-select t.expect_error($$ select * from public.shop_disabled_check $$, '%permission denied%');
 select t.act('authenticated', '00000000-0000-0000-0000-00000000000c');
 select t.expect_error($$ select public.disabled_checks((select v::uuid from t.ids where k = 'shop')) $$, '%permission%');
 select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
@@ -371,6 +408,28 @@ select public.set_platform_check_enabled('tire.age', false);
 select t.eq(public.disabled_checks(null) -> 'platform', '["tire.age"]'::jsonb, 'staff turned a check off for everyone');
 select t.expect_error($$ select public.set_platform_check_enabled((select key from public.condition_check where class_id = 1 limit 1), false) $$, '%at least one check%');
 select public.set_platform_check_enabled('tire.age', true);
+reset role;
+
+-- Declined work: owners and advisors read the visits behind sent reports and record what they did about each part.
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
+select t.eq(jsonb_array_length(public.declined_work((select v::uuid from t.ids where k = 'shop')) -> 'inspections') >= 1, true, 'visits of vehicles with sent reports');
+select t.eq((select count(*)::int from jsonb_array_elements(public.declined_work((select v::uuid from t.ids where k = 'shop')) -> 'inspections') x where x ->> 'status' = 'not_started'), 0, 'inspections not started are left out');
+select t.eq(public.declined_work((select v::uuid from t.ids where k = 'shop')) -> 'vehicles' -> 0 ->> 'vin', 'JTEBU5JR4B5012345', 'with their vehicles');
+select t.eq(public.set_followup((select v::uuid from t.ids where k = 'insp'), '73@left_front', 'contacted', null, 'Texted Dana') ->> 'contacts', '1', 'a text is counted');
+select t.eq(public.set_followup((select v::uuid from t.ids where k = 'insp'), '73@left_front', 'contacted', null, null) ->> 'contacts', '2', 'and the next one');
+select t.eq(public.set_followup((select v::uuid from t.ids where k = 'insp'), '73@left_front', 'booked', '2026-11-01', null) ->> 'contacts', '2', 'booking keeps the count');
+select t.eq(public.declined_work((select v::uuid from t.ids where k = 'shop')) -> 'followups' -> 0 ->> 'status', 'booked', 'follow-up listed');
+select t.eq(public.declined_work((select v::uuid from t.ids where k = 'shop')) -> 'followups' -> 0 ->> 'compKey', '73@left_front', 'by part');
+select t.expect_error($$ select public.set_followup((select v::uuid from t.ids where k = 'insp'), '71@left_front', 'contacted', null, null) $$, '%approved this work%');
+select t.expect_error($$ select public.set_followup((select v::uuid from t.ids where k = 'insp'), '73@left_front', 'lost', null, null) $$, '%Unknown status%');
+select t.expect_error($$ select public.set_followup((select v::uuid from t.ids where k = 'cinsp'), '73@left_front', 'contacted', null, null) $$, '%customer has seen%');
+select t.expect_error($$ insert into public.declined_followup (inspection_id, component_id) values ((select v::uuid from t.ids where k = 'insp'), gen_random_uuid()) $$, '%permission denied%');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
+select t.expect_error($$ select public.declined_work((select v::uuid from t.ids where k = 'shop')) $$, '%permission%');
+select t.expect_error($$ select public.set_followup((select v::uuid from t.ids where k = 'insp'), '73@left_front', 'dismissed', null, null) $$, '%permission%');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000c');
+select t.expect_error($$ select public.declined_work((select v::uuid from t.ids where k = 'shop')) $$, '%permission%');
+select t.eq((select count(*)::int from public.declined_followup), 0, 'other shops see none of it');
 reset role;
 
 \echo ALL DATABASE TESTS PASSED
