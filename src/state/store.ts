@@ -189,6 +189,19 @@ export interface TechStats {
   userId: string; name: string; role: Role; inspections: number; last30: number; timed: number; avgSeconds: number | null; inProgress: number;
   recent: { id: string; ro: string; vehicle: string; startedAt: string | null; submittedAt: string; seconds: number | null }[];
 }
+/** A pilot application, as Wrynch staff see it. */
+export interface PilotRequest {
+  id: string; shopName: string; contactName: string; email: string; phone: string | null; location: string | null;
+  techs: number | null; currentTool: string | null; notes: string | null; templatePoints: number | null;
+  status: 'pending' | 'approved' | 'declined' | 'used'; createdAt: string; approvedAt: string | null; decidedAt: string | null;
+  linkEmailedAt: string | null; adminNote: string | null; token: string | null; linkExpiresAt: string | null; usedAt: string | null;
+  shop: { id: string; name: string; number: number } | null;
+}
+export interface PilotCounts { pending: number; approved: number; used: number; declined: number; total: number }
+export interface AdminShop {
+  id: string; name: string; number: number; createdAt: string; owner: string | null; members: number;
+  inspections: number; last30: number; sent: number; lastActivity: string | null;
+}
 export interface TrainingItem { mediaId: string; url: string | null; shop: number; vehicle: string; stage: string; parts: string[] }
 export interface TrainingStats { approved: number; skipped: number; waiting: number; shops: number; classes: Record<string, number> }
 export interface ShopAiInfo { configured: boolean; provider?: 'anthropic' | 'openai'; model?: string | null; last4?: string | null; updatedAt?: string | null }
@@ -503,6 +516,13 @@ export const actions = {
       toast(on ? 'Thanks. Confirmed photos from this shop can now help train Wrynch’s AI.' : 'This shop’s photos are no longer used for training.');
     } catch (e) { set({ training: { admin, shared: !on } }); toast(errText(e), 'error'); }
   },
+  // ---- Wrynch staff (the database refuses everyone else)
+  adminPilots: () => rpc<{ requests: PilotRequest[]; counts: PilotCounts }>('admin_pilot_requests', {}),
+  adminSetPilotStatus: (id: string, status: 'pending' | 'approved' | 'declined') => rpc<PilotRequest>('admin_set_pilot_status', { p_id: id, p_status: status }),
+  adminSetPilotNote: (id: string, note: string) => rpc<PilotRequest>('admin_set_pilot_note', { p_id: id, p_note: note }),
+  /** Approve and email the shop its sign-up link (the link comes back either way, to copy if email isn't set up). */
+  adminApproveAndEmail: (id: string) => fn<{ request: PilotRequest; link: string; email: { status: 'sent' | 'failed' | 'skipped'; detail: string } }>('admin-pilot-approve', { id }),
+  adminShops: () => rpc<AdminShop[]>('admin_shops', {}),
   trainingQueue: () => fn<{ items: TrainingItem[]; stats: TrainingStats }>('training', undefined, 'GET'),
   suggestBoxes: (mediaId: string) => fn<{ boxes: TrainingBox[]; note?: string }>('training-suggest', { mediaId }),
   saveTrainingLabel: (mediaId: string, status: 'approved' | 'skipped', boxes: TrainingBox[], width: number, height: number) =>

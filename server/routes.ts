@@ -329,10 +329,49 @@ export const pilot: Handler = route({
         app.template && 'They also uploaded their inspection template (saved with the application).',
       ].filter((x): x is string => typeof x === 'string' && x !== '');
       const lines = [`${app.contactName} applied for the Wrynch pilot.`, '', ...facts, '',
-        'To approve, run this in the Supabase SQL editor and send them the link it returns:', `select public.approve_pilot_request('${id}');`];
+        `Review and approve it in the Wrynch admin panel: ${adminUrl(req)}`, '',
+        `(Or run this in the Supabase SQL editor and send them the link it returns: select public.approve_pilot_request('${id}');)`];
       await sendEmail(notify, `Pilot application: ${app.shopName}`, lines.join('\n')).catch(() => undefined);
     }
     return json({ ok: true });
+  },
+});
+
+/** The admin panel's address: the app's bare domain in production, else this app's root. */
+function adminUrl(req: Request): string {
+  const domain = (env('APP_DOMAIN') ?? 'wrynch.app').toLowerCase();
+  const host = new URL(req.url).hostname.toLowerCase();
+  return host === domain || host.endsWith(`.${domain}`) || host.endsWith('getwrynch.com') ? `https://${domain}/#/admin` : `${appRoot(req)}#/admin`;
+}
+
+/** A pilot sign-up link: on the app's bare domain in production (a new owner has no shop address yet). */
+export function pilotLink(req: Request, token: string): string {
+  const domain = (env('APP_DOMAIN') ?? 'wrynch.app').toLowerCase();
+  const host = new URL(req.url).hostname.toLowerCase();
+  return host === domain || host.endsWith(`.${domain}`) ? `https://${domain}/#/pilot/${token}` : `${appRoot(req)}#/pilot/${token}`;
+}
+
+interface PilotDoc { id: string; shopName: string; contactName: string; email: string; status: string; token: string | null }
+// POST /api/admin-pilot-approve { id } (Wrynch staff) -> approves the application and emails the shop its sign-up link.
+// The database checks the caller is staff; if email isn't set up the link comes back to copy and send by hand.
+export const adminPilotApprove: Handler = route({
+  POST: async (req) => {
+    const jwt = bearer(req);
+    const { id } = await readJson<{ id: string }>(req);
+    if (!id) throw new HttpError(400, 'Which application?');
+    const doc = await rpc<PilotDoc>('admin_set_pilot_status', { p_id: id, p_status: 'approved' }, jwt);
+    if (!doc.token) throw new HttpError(500, 'The sign-up link wasn’t created');
+    const link = pilotLink(req, doc.token);
+    const first = doc.contactName.trim().split(/\s+/)[0] || 'there';
+    const body = [
+      `Hi ${first},`, '',
+      `${doc.shopName} is approved for the Wrynch pilot. Create your account and set up your shop with this link:`, '', link, '',
+      'The link works once and expires in 30 days. Use the email address this message was sent to.', '',
+      'Reply to this email with any questions.', '', 'The Wrynch team',
+    ].join('\n');
+    const email = await sendEmail(doc.email, 'Your Wrynch pilot is approved', body).catch(() => ({ status: 'failed' as const, detail: 'email service unreachable' }));
+    if (email.status === 'sent') await rpc('admin_mark_pilot_emailed', { p_id: id }, jwt);
+    return json({ request: doc, link, email });
   },
 });
 
@@ -526,7 +565,7 @@ export const trainingExport: Handler = route({
 
 export const ROUTES: Record<string, Handler> = {
   'app-config': appConfig, status, pilot, 'ai-note': aiNote, 'template-read': templateRead, 'template-map': templateMap, 'ai-sort': aiSort, 'ai-wording': aiWording, vin, report, 'send-report': sendReport,
-  'ai-key': aiKey, training, 'training-suggest': trainingSuggest, 'training-export': trainingExport, 'tekmetric-webhook': tekmetricWebhook, 'tekmetric-import': tekmetricImport, 'tekmetric-export': tekmetricExport,
+  'ai-key': aiKey, 'admin-pilot-approve': adminPilotApprove, training, 'training-suggest': trainingSuggest, 'training-export': trainingExport, 'tekmetric-webhook': tekmetricWebhook, 'tekmetric-import': tekmetricImport, 'tekmetric-export': tekmetricExport,
 };
 
 /**
