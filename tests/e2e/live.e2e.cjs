@@ -74,6 +74,33 @@ const B = `${ROOT}/app/`;
       await p.click('button:has-text("Create shop")');
       await p.waitForSelector('h2:has-text("In the bays")'); await shot('L03-dashboard');
     });
+    await step('admin-panel', async () => {
+      // Wrynch staff review pilot applications in the app: the used one shows the shop it became; a new one is approved
+      // (email isn't set up in this run, so the link is shown to copy). Non-staff never see the panel.
+      const q = (sql) => require('child_process').spawnSync('psql', ['-Atc', sql, PGURL], { encoding: 'utf8' }).stdout.trim();
+      await p.goto(B + '#/admin');
+      await p.waitForSelector('[role=alert]:has-text("access to the admin panel")');
+      if (await p.locator('a:has-text("Wrynch admin")').count()) errs.push('admin link shown to someone who is not staff');
+      q("insert into platform_admin (user_id) select id from auth.users where email = 'owner@shop.test'");
+      const r = await p.request.post(`${ROOT}/api/pilot`, { data: { shopName: 'Corner Garage', contactName: 'Sam Lee', email: 'sam@corner.test', techs: '2' } });
+      if (!r.ok()) errs.push('second pilot application failed: ' + r.status());
+      await p.goto(B + '#/settings'); await p.reload();
+      await p.waitForSelector('a:has-text("Wrynch admin")', { timeout: 10000 }).catch(() => errs.push('admin link missing for staff'));
+      await p.goto(B + '#/admin');
+      const card = p.locator('section[aria-label="Corner Garage"]');
+      await card.waitFor({ timeout: 10000 });
+      await shot('L03b-admin-pilots');
+      await card.locator('button:has-text("Approve and email link")').click();
+      await card.locator('input[id^="link-"]').waitFor({ timeout: 10000 }).catch(() => {});
+      if (q("select status from pilot_request where email = 'sam@corner.test'") !== 'approved') errs.push('approving in the admin panel was not saved');
+      const link = await p.locator('section[aria-label="Corner Garage"] input[id^="link-"]').inputValue().catch(() => '');
+      if (!/#\/pilot\/[0-9a-f]{64}$/.test(link)) errs.push('approved application shows no sign-up link: ' + link);
+      await p.click('button:has-text("Signed up")');
+      await p.waitForSelector('text=as Reyes Auto Care', { timeout: 10000 }).catch(() => errs.push('used application does not name its shop'));
+      await p.click('button:has-text("Shops")');
+      await p.waitForSelector('td:has-text("Reyes Auto Care")', { timeout: 10000 }).catch(() => errs.push('shops list missing the shop'));
+      await shot('L03c-admin-shops');
+    });
     await step('tekmetric', async () => {
       // Owner links Tekmetric; a "repair order created" notification imports the RO; pulling by number finds the same one.
       await p.goto(B + '#/settings'); await p.waitForSelector('#tm-shop');

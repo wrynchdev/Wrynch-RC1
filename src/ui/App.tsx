@@ -10,6 +10,7 @@ import { AdvisorList, AdvisorResults, DemoReport, LiveReport, Rules, VehicleHist
 import { go, useHash } from './hooks';
 import { Icon, Wordmark } from './kit';
 import { Dashboard } from './dashboard';
+import { Admin } from './admin';
 import { Capture, ComponentView, Finish, History, Jobs, Missing, Overview, PointView, Setup, Sort, Wording } from './tech';
 
 function route(p: string[], home: 'dashboard' | 'jobs') {
@@ -34,6 +35,7 @@ function route(p: string[], home: 'dashboard' | 'jobs') {
   if (a === 'rules') return <Rules />;
   if (a === 'report' && b) return <DemoReport id={b} />;
   if (a === 'training') return <Training />;
+  if (a === 'admin') return <Admin tab={b} />;
   if (a === 'profile') return <Profile userId={b} />;
   if (a === 'declined') return <DeclinedWork />;
   if (a === 'settings') return b === 'team' ? <Team /> : b === 'template' ? <TemplateEditor family={c} /> : b === 'components' ? <ComponentChecks family={c} /> : <Settings />;
@@ -154,7 +156,13 @@ export function App() {
           {canAdvise && link('components', '#/settings/components', 'check', 'Component checks')}
           {s.mode === 'live' && role === 'owner' && link('team', '#/settings/team', 'users', 'Team')}
           {link('settings', '#/settings', 'gear', 'Settings')}
-          {s.training?.admin && link('training', '#/training', 'layers', 'Training data')}
+          {(s.training?.admin || s.checksOff.admin) && (
+            <>
+              <span className="cap">Wrynch staff</span>
+              {link('admin', '#/admin', 'users', 'Wrynch admin')}
+              {s.training?.admin && link('training', '#/training', 'layers', 'Training data')}
+            </>
+          )}
         </nav>
         <div className="me">
           <a href="#/profile" className="me-link" onClick={() => setMenu(false)} aria-label="Your profile">

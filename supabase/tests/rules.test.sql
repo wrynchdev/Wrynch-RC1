@@ -430,6 +430,34 @@ select t.expect_error($$ select public.set_followup((select v::uuid from t.ids w
 select t.act('authenticated', '00000000-0000-0000-0000-00000000000c');
 select t.expect_error($$ select public.declined_work((select v::uuid from t.ids where k = 'shop')) $$, '%permission%');
 select t.eq((select count(*)::int from public.declined_followup), 0, 'other shops see none of it');
+-- Admin panel: Wrynch staff review pilot applications and see every shop; nobody else can.
+select t.act('service_role', null);
+insert into t.ids select 'pilot2', public.record_pilot_request('{"shopName":"Corner Garage","contactName":"Sam","email":"sam@corner.test","techs":"2","template":{"points":[{"name":"Brakes"}]}}');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
+select t.eq((public.admin_pilot_requests() -> 'counts' ->> 'pending')::int >= 1, true, 'pending application counted');
+select t.eq((select x ->> 'shopName' from jsonb_array_elements(public.admin_pilot_requests() -> 'requests') x where x ->> 'status' = 'used' limit 1), 'Demo Auto', 'used application listed');
+select t.eq((select x -> 'shop' ->> 'name' from jsonb_array_elements(public.admin_pilot_requests() -> 'requests') x where x ->> 'status' = 'used' limit 1), 'Demo Auto', 'with the shop it became');
+select t.eq((select x ->> 'templatePoints' from jsonb_array_elements(public.admin_pilot_requests() -> 'requests') x where x ->> 'id' = (select v from t.ids where k = 'pilot2')), '1', 'uploaded template counted');
+select t.eq((select x ->> 'token' from jsonb_array_elements(public.admin_pilot_requests() -> 'requests') x where x ->> 'id' = (select v from t.ids where k = 'pilot2')) is null, true, 'no link before approval');
+select t.eq(length(public.admin_set_pilot_status((select v::uuid from t.ids where k = 'pilot2'), 'approved') ->> 'token'), 64, 'approving makes a sign-up link');
+insert into t.ids select 'pilot2_token', public.admin_set_pilot_status((select v::uuid from t.ids where k = 'pilot2'), 'approved') ->> 'token';
+select t.eq(public.admin_set_pilot_status((select v::uuid from t.ids where k = 'pilot2'), 'approved') ->> 'token', (select v from t.ids where k = 'pilot2_token'), 'approving again keeps the same link');
+select t.eq(public.pilot_invite((select v from t.ids where k = 'pilot2_token')) ->> 'shopName', 'Corner Garage', 'the link works for sign-up');
+select public.admin_mark_pilot_emailed((select v::uuid from t.ids where k = 'pilot2'));
+select t.eq(public.admin_set_pilot_note((select v::uuid from t.ids where k = 'pilot2'), ' Called Tue ') ->> 'adminNote', 'Called Tue', 'note saved');
+select t.eq(public.admin_set_pilot_status((select v::uuid from t.ids where k = 'pilot2'), 'declined') ->> 'token', null, 'a declined application shows no link');
+select t.eq(public.pilot_invite((select v from t.ids where k = 'pilot2_token')) is null, true, 'and its link stops working');
+select t.expect_error($$ select public.admin_set_pilot_status((select v::uuid from t.ids where k = 'pilot'), 'declined') $$, '%already signed up%');
+select t.expect_error($$ select public.admin_set_pilot_status((select v::uuid from t.ids where k = 'pilot2'), 'used') $$, '%Unknown status%');
+select t.eq((select x ->> 'name' from jsonb_array_elements(public.admin_shops()) x where x ->> 'name' = 'Demo Auto'), 'Demo Auto', 'shops listed');
+select t.eq((select (x ->> 'inspections')::int >= 1 from jsonb_array_elements(public.admin_shops()) x where x ->> 'name' = 'Demo Auto'), true, 'with their inspection counts');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
+select t.expect_error($$ select public.admin_pilot_requests() $$, '%Wrynch staff%');
+select t.expect_error($$ select public.admin_shops() $$, '%Wrynch staff%');
+select t.expect_error($$ select public.admin_set_pilot_status((select v::uuid from t.ids where k = 'pilot2'), 'approved') $$, '%Wrynch staff%');
+select t.expect_error($$ select public.admin_set_pilot_note((select v::uuid from t.ids where k = 'pilot2'), 'x') $$, '%Wrynch staff%');
+select t.act('anon', null);
+select t.expect_error($$ select public.admin_pilot_requests() $$, '%permission denied%');
 reset role;
 
 \echo ALL DATABASE TESTS PASSED

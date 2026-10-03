@@ -2,7 +2,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildMappedPoint, candidatesFor, explainAiError, resetAiState, validateAnalysis } from './ai';
 import { mapVpic } from './vin';
-import { aiNote, aiSort, aiWording, appRoot, pilot, report, sendReport, status, tekmetricExport, tekmetricImport, tekmetricWebhook, templateMap, templateRead } from './routes';
+import { adminPilotApprove, aiNote, aiSort, aiWording, appRoot, pilot, report, sendReport, status, tekmetricExport, tekmetricImport, tekmetricWebhook, templateMap, templateRead } from './routes';
 import { resetTekmetricToken, roIdFromWebhook, toImport } from './tekmetric';
 import { aiKey, apiRouter, ROUTES, training, trainingExport, trainingSuggest } from './routes';
 import { readFileSync } from 'node:fs';
@@ -354,9 +354,41 @@ test('pilot applications are stored with the service key, emailed with the appro
   assert.deepEqual([(rec.body as { p: Record<string, unknown> }).p.email, (rec.body as { p: Record<string, unknown> }).p.techs], ['dana@reyes.test', 4]);
   const mail = calls.find((c) => c.url.startsWith('https://api.resend.com'))!;
   assert.match((mail.body as { text: string }).text, /approve_pilot_request\('req-1'\)/);
+  assert.match((mail.body as { text: string }).text, /admin panel: https:\/\/app\.test\/app\/#\/admin/);
   for (let i = 0; i < 3; i++) await pilot(pub('pilot', { shopName: 'x', contactName: 'y', email: 'y@x.test' }));
   assert.equal((await pilot(pub('pilot', { shopName: 'x', contactName: 'y', email: 'y@x.test' }))).status, 429, 'sixth try in an hour is refused');
   assert.equal((await pilot(pub('pilot', { shopName: 'x', contactName: 'y', email: 'y@x.test' }, '9.9.9.9'))).status, 200, 'other visitors unaffected');
+});
+
+test('admin approval: the database checks staff, the shop gets its sign-up link by email, and the link comes back', async () => {
+  const doc = { id: 'req-2', shopName: 'Corner Garage', contactName: 'Sam Lee', email: 'sam@corner.test', status: 'approved', token: 't'.repeat(64) };
+  respond = (url) => (url.endsWith('/admin_set_pilot_status') ? doc : url.startsWith('https://api.resend.com') ? { id: 'e1' } : null);
+  const call = (host: string) => adminPilotApprove(new Request(`https://${host}/api/admin-pilot-approve`, {
+    method: 'POST', headers: { authorization: 'Bearer staff-jwt', 'content-type': 'application/json' }, body: JSON.stringify({ id: 'req-2' }) }));
+  // No email service: approved, and the link is returned to send by hand.
+  let r = await call('1001.wrynch.app');
+  let out = await r.json() as { link: string; email: { status: string } };
+  assert.equal(out.link, `https://wrynch.app/#/pilot/${'t'.repeat(64)}`, 'bare app domain, not the staff member\'s shop address');
+  assert.equal(out.email.status, 'skipped');
+  const approve = calls.find((c) => c.url.endsWith('/admin_set_pilot_status'))!;
+  assert.equal(approve.auth, 'Bearer staff-jwt', 'approval runs as the signed-in user, so the database checks staff');
+  assert.ok(!calls.some((c) => c.url.endsWith('/admin_mark_pilot_emailed')));
+  // With email set up: sent to the applicant and recorded.
+  process.env.RESEND_API_KEY = 're'; process.env.EMAIL_FROM = 'Wrynch <hi@wrynch.test>';
+  calls = [];
+  r = await call('1001.wrynch.app');
+  out = await r.json() as { link: string; email: { status: string } };
+  assert.equal(out.email.status, 'sent');
+  const mail = calls.find((c) => c.url.startsWith('https://api.resend.com'))!.body as { to: string; subject: string; text: string };
+  assert.equal(mail.to, 'sam@corner.test');
+  assert.match(mail.text, /^Hi Sam,/);
+  assert.ok(mail.text.includes(out.link));
+  assert.ok(calls.some((c) => c.url.endsWith('/admin_mark_pilot_emailed') && c.auth === 'Bearer staff-jwt'));
+  // Not signed in: refused before anything happens.
+  calls = [];
+  const anon = await adminPilotApprove(new Request('https://wrynch.app/api/admin-pilot-approve', { method: 'POST', body: JSON.stringify({ id: 'x' }) }));
+  assert.equal(anon.status, 401);
+  assert.equal(calls.length, 0);
 });
 
 test('template preview: reads a PDF with the document block, and refuses when AI is off or the file is wrong', async () => {
