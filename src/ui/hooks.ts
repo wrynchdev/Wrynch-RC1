@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { actions, useStore } from '../state/store';
+import { actions, activateTemplateFor, useStore } from '../state/store';
 import type { Inspection, Vehicle } from '../domain/types';
 
 export function useHash(): string[] {
@@ -24,6 +24,8 @@ export function useInspection(id: string): { insp: Inspection; vehicle: Vehicle 
     if (s.mode === 'live' && id && !requested.has(id)) { requested.add(id); void actions.loadInspection(id); }
   }, [id, s.mode]);
   if (!insp) return null;
+  // Points, parts and turned-off checks come from this inspection's own template version.
+  activateTemplateFor(insp);
   const vehicle = s.vehicles.find((v) => v.id === insp.vehicleId);
   return vehicle ? { insp, vehicle } : null;
 }

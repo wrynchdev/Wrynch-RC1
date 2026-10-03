@@ -114,20 +114,26 @@ const B = `${ROOT}/app/`;
       if ((await order()).join('|') !== before.join('|')) errs.push('undo did not restore the order');
     });
     await step('component-checks', async () => {
-      // The owner turns a tire check off for the shop (saved in the database), then back on. A part's last check can't go off.
+      // The owner turns a tire check off in the default template and saves (a new template version in the database),
+      // then back on. A part's last check can't go off.
       const q = (sql) => require('child_process').spawnSync('psql', ['-Atc', sql, PGURL], { encoding: 'utf8' }).stdout.trim();
+      const offInTemplate = () => q("select count(*) from template where is_active and data -> 'checksOff' ? 'tire.age'");
       await p.goto(B + '#/settings/components'); await p.waitForSelector('#cc-q');
       await p.fill('#cc-q', 'tire age');
       const sw = p.getByRole('switch', { name: 'Tire age (DOT date code)' }).first();
       await sw.waitFor();
       if (!(await sw.isChecked())) errs.push('tire age should start on');
       await sw.uncheck();
-      await p.waitForTimeout(800);
-      if (q("select count(*) from shop_disabled_check where check_key = 'tire.age'") !== '1') errs.push('turning a check off was not saved');
+      await p.click('button:has-text("Save checks")');
+      await p.waitForTimeout(1200);
+      if (offInTemplate() !== '1') errs.push('turning a check off was not saved to the template');
       await shot('L04e-component-checks');
-      await sw.check();
-      await p.waitForTimeout(800);
-      if (q("select count(*) from shop_disabled_check where check_key = 'tire.age'") !== '0') errs.push('turning a check back on was not saved');
+      await p.fill('#cc-q', 'tire age');
+      const sw2 = p.getByRole('switch', { name: 'Tire age (DOT date code)' }).first();
+      await sw2.check();
+      await p.click('button:has-text("Save checks")');
+      await p.waitForTimeout(1200);
+      if (offInTemplate() !== '0') errs.push('turning a check back on was not saved to the template');
       await p.fill('#cc-q', 'vin label'); await p.uncheck('text=Only parts with more than one check');
       if (!(await p.getByRole('switch').first().isDisabled())) errs.push('a part\'s only check can be turned off');
     });

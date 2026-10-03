@@ -1,7 +1,8 @@
 // Shop dashboard: stat cards, daily activity and recent events, from the rows the server returns
 // (or, in the demo, from the inspections in the browser).
-import type { Inspection, Vehicle } from './types';
+import type { Inspection, Template, Vehicle } from './types';
 import { summarize } from './rating';
+import { withTemplate } from './ontology';
 
 export interface DashRow {
   id: string; ro: string; status: Inspection['status']; date: string;
@@ -93,13 +94,13 @@ export function summarizeDashboard(data: DashData, days: number, now = new Date(
 }
 
 /** Demo mode: the same shape from the inspections held in the browser. */
-export function dashFromInspections(inspections: Inspection[], vehicles: Vehicle[], money = true): DashData {
+export function dashFromInspections(inspections: Inspection[], vehicles: Vehicle[], money = true, templateOf?: (i: Inspection) => Template | null): DashData {
   const rows: DashRow[] = [];
   const events: DashEvent[] = [];
   for (const i of inspections) {
     const v = vehicles.find((x) => x.id === i.vehicleId);
     if (!v) continue;
-    const s = summarize(i, v);
+    const s = withTemplate(templateOf?.(i), () => summarize(i, v));
     const at = (h: number) => `${i.date}T${String(h).padStart(2, '0')}:00:00`;
     const vehicle = `${v.year} ${v.make} ${v.model}`;
     const estimate = i.estimate.reduce((a, e) => a + Number(e.parts) + Number(e.labor), 0);

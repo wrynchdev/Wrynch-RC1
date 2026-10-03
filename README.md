@@ -16,8 +16,13 @@ the shop controls, and every part keeps its own history across visits.
   send the report by text, email or link, reopen for the tech.
 - **Customers**: a plain-language phone report with photos and prices showing only technician-confirmed content;
   they approve work from it, no account needed.
-- **Owners**: invite the team and set roles, edit the inspection template (stages, points, the parts behind each
-  point and when they apply) and the rating rules. Both are versioned; past results keep the rules they used.
+- **Owners**: invite the team and set roles, keep several inspection templates (a courtesy check, a brake
+  inspection…) with their stages, points, the parts behind each point, when they apply, and which component checks
+  each one uses, and set the rating rules. Templates and rules are versioned; past results keep the ones they used.
+- **Declined work**: parts a customer saw on a sent report and didn't approve. Parts measured on more than one visit
+  get a projected date for reaching the Immediate limit, and the follow-up comes about a month before it; the advisor
+  texts the customer a message drafted from the report, marks work booked, or lets it go. Work approved on a later
+  visit counts as recovered.
 - **EV / hybrid** stage (high-voltage battery, cables, charge port, drive units) appears only on electrified vehicles.
 
 ## How it's built
@@ -27,7 +32,7 @@ the shop controls, and every part keeps its own history across visits.
 | `ontology/` | Component ontology workbook (v1.3) and the Python that builds it, `src/data/ontology.json` and the catalog migration. **The workbook is the source of truth.** |
 | `src/domain/` | Pure TypeScript: types, template expansion by vehicle, rating rules, AI stand-in, seed data, tests. |
 | `src/state/` | `store.ts` (every action; demo or live), `remote.ts` (Supabase auth, database functions, storage over fetch). |
-| `src/ui/` | Screens: `tech.tsx`, `advisor.tsx` (advisor, history, rules, customer report), `account.tsx` (sign-in, shop, team, new inspection, template editor), `components.tsx` (component checks), `dashboard.tsx`, `profile.tsx`, `tekmetric.tsx`, `aiKey.tsx`, `training.tsx`, `camera.tsx`. |
+| `src/ui/` | Screens: `tech.tsx`, `advisor.tsx` (advisor, history, rules, customer report), `account.tsx` (sign-in, shop, team, new inspection, template editor), `components.tsx` (component checks per template), `declined.tsx` (declined work), `dashboard.tsx`, `profile.tsx`, `tekmetric.tsx`, `aiKey.tsx`, `training.tsx`, `camera.tsx`. |
 | `server/` | `/api` routes, all served by one Vercel function (`routes.ts`): AI sorting, wording and notes, template reading, VIN decode, reports and sending, pilot applications, shop AI keys, Tekmetric, training data. |
 | `ios/` | The iPhone/iPad app for technicians (SwiftUI). Its rules come from `src/domain` via `ios/bridge/bridge.ts`; see `ios/README.md`. |
 | `training/` | Training script for the part-detection model, using the dataset exported from the labeling screen. |

@@ -6,16 +6,19 @@
 //    function that enforces the rules, then the inspection is reloaded from the server (the source of truth).
 import { useSyncExternalStore } from 'react';
 import {
-  DEFAULT_TEMPLATE, ONTOLOGY, parseKey, point as getPoint, pointComponents, setDisabledChecks, setTemplate, setThresholds, type Threshold,
+  cls, DEFAULT_TEMPLATE, ONTOLOGY, parseKey, partsLeftWithoutChecks, point as getPoint, pointComponents, setDisabledChecks, setTemplate, setThresholds, withTemplate,
+  type Threshold,
 } from '../domain/ontology';
 import { completionGate, rateValue, summarize, type Summary } from '../domain/rating';
-import { applyUnderCarExample, quickCheck, seedInspections, VEHICLES } from '../domain/seed';
+import { applyUnderCarExample, DEMO_TEMPLATE_ID, quickCheck, seedInspections, VEHICLES } from '../domain/seed';
+import { declinedWork, type DeclinedItem, type Followup, type FollowupStatus } from '../domain/declined';
 import { analyzePhotos, applyAnalysis, suggestWording, wordingKeepsFacts } from '../domain/aiStub';
 import type {
   CompKey, EstimateLine, Inspection, NotInspectedReason, Rating, Severity, Template, Vehicle, VehicleConfig,
 } from '../domain/types';
 import { ApiError, auth, fn, getSession, hostInfo, LIVE, onSession, rpc, rpcAnon, shared, shrinkPhoto, signPhotos, upload, type Session } from './remote';
 import { dashFromInspections, type DashData } from '../domain/dashboard';
+export type { DeclinedItem, Followup, FollowupStatus };
 import { draftNote, pointFacts, type NoteStyle } from '../domain/noteDraft';
 import type { Corner } from '../domain/corner';
 import type { TrainingBox } from '../domain/training';
@@ -29,12 +32,18 @@ export interface Workspace {
   me: { userId: string; name: string } | null;
   members: Member[];
   invites: { email: string; role: Role; token: string; createdAt: string }[];
-  template: { id: string; version: number; data: Template } | null;
+  /** The shop's default template (the version in use). */
+  template: { id: string; family?: string; version: number; data: Template } | null;
+  /** Every template the shop can start an inspection on, default first. */
+  templates: TemplateEntry[];
   rules: { id: string; number: number; thresholds: Threshold[] } | null;
 }
+/** One of the shop's inspection templates: `family` stays the same across versions, `id` is the version in use. */
+export interface TemplateEntry { id: string; family: string; version: number; name: string; isDefault: boolean; data: Template }
 export interface JobHeader {
   id: string; ro: string; status: Inspection['status']; date: string; odometer: number; technician: string;
   concerns: string[]; summary: Summary | null; pendingAi: number; vehicle: Vehicle;
+  templateId?: string | null; templateName?: string | null;
 }
 export interface State {
   mode: 'demo' | 'live';
@@ -63,18 +72,79 @@ export interface State {
   demoNoteStyle: NoteStyle;
   /** Demo only: the before-Wrynch approval rate. */
   demoBaseline?: number | null;
+  /** Demo only: the shop's templates (live shops get theirs with the workspace). */
+  demoTemplates: TemplateEntry[];
+  /** Template versions by id, for the inspections that use them (live: from each inspection's bundle). */
+  templateDocs: Record<string, Template>;
+  /** Declined-work follow-ups (live: loaded with the declined-work list; demo: kept in this browser). */
+  followups: Followup[];
+  /** Live: the visits behind declined work (every visit of each vehicle with a recent sent report). */
+  declinedData: { inspections: Inspection[]; vehicles: Vehicle[] } | null;
 }
 
-const STORAGE_KEY = 'wrynch-demo-v3'; // bumped when the saved demo data shape changes
+const STORAGE_KEY = 'wrynch-demo-v4'; // bumped when the saved demo data shape changes
 const now = () => new Date().toISOString();
 let seq = Date.now();
 const uid = (p: string) => `${p}-${(seq++).toString(36)}`;
 
 function demoInitial(): State {
+  const templates = demoTemplateSeed();
   return {
     mode: 'demo', vehicles: structuredClone(VEHICLES), inspections: seedInspections(), demoNoteStyle: 'customer', tekmetric: null, shopAi: null, training: null, checksOff: { platform: [], shop: [], admin: false },
     session: null, workspace: null, jobs: [], loading: 0, busy: null, toast: null, photoUrls: {}, ai: null, dashboard: null,
+    demoTemplates: templates, templateDocs: Object.fromEntries(templates.map((t) => [t.id, t.data])), followups: [], declinedData: null,
   };
+}
+
+/** Demo templates: the standard one, and a courtesy check that only looks at the brakes (no measurements). */
+function demoTemplateSeed(): TemplateEntry[] {
+  const std = structuredClone(DEFAULT_TEMPLATE);
+  const measured = new Set(['measurement', 'test_equipment']);
+  const checksOff = ONTOLOGY.classes.filter((c) => c.category === 'brakes').flatMap((c) => {
+    const m = c.checks.filter((k) => measured.has(ONTOLOGY.checks[k].method));
+    return m.length < c.checks.length ? m : [];
+  });
+  const courtesy: Template = { ...structuredClone(DEFAULT_TEMPLATE), id: 'courtesy-check', name: 'Courtesy check', checksOff };
+  return [
+    { id: DEMO_TEMPLATE_ID, family: 'std', version: 1, name: std.name, isDefault: true, data: std },
+    { id: 't-courtesy-1', family: 'courtesy', version: 1, name: courtesy.name, isDefault: false, data: courtesy },
+  ];
+}
+
+const NO_TEMPLATES: TemplateEntry[] = [];
+const single = new WeakMap<object, TemplateEntry[]>();
+/** The shop's templates, default first. (Stable between calls, so screens can select it from the store.) */
+export function templateList(s: State): TemplateEntry[] {
+  if (s.mode === 'demo') return s.demoTemplates;
+  if (s.workspace?.templates?.length) return s.workspace.templates;
+  const t = s.workspace?.template;
+  if (!t) return NO_TEMPLATES;
+  // An older server sends only the default template.
+  if (!single.has(t)) single.set(t, [{ id: t.id, family: t.family ?? t.id, version: t.version, name: t.data.name, isDefault: true, data: t.data }]);
+  return single.get(t)!;
+}
+/** The template an inspection uses (its own version when known, else the shop's default). */
+export function templateOf(s: State, insp: Pick<Inspection, 'templateId'>): Template | null {
+  return (insp.templateId ? s.templateDocs[insp.templateId] : undefined) ?? templateList(s).find((t) => t.isDefault)?.data ?? null;
+}
+/** Install an inspection's template before its screens work out points, parts and checks. */
+export function activateTemplateFor(insp: Pick<Inspection, 'templateId'>) {
+  const t = templateOf(state, insp);
+  if (t) setTemplate(t);
+}
+/** Nothing has been recorded yet, so the inspection can still change template. */
+export const templateSwitchable = (i: Inspection) => (i.status === 'not_started' || i.status === 'in_progress')
+  && !i.results.length && !i.findings.length && !i.media.length && !i.statuses.length && !i.notes.length;
+const localDay = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+export const todayIso = () => localDay();
+
+/** Declined work as of today (demo: from this browser's inspections; live: from the last load). */
+export function declinedItems(s: State, today = todayIso()): DeclinedItem[] {
+  const src = s.mode === 'demo' ? { inspections: s.inspections, vehicles: s.vehicles } : s.declinedData;
+  return src ? declinedWork(src.inspections, src.vehicles, s.followups, today) : [];
+}
+export function declinedVehicle(s: State, vehicleId: string): Vehicle | undefined {
+  return (s.mode === 'live' ? s.declinedData?.vehicles : undefined)?.find((v) => v.id === vehicleId) ?? s.vehicles.find((v) => v.id === vehicleId);
 }
 function liveInitial(): State {
   return { ...demoInitial(), mode: 'live', vehicles: [], inspections: [], session: getSession() };
@@ -98,8 +168,8 @@ const listeners = new Set<() => void>();
 function save() {
   if (state.mode !== 'demo') return;
   try {
-    const { vehicles, inspections, demoNoteStyle, demoBaseline } = state;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ vehicles, inspections, demoNoteStyle, demoBaseline }));
+    const { vehicles, inspections, demoNoteStyle, demoBaseline, demoTemplates, templateDocs, followups } = state;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ vehicles, inspections, demoNoteStyle, demoBaseline, demoTemplates, templateDocs, followups }));
   } catch { /* ignore */ }
 }
 function set(patch: Partial<State>) { state = { ...state, ...patch }; save(); listeners.forEach((l) => l()); }
@@ -166,7 +236,8 @@ function mergeBundle(b: Bundle) {
   const inspections = [...state.inspections.filter((i) => i.id !== b.inspection.id), b.inspection];
   const vehicles = [...state.vehicles.filter((v) => v.id !== b.vehicle.id), b.vehicle];
   if (b.template) setTemplate(b.template);
-  set({ inspections, vehicles });
+  const templateDocs = b.template && b.inspection.templateId ? { ...state.templateDocs, [b.inspection.templateId]: b.template } : state.templateDocs;
+  set({ inspections, vehicles, templateDocs });
   void signMissing(b.inspection.media.map((m) => m.url));
 }
 async function signMissing(paths: string[]) {
@@ -290,6 +361,8 @@ export function placeholderPhoto(label: string, sub = 'sample photo'): string {
 export interface NewInspection {
   vin: string; year: number | null; make: string; model: string; trim: string; engine: string; config: VehicleConfig;
   customerName: string; customerPhone: string; customerEmail: string; ro: string; odometer: number | null; concerns: string[];
+  /** The template's family (null = the shop's default). */
+  templateFamily?: string | null;
 }
 
 // ------------------------------------------------------------------ actions
@@ -369,7 +442,7 @@ export const actions = {
     const full: Workspace = {
       shops: (ws.shops ?? []).map((x) => ({ ...x, number: num(x.id) })), shop: ws.shop ? { ...ws.shop, number: num(ws.shop.id), noteStyle: list.find((x) => x.id === ws.shop!.id)?.noteStyle ?? 'customer' } : null,
       role: ws.role ?? null, me: ws.me ?? null, members: ws.members ?? [],
-      invites: ws.invites ?? [], template: ws.template ?? null, rules: ws.rules ?? null,
+      invites: ws.invites ?? [], template: ws.template ?? null, templates: ws.templates ?? [], rules: ws.rules ?? null,
     };
     setTemplate(full.template?.data ?? structuredClone(DEFAULT_TEMPLATE));
     setThresholds(full.rules?.thresholds ?? []);
@@ -378,9 +451,10 @@ export const actions = {
     void actions.loadShopAi();
     void actions.loadTrainingInfo();
     void actions.loadChecksOff();
+    if (full.role === 'owner' || full.role === 'advisor') void actions.loadDeclined();
   },
   async loadDashboard(days: number) {
-    if (state.mode === 'demo') { set({ dashboard: { ...dashFromInspections(state.inspections, state.vehicles), days, baseline: state.demoBaseline ?? null } }); return; }
+    if (state.mode === 'demo') { set({ dashboard: { ...dashFromInspections(state.inspections, state.vehicles, true, (i) => templateOf(state, i)), days, baseline: state.demoBaseline ?? null } }); return; }
     const shop = state.workspace?.shop?.id;
     if (!shop) return;
     try {
@@ -406,17 +480,15 @@ export const actions = {
       setDisabledChecks(c.platform, c.shop); set({ checksOff: c });
     } catch { /* keep what we have: every check stays available */ }
   },
-  async setCheckEnabled(checkKey: string, on: boolean, scope: 'shop' | 'platform' = 'shop') {
+  /** Wrynch staff: turn a catalog check on or off for every shop. (A template's own checks are saved with the template.) */
+  async setPlatformCheckEnabled(checkKey: string, on: boolean) {
     const before = state.checksOff;
-    const list = new Set(before[scope]);
+    const list = new Set(before.platform);
     if (on) list.delete(checkKey); else list.add(checkKey);
-    const next = { ...before, [scope]: [...list].sort() };
+    const next = { ...before, platform: [...list].sort() };
     setDisabledChecks(next.platform, next.shop); set({ checksOff: next }); // show it right away; undone below if saving fails
     if (state.mode === 'demo') return;
-    try {
-      if (scope === 'platform') await rpc('set_platform_check_enabled', { p_check: checkKey, p_enabled: on });
-      else await rpc('set_shop_check_enabled', { p_shop: state.workspace!.shop!.id, p_check: checkKey, p_enabled: on });
-    } catch (e) { setDisabledChecks(before.platform, before.shop); set({ checksOff: before }); toast(errText(e), 'error'); }
+    try { await rpc('set_platform_check_enabled', { p_check: checkKey, p_enabled: on }); } catch (e) { setDisabledChecks(before.platform, before.shop); set({ checksOff: before }); toast(errText(e), 'error'); }
   },
   // ---- training data (owners share; Wrynch staff label)
   async loadTrainingInfo() {
@@ -502,11 +574,66 @@ export const actions = {
     try { await rpc('set_member_role', { p_shop: state.workspace!.shop!.id, p_user: userId, p_role: role }); } catch (e) { toast(errText(e), 'error'); }
     await actions.loadWorkspace();
   },
-  async saveTemplate(t: Template) {
-    if (state.mode === 'demo') { setTemplate(t); set({}); toast('Template saved in this browser (demo)'); return; }
-    await rpc('save_template', { p_shop: state.workspace!.shop!.id, p_template: t });
+  /**
+   * Save a template: a new version of `family`, or a new template when `family` is null (undefined = the default).
+   * Inspections already started keep the version they began with. Returns the template's family.
+   */
+  async saveTemplate(t: Template, family?: string | null): Promise<string> {
+    const name = t.name.trim();
+    if (!name) throw new Error('Give the template a name');
+    const bare = partsLeftWithoutChecks(t.checksOff ?? []).map((id) => cls(id).label);
+    if (bare.length) throw new Error(`Each part needs at least one check that is on: ${bare.join(', ')}`);
+    const list = templateList(state);
+    const fam = family === undefined ? list.find((x) => x.isDefault)?.family ?? null : family;
+    if (list.some((x) => x.family !== fam && x.name.trim().toLowerCase() === name.toLowerCase())) throw new Error(`You already have a template called ${name}`);
+    const data = { ...t, name };
+    if (state.mode === 'demo') {
+      const f = fam ?? uid('fam');
+      const prev = list.find((x) => x.family === f);
+      const version = (prev?.version ?? 0) + 1;
+      const entry: TemplateEntry = { id: `t-${f}-${version}`, family: f, version, name, isDefault: prev?.isDefault ?? false, data };
+      const demoTemplates = [...list.filter((x) => x.family !== f), entry].sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name));
+      set({ demoTemplates, templateDocs: { ...state.templateDocs, [entry.id]: data } });
+      if (entry.isDefault) setTemplate(data);
+      toast(prev ? `Saved “${name}” (version ${version}) in this browser (demo)` : `Created “${name}” in this browser (demo)`);
+      return f;
+    }
+    const r = await rpc<{ id: string; family: string; version: number }>('save_template', { p_shop: state.workspace!.shop!.id, p_family: fam, p_template: data });
     await actions.loadWorkspace();
-    toast(`Template saved as version ${state.workspace?.template?.version}. New inspections use it.`);
+    toast(r.version > 1 ? `Saved “${name}” as version ${r.version}. New inspections on it use this version.` : `Created “${name}”.`);
+    return r.family;
+  },
+  async setDefaultTemplate(family: string) {
+    if (state.mode === 'demo') {
+      const demoTemplates = state.demoTemplates.map((x) => ({ ...x, isDefault: x.family === family }))
+        .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name));
+      set({ demoTemplates });
+    } else {
+      try { await rpc('set_default_template', { p_shop: state.workspace!.shop!.id, p_family: family }); } catch (e) { toast(errText(e), 'error'); return; }
+      await actions.loadWorkspace();
+    }
+    toast(`“${templateList(state).find((x) => x.family === family)?.name}” is now the default for new inspections.`);
+  },
+  /** Retire a template: new inspections can't use it; inspections that used it keep it. */
+  async archiveTemplate(family: string) {
+    const t = templateList(state).find((x) => x.family === family);
+    if (!t) return;
+    if (t.isDefault) { toast('Choose another default template before removing this one.', 'error'); return; }
+    if (state.mode === 'demo') set({ demoTemplates: state.demoTemplates.filter((x) => x.family !== family) });
+    else {
+      try { await rpc('archive_template', { p_shop: state.workspace!.shop!.id, p_family: family }); } catch (e) { toast(errText(e), 'error'); return; }
+      await actions.loadWorkspace();
+    }
+    toast(`Removed “${t.name}”. Inspections that used it keep it.`);
+  },
+  /** Switch an inspection to another template (only while nothing has been recorded on it). */
+  async setInspectionTemplate(inspId: string, family: string) {
+    const i = state.inspections.find((x) => x.id === inspId);
+    const t = templateList(state).find((x) => x.family === family);
+    if (!i || !t) return;
+    if (!templateSwitchable(i)) { toast('Work has already been recorded on this inspection, so its template can’t change.', 'error'); return; }
+    if (state.mode === 'demo') { edit(inspId, (x) => { x.templateId = t.id; }); return; }
+    await liveEdit(inspId, (x) => { x.templateId = t.id; }, () => rpc('set_inspection_template', { p_inspection: inspId, p_family: family }));
   },
   async saveThresholds(list: Threshold[]) {
     if (state.mode === 'demo') { setThresholds(list); set({}); toast('Rating rules saved in this browser (demo)'); return; }
@@ -521,16 +648,18 @@ export const actions = {
       const vehicle: Vehicle = { id: vid, vin: f.vin, year: f.year ?? 0, make: f.make, model: f.model, trim: f.trim, engine: f.engine,
         customer: f.customerName, customerPhone: f.customerPhone, customerEmail: f.customerEmail, config: f.config };
       const id = uid('i');
+      const list = templateList(state);
+      const template = list.find((x) => x.family === f.templateFamily) ?? list.find((x) => x.isDefault);
       const insp: Inspection = { id, ro: f.ro, vehicleId: vid, odometer: f.odometer ?? 0, date: new Date().toISOString().slice(0, 10), technician: 'You',
         status: 'not_started', concerns: f.concerns, dtcs: [], results: [], findings: [], media: [], statuses: [], notes: [], extraComponents: [],
-        customerApprovals: [], estimate: [], observations: [] };
+        customerApprovals: [], estimate: [], observations: [], templateId: template?.id ?? DEMO_TEMPLATE_ID };
       set({ vehicles: [...state.vehicles, vehicle], inspections: [...state.inspections, insp] });
       return id;
     }
     const id = await rpc<string>('create_inspection', {
       p_shop: state.workspace!.shop!.id, p_vin: f.vin, p_year: f.year, p_make: f.make, p_model: f.model, p_trim: f.trim, p_engine: f.engine,
       p_config: f.config, p_customer_name: f.customerName, p_customer_phone: f.customerPhone, p_customer_email: f.customerEmail,
-      p_ro: f.ro, p_odometer: f.odometer, p_concerns: f.concerns,
+      p_ro: f.ro, p_odometer: f.odometer, p_concerns: f.concerns, p_template: f.templateFamily ?? null,
     });
     await Promise.all([reload(id), actions.loadWorkspace()]);
     return id;
@@ -805,6 +934,33 @@ export const actions = {
     void liveEdit(inspId, loc, () => rpc('delete_estimate_line', { p_inspection: inspId, p_line: lineId }));
   },
 
+  // ---- declined work (advisors and owners)
+  async loadDeclined() {
+    if (state.mode !== 'live' || !state.workspace?.shop) return;
+    try {
+      const d = await rpc<{ inspections: Inspection[]; vehicles: Vehicle[]; followups: Followup[] }>('declined_work', { p_shop: state.workspace!.shop!.id, p_days: 365 });
+      for (const i of d.inspections) { i.estimate ??= []; i.observations ??= []; }
+      set({ declinedData: { inspections: d.inspections ?? [], vehicles: d.vehicles ?? [] }, followups: d.followups ?? [] });
+    } catch (e) { toast(errText(e), 'error'); }
+  },
+  /** Record what the shop did about a declined part: texted the customer, booked it, let it go, or reopened it. */
+  async setFollowup(item: Pick<DeclinedItem, 'inspectionId' | 'compKey' | 'followup'>, status: FollowupStatus, dueOn: string | null = item.followup?.dueOn ?? null) {
+    const before = state.followups;
+    const prev = item.followup;
+    const at = now();
+    const next: Followup = {
+      inspectionId: item.inspectionId, compKey: item.compKey, status, dueOn, note: prev?.note ?? null, updatedAt: at,
+      contactedAt: status === 'contacted' ? at : prev?.contactedAt ?? null, contacts: (prev?.contacts ?? 0) + (status === 'contacted' ? 1 : 0),
+    };
+    const others = before.filter((f) => !(f.inspectionId === item.inspectionId && f.compKey === item.compKey));
+    set({ followups: [...others, next] }); // show it right away; undone below if saving fails
+    if (state.mode === 'demo') return;
+    try {
+      const saved = await rpc<Followup>('set_followup', { p_inspection: item.inspectionId, p_key: item.compKey, p_status: status, p_due: dueOn, p_note: next.note });
+      set({ followups: [...state.followups.filter((f) => !(f.inspectionId === item.inspectionId && f.compKey === item.compKey)), saved] });
+    } catch (e) { set({ followups: before }); toast(errText(e), 'error'); }
+  },
+
   // ---- demo helpers
   demoFillUnderCar(inspId: string) { edit(inspId, (i, v) => applyUnderCarExample(i, v)); },
   samplePhotos(sectionId: string, count: number): { url: string; name: string }[] {
@@ -820,10 +976,12 @@ export function jobList(s: State): JobHeader[] {
   if (s.mode === 'live') return s.jobs;
   return s.inspections.map((i) => {
     const v = s.vehicles.find((x) => x.id === i.vehicleId)!;
-    return {
+    const t = templateOf(s, i);
+    return withTemplate(t, () => ({
       id: i.id, ro: i.ro, status: i.status, date: i.date, odometer: i.odometer, technician: i.technician, concerns: i.concerns,
       summary: summarize(i, v), pendingAi: completionGate(i, v).filter((g) => g.kind !== 'required').length, vehicle: v,
-    };
+      templateId: i.templateId ?? null, templateName: t?.name ?? null,
+    }));
   });
 }
 

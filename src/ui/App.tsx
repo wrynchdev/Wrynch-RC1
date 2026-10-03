@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Training } from './training';
 import { Profile } from './profile';
-import { actions, getPendingLink, jobList, useStore } from '../state/store';
+import { actions, declinedItems, getPendingLink, jobList, useStore, type State } from '../state/store';
+import { DeclinedWork } from './declined';
 import { hostInfo, shopUrl } from '../state/remote';
 import { ComponentChecks } from './components';
 import { Join, NewInspection, NoShop, Pilot, SetPassword, Settings, SignIn, Team, TemplateEditor } from './account';
@@ -34,7 +35,8 @@ function route(p: string[], home: 'dashboard' | 'jobs') {
   if (a === 'report' && b) return <DemoReport id={b} />;
   if (a === 'training') return <Training />;
   if (a === 'profile') return <Profile userId={b} />;
-  if (a === 'settings') return b === 'team' ? <Team /> : b === 'template' ? <TemplateEditor /> : b === 'components' ? <ComponentChecks /> : <Settings />;
+  if (a === 'declined') return <DeclinedWork />;
+  if (a === 'settings') return b === 'team' ? <Team /> : b === 'template' ? <TemplateEditor family={c} /> : b === 'components' ? <ComponentChecks family={c} /> : <Settings />;
   if (a === 'account' && b === 'password') return <SetPassword />;
   return <Missing />;
 }
@@ -51,6 +53,14 @@ function Overlays() {
 }
 
 let redirecting = false;
+
+// Declined work due for a follow-up, for the menu badge (worked out again only when its inputs change).
+let dueMemo: { inputs: unknown[]; n: number } | null = null;
+function dueFollowUps(s: State): number {
+  const inputs = [s.mode, s.inspections, s.vehicles, s.followups, s.declinedData];
+  if (!dueMemo || inputs.some((x, k) => x !== dueMemo!.inputs[k])) dueMemo = { inputs, n: declinedItems(s).filter((i) => i.state === 'due').length };
+  return dueMemo.n;
+}
 
 export function App() {
   const parts = useHash();
@@ -92,6 +102,7 @@ export function App() {
   const latestSent = jobList(s).filter((i) => i.status === 'sent' || i.status === 'submitted').sort((x, y) => y.date.localeCompare(x.date))[0];
   const openJobs = jobList(s).filter((j) => j.status === 'not_started' || j.status === 'in_progress').length;
   const toReview = jobList(s).filter((j) => j.status === 'submitted').length;
+  const followUps = canAdvise ? dueFollowUps(s) : 0;
   const shopName = s.workspace?.shop?.name ?? (s.mode === 'demo' ? 'Reyes Auto Care' : '');
   const me = s.workspace?.me?.name ?? (s.mode === 'demo' ? 'Jordan L.' : '');
   const initials = (t: string) => t.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('') || 'W';
@@ -135,10 +146,11 @@ export function App() {
           {canAdvise && link('dashboard', '#/dashboard', 'dashboard', 'Dashboard')}
           {link('jobs', '#/jobs', 'clipboard', 'Inspections', openJobs)}
           {canAdvise && link('advisor', '#/advisor', 'review', 'Review & send', toReview)}
+          {canAdvise && link('declined', '#/declined', 'recover', 'Declined work', followUps)}
           {s.mode === 'demo' && link('report', latestSent ? `#/report/${latestSent.id}` : '#/advisor', 'eye', 'Customer view')}
           <span className="cap">Shop</span>
           {canAdvise && link('rules', '#/rules', 'sliders', 'Rating rules')}
-          {canAdvise && link('template', '#/settings/template', 'layers', 'Inspection template')}
+          {canAdvise && link('template', '#/settings/template', 'layers', 'Inspection templates')}
           {canAdvise && link('components', '#/settings/components', 'check', 'Component checks')}
           {s.mode === 'live' && role === 'owner' && link('team', '#/settings/team', 'users', 'Team')}
           {link('settings', '#/settings', 'gear', 'Settings')}

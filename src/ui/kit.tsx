@@ -35,6 +35,7 @@ const P: Record<string, ReactNode> = {
   logout: <><path d="M15 4h4v16h-4" /><path d="M10 8l-4 4 4 4M6 12h10" /></>,
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,
   eye: <><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" /><circle cx="12" cy="12" r="3" /></>,
+  recover: <><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" /><path d="M4 4.5v4h4" /><path d="M12 8v4.5l3 1.8" /></>,
   car: <><path d="M5 16h14v-4l-2-5H7l-2 5z" /><circle cx="8" cy="16.5" r="1.8" /><circle cx="16" cy="16.5" r="1.8" /><path d="M5 12h14" /></>,
 };
 

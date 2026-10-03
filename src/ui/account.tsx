@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
-  cls, compLabel, CONDITIONS, currentTemplate, DEFAULT_TEMPLATE, ONTOLOGY, positionLabel,
+  cls, compLabel, CONDITIONS, DEFAULT_TEMPLATE, ONTOLOGY, positionLabel,
 } from '../domain/ontology';
 import type { Template, TemplateComponent, VehicleConfig } from '../domain/types';
 import { BLANK_CONFIG } from '../domain/seed';
-import { actions, isLive, noteStyle, setPendingLink, toast, useStore, type Role } from '../state/store';
+import { actions, isLive, noteStyle, setPendingLink, templateList, toast, useStore, type Role, type TemplateEntry } from '../state/store';
 import { TekmetricCard, TekmetricPull } from './tekmetric';
 import { AiKeyCard } from './aiKey';
 import { TrainingShareCard } from './training';
@@ -203,6 +203,8 @@ export function NewInspection() {
   const [concerns, setConcerns] = useState('');
   const [decoded, setDecoded] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const templates = useStore((x) => templateList(x));
+  const [templateFamily, setTemplateFamily] = useState<string | null>(null);
   const vinOk = /^[A-HJ-NPR-Z0-9]{17}$/i.test(vin.trim());
   const decode = async () => {
     setBusy(true);
@@ -219,7 +221,7 @@ export function NewInspection() {
       const id = await actions.createInspection({
         vin: vin.trim().toUpperCase(), year: Number(v.year) || null, make: v.make.trim(), model: v.model.trim(), trim: v.trim.trim(), engine: v.engine.trim(), config,
         customerName: c.name, customerPhone: c.phone, customerEmail: c.email, ro, odometer: Number(odo.replace(/\D/g, '')) || null,
-        concerns: concerns.split('\n').map((x) => x.trim()).filter(Boolean),
+        concerns: concerns.split('\n').map((x) => x.trim()).filter(Boolean), templateFamily,
       });
       go(`/setup/${id}`);
     } catch (err) { toast(errText(err), 'error'); } finally { setBusy(false); }
@@ -261,6 +263,13 @@ export function NewInspection() {
             <div className="field"><label htmlFor="od">Odometer (mi)</label><input id="od" className="input mono" inputMode="numeric" value={odo} onChange={(e) => setOdo(e.target.value.replace(/[^\d,]/g, ''))} /></div>
           </div>
           <div className="field"><label htmlFor="cc">Customer concerns (one per line)</label><textarea id="cc" className="input" rows={2} value={concerns} onChange={(e) => setConcerns(e.target.value)} /></div>
+          {templates.length > 1 && (
+            <div className="field"><label htmlFor="tpl">Inspection type</label>
+              <select id="tpl" className="input" value={templateFamily ?? templates.find((x) => x.isDefault)?.family ?? ''} onChange={(e) => setTemplateFamily(e.target.value)}>
+                {templates.map((x) => <option key={x.family} value={x.family}>{x.name}{x.isDefault ? ' (default)' : ''}</option>)}
+              </select>
+            </div>
+          )}
         </div>
         <button className="btn primary" disabled={busy || !vin.trim() || !v.make.trim() || !v.model.trim()}>{busy ? 'One moment…' : 'Create and set up vehicle'}</button>
       </form>
@@ -389,14 +398,26 @@ const CONDITION_LABEL: Record<string, string> = {
 };
 const condLabel = (c: string) => CONDITION_LABEL[c] ?? (c.startsWith('chargePort:') ? `Charge port at ${positionLabel(c.slice(11))}` : c);
 
-export function TemplateEditor() {
+export function TemplateEditor({ family }: { family?: string }) {
+  const s = useStore((x) => x);
+  const list = templateList(s);
+  const def = list.find((x) => x.isDefault) ?? list[0];
+  const entry = family === 'new' ? null : list.find((x) => x.family === family) ?? def;
+  if (!def) return <div className="wide"><p className="muted" role="status">Loading templates…</p></div>;
+  // Re-key on the template version so switching or saving starts from what's saved.
+  return <TemplateForm key={entry ? `${entry.family}:${entry.version}` : 'new'} entry={entry} list={list} source={def} />;
+}
+
+function TemplateForm({ entry, list, source }: { entry: TemplateEntry | null; list: TemplateEntry[]; source: TemplateEntry }) {
   const role = useStore((s) => s.workspace?.role);
-  useStore((s) => s.workspace?.template?.version);
   const canEdit = !isLive() || role === 'owner';
-  const [t, setT] = useState<Template>(() => structuredClone(currentTemplate()));
+  const isNew = entry === null;
+  const [t, setT] = useState<Template>(() => entry ? structuredClone(entry.data)
+    : { ...structuredClone(source.data), id: `tpl-${Date.now().toString(36)}`, name: 'New template' });
   const [open, setOpen] = useState<string | null>(null);
-  const [dirty, setDirty] = useState(false);
+  const [dirty, setDirty] = useState(isNew);
   const [saving, setSaving] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   // The order before "Optimize order", for Undo; cleared by any other edit.
   const [undo, setUndo] = useState<{ before: Template; wasDirty: boolean; moved: number; stagesMoved: boolean } | null>(null);
   const change = (fn_: (x: Template) => void) => { const n = structuredClone(t); fn_(n); setT(n); setDirty(true); setUndo(null); };
@@ -406,27 +427,66 @@ export function TemplateEditor() {
     setUndo({ before: t, wasDirty: dirty, moved: r.moved, stagesMoved: r.stagesMoved });
     setT(r.template); setDirty(true); setOpen(null);
   };
+  const save = async () => {
+    setSaving(true);
+    try {
+      const fam = await actions.saveTemplate(t, entry ? entry.family : null);
+      setDirty(false);
+      if (isNew) go(`/settings/template/${fam}`);
+    } catch (e) { toast(errText(e), 'error'); } finally { setSaving(false); }
+  };
   const conditions = useMemo(() => [...Object.keys(CONDITIONS), ...['left_front', 'right_front', 'left_rear', 'right_rear', 'front', 'rear'].map((p) => `chargePort:${p}`)], []);
   const counts = t.sections.reduce((a, s) => a + s.points.length, 0);
+  const offCount = (t.checksOff ?? []).length;
   return (
     <div className="wide stack" style={{ gap: 16, maxWidth: 1040 }}>
-      <div className="row between" style={{ flexWrap: 'wrap' }}>
-        <div>
-          <h1 className="display" style={{ margin: 0, fontSize: 36 }}>{t.name}</h1>
-          <div className="muted">{t.sections.length} stages · {counts} points. Saving creates a new version; inspections already started keep theirs.</div>
+      <div className="card pad row" style={{ flexWrap: 'wrap', gap: 12 }}>
+        <div className="field grow" style={{ minWidth: 220 }}>
+          <label htmlFor="tpl-pick">Inspection templates</label>
+          <select id="tpl-pick" className="input" value={entry?.family ?? 'new'} onChange={(e) => {
+            if (dirty && !isNew && !window.confirm('Leave without saving your changes?')) return;
+            go(`/settings/template/${e.target.value}`);
+          }}>
+            {list.map((x) => <option key={x.family} value={x.family}>{x.name}{x.isDefault ? ' (default)' : ''}</option>)}
+            {isNew && <option value="new">New template (not saved)</option>}
+          </select>
+        </div>
+        {canEdit && !isNew && <a className="btn secondary sm" href="#/settings/template/new"><Icon name="plus" size={16} />New template</a>}
+      </div>
+      <div className="row between" style={{ flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <div className="stack" style={{ gap: 6, flex: '1 1 340px' }}>
+          <label className="sr" htmlFor="tpl-name">Template name</label>
+          <input id="tpl-name" className="input display" style={{ fontSize: 30, height: 52 }} value={t.name} disabled={!canEdit}
+            onChange={(e) => change((x) => { x.name = e.target.value; })} />
+          <div className="muted">
+            {isNew ? `Starts as a copy of ${source.name}. ` : ''}{t.sections.length} stages · {counts} points ·{' '}
+            <a href={entry ? `#/settings/components/${entry.family}` : undefined} aria-disabled={!entry}>
+              {offCount ? `${offCount} check${offCount === 1 ? '' : 's'} turned off` : 'all checks on'}</a>
+            {isNew ? ' (choose checks after creating it)' : ''}.
+            {' '}Saving creates a new version; inspections already started keep theirs.
+          </div>
+          {entry && (
+            <div className="row small" style={{ gap: 12, flexWrap: 'wrap' }}>
+              {entry.isDefault ? <span className="chip ok">Default for new inspections</span>
+                : canEdit && <button className="linkbtn" onClick={() => void actions.setDefaultTemplate(entry.family)}>Make this the default</button>}
+              {canEdit && !entry.isDefault && (
+                <button className="linkbtn" style={{ color: 'var(--imm)' }} onClick={() => {
+                  if (!confirmRemove) { setConfirmRemove(true); setTimeout(() => setConfirmRemove(false), 4000); return; }
+                  void actions.archiveTemplate(entry.family).then(() => go(`/settings/template/${source.family}`));
+                }}>{confirmRemove ? 'Tap again to remove' : 'Remove template'}</button>
+              )}
+            </div>
+          )}
         </div>
         {canEdit && (
           <div className="row">
-            <button className="btn quiet sm" onClick={() => { setT(structuredClone(DEFAULT_TEMPLATE)); setDirty(true); setUndo(null); }}>Start from the standard template</button>
+            <button className="btn quiet sm" onClick={() => { setT({ ...structuredClone(DEFAULT_TEMPLATE), id: t.id, name: t.name, checksOff: t.checksOff }); setDirty(true); setUndo(null); }}>Start from the standard template</button>
             <button className="btn quiet sm" onClick={optimize} title="Reorder points so a technician works around the car in one pass">Optimize order</button>
-            <button className="btn primary sm" disabled={!dirty || saving} onClick={async () => {
-              setSaving(true);
-              try { await actions.saveTemplate(t); setDirty(false); } catch (e) { toast(errText(e), 'error'); } finally { setSaving(false); }
-            }}>{saving ? 'Saving…' : 'Save template'}</button>
+            <button className="btn primary sm" disabled={!dirty || saving} onClick={() => void save()}>{saving ? 'Saving…' : isNew ? 'Create template' : 'Save template'}</button>
           </div>
         )}
       </div>
-      {!canEdit && <div className="card pad small">Only the shop owner can change the template.</div>}
+      {!canEdit && <div className="card pad small">Only the shop owner can change templates.</div>}
       {undo && (
         <div className="card pad row between" role="status" style={{ flexWrap: 'wrap', gap: 10, borderColor: 'var(--blue)' }}>
           <div className="stack" style={{ gap: 4, flex: '1 1 420px' }}>

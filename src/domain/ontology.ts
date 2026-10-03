@@ -20,25 +20,43 @@ export function setThresholds(list: Threshold[]) {
 }
 export function defaultThreshold(checkKey: string) { return DEFAULT_AUTO[checkKey] ?? null; }
 
-// Checks turned off for every shop (by Wrynch staff) and for this shop (by its owner). Nothing can be added here:
-// only catalog checks can be turned off, and a part always keeps at least one check.
-let checksOff = { platform: new Set<string>(), shop: new Set<string>() };
-export function setDisabledChecks(platform: string[], shop: string[]) { checksOff = { platform: new Set(platform), shop: new Set(shop) }; }
-/** 'platform' or 'shop' when the check is turned off (and by whom), else null. */
-export function checkOff(checkKey: string): 'platform' | 'shop' | null {
-  return checksOff.platform.has(checkKey) ? 'platform' : checksOff.shop.has(checkKey) ? 'shop' : null;
+// Checks turned off for every shop (by Wrynch staff) and in the inspection's template (by the shop owner, saved with
+// the template as `checksOff`). Nothing can be added here: only catalog checks can be turned off, and a part always
+// keeps at least one check.
+let platformOff = new Set<string>();
+let shopOff = new Set<string>(); // shop-wide list from older servers; counts like the template's own
+/** Install the checks Wrynch turned off for every shop (and, from older servers, the shop-wide list). */
+export function setDisabledChecks(platform: string[], shop: string[] = []) { platformOff = new Set(platform); shopOff = new Set(shop); }
+const templateOff = (): readonly string[] => ONTOLOGY.template.checksOff ?? [];
+/** 'platform' when Wrynch turned the check off for every shop, 'template' when the template does, else null. */
+export function checkOff(checkKey: string, inTemplate: readonly string[] = templateOff()): 'platform' | 'template' | null {
+  if (platformOff.has(checkKey)) return 'platform';
+  return inTemplate.includes(checkKey) || shopOff.has(checkKey) ? 'template' : null;
 }
 /** Whether a check can be turned off: some other check on the same part has to stay on. */
-export function canTurnOff(checkKey: string, scope: 'platform' | 'shop' = 'shop'): boolean {
+export function canTurnOff(checkKey: string, scope: 'platform' | 'template' = 'template', inTemplate: readonly string[] = templateOff()): boolean {
   const c = ONTOLOGY.checks[checkKey];
   if (!c) return false;
-  return cls(c.classId).checks.some((k) => k !== checkKey && (scope === 'platform' ? !checksOff.platform.has(k) : !checkOff(k)));
+  return cls(c.classId).checks.some((k) => k !== checkKey && (scope === 'platform' ? !platformOff.has(k) : !checkOff(k, inTemplate)));
 }
 /** The part's checks that are on, in catalog order (all of them if every one is off). */
-export function enabledChecks(classId: number): string[] {
+export function enabledChecks(classId: number, inTemplate: readonly string[] = templateOff()): string[] {
   const all = cls(classId).checks;
-  const on = all.filter((k) => !checkOff(k));
+  const on = all.filter((k) => !checkOff(k, inTemplate));
   return on.length ? on : all;
+}
+/** Parts a template's list would leave with no check at all (the server refuses such a template). */
+export function partsLeftWithoutChecks(list: readonly string[]): number[] {
+  const off = new Set(list);
+  return ONTOLOGY.classes.filter((c) => c.checks.length > 0 && c.checks.every((k) => off.has(k))).map((c) => c.id);
+}
+
+/** Run with another template installed (an inspection's own version), then put the current one back. */
+export function withTemplate<T>(t: Template | null | undefined, run: () => T): T {
+  if (!t || t === ONTOLOGY.template) return run();
+  const before = ONTOLOGY.template;
+  ONTOLOGY.template = t;
+  try { return run(); } finally { ONTOLOGY.template = before; }
 }
 
 const byId = new Map<number, OntologyClass>(ONTOLOGY.classes.map((c) => [c.id, c]));

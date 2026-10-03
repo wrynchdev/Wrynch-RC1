@@ -1,5 +1,6 @@
 // Demo data. The 2011 4Runner and its Sep 26, 2026 inspection follow the shop's real MPI example;
-// the three earlier visits are invented so part history has something to show.
+// the three earlier visits are invented so part history has something to show. The F-150's two visits are invented
+// so declined work has something to follow up on (and one recovered job).
 import { allPoints, cls, clsByName, compKey, pointComponents, sections, vehicleComponents } from './ontology';
 import type {
   CompKey, Inspection, NotInspectedReason, Rating, Severity, Vehicle, VehicleConfig,
@@ -30,6 +31,8 @@ export const VEHICLES: Vehicle[] = [
     engine: '1.5L turbo · CVT · AWD', customer: 'Sam Ortiz', config: CRV_CONFIG },
   { id: 'v-model3', vin: '5YJ3E1EA1MF000000', year: 2021, make: 'Tesla', model: 'Model 3', trim: 'Standard Range Plus',
     engine: 'Single motor · RWD', customer: 'Priya Natarajan', config: TESLA_CONFIG },
+  { id: 'v-f150', vin: '1FTFW1E50JFA00001', year: 2018, make: 'Ford', model: 'F-150', trim: 'XLT',
+    engine: '5.0L V8 · 10-speed automatic · 4WD', customer: 'Lee Carter', customerPhone: '555-0123', config: { ...RUNNER_CONFIG, solidAxle: true, fogLamps: false } },
 ];
 
 let n = 0;
@@ -106,6 +109,26 @@ function pastVisit(i: number, date: string, odo: number, ro: string, tech: strin
   return insp;
 }
 
+/** The F-150: tires and pads wearing; tires declined in February and approved in July, front pads declined in July. */
+function f150Visit(i: number, date: string, odo: number, ro: string): Inspection {
+  const v = VEHICLES[3];
+  const insp = blank({ id: `i-f150-${i}`, ro, vehicleId: v.id, odometer: odo, date, status: 'sent', technician: 'Ray K.' });
+  for (const c of CORNERS) rate(insp, 'tire', c, 'tread_depth', null, [5, 4][i]);
+  for (const c of ['left_front', 'right_front']) rate(insp, 'brake_pad', c, 'lining_thickness', null, [6.0, 4.0][i]);
+  for (const c of ['left_rear', 'right_rear']) rate(insp, 'brake_pad', c, 'lining_thickness', null, [7.0, 6.0][i]);
+  rate(insp, 'low_voltage_battery', null, 'measured_cca', null, [88, 78][i]);
+  fillOk(insp, v, sections().map((s) => s.id));
+  const line = (k: CompKey, description: string, parts: number, labor: number) => insp.estimate.push({ id: `e-f150-${i}-${insp.estimate.length}`, compKey: k, description, parts, labor });
+  for (const c of CORNERS) line(key('tire', c), `Tire ${positionShortName(c)} (LT275/65R18)`, 165, 25);
+  if (i === 1) {
+    for (const c of ['left_front', 'right_front']) line(key('brake_pad', c), `Front brake pads ${positionShortName(c)}`, 85, 95);
+    line(key('low_voltage_battery'), 'Battery (group 65)', 210, 35);
+    insp.customerApprovals = CORNERS.map((c) => key('tire', c));
+  }
+  return insp;
+}
+const positionShortName = (p: string) => ({ left_front: 'LF', right_front: 'RF', left_rear: 'LR', right_rear: 'RR' } as Record<string, string>)[p] ?? p;
+
 /** Today's 4Runner inspection: road test and under hood done (per the shop example), under car to do. */
 function currentRunner(): Inspection {
   const v = VEHICLES[0];
@@ -166,8 +189,13 @@ export function seedInspections(): Inspection[] {
     currentRunner(),
     blank({ id: 'i-crv-now', ro: '48219', vehicleId: 'v-crv', odometer: 61230, date: '2026-09-26', status: 'not_started', concerns: ['Oil change + MPI'] }),
     blank({ id: 'i-m3-now', ro: '48222', vehicleId: 'v-model3', odometer: 38410, date: '2026-09-26', status: 'not_started', concerns: ['Tires + MPI'] }),
-  ];
+    f150Visit(0, '2026-02-10', 58400, '45811'),
+    f150Visit(1, '2026-07-22', 66100, '47702'),
+  ].map((i) => ({ ...i, templateId: i.templateId ?? DEMO_TEMPLATE_ID }));
 }
+
+/** The demo shop's standard template version (every seeded inspection uses it). */
+export const DEMO_TEMPLATE_ID = 't-std-1';
 
 export function vehicle(idv: string): Vehicle {
   const v = VEHICLES.find((x) => x.id === idv);
