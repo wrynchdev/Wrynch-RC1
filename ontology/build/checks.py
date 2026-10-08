@@ -1,5 +1,6 @@
 """Condition checks per class: how each component is determined OK / Monitor / Immediate Attention (US units)."""
 from findings import CLASSES, BY_NAME, FINDINGS
+from lookfor import LOOK_FOR, REMOVE
 
 SRC = {
     "TREAD": "S1, S2", "TPMS": "S3", "AGE": "S4", "BF": "S5", "STEER": "S6", "GLASS": "S7", "COOL": "S8",
@@ -80,7 +81,7 @@ ck("brake_fluid", "copper", "Brake fluid copper content", "test_equipment", "Tes
    evidence="Strip next to color chart", ai="partial", fail="failed_test | degraded_fluid", basis="S5 (MAP: replacement required at 200 ppm copper)")
 ck("brake_fluid", "moisture", "Brake fluid moisture (alternative test)", "test_equipment", "Electronic moisture/boiling-point tester", "% water",
    "numeric", "lower", "< 2%", "2% – 2.9%", "≥ 3%", 2, 3, spec="Tester", ai="no", fail="failed_test")
-ck("brake_fluid", "level", "Brake fluid level", "visual", "Level vs MIN/MAX on reservoir", "—", "categorical", "n/a", "Between MIN and MAX",
+ck("brake_fluid", "level", "Brake fluid level", "visual", "Level vs MIN/MAX on the reservoir; dark or cloudy fluid, debris in the reservoir", "—", "categorical", "n/a", "Between MIN and MAX",
    "At MIN (check pad wear/leaks)", "Below MIN", evidence="Photo of reservoir marks", ai="yes", fail="low_level")
 ck("brake_pedal", "feel", "Brake pedal feel and height", "functional", "Engine running: firm pedal, no sink under steady pressure", "—",
    "categorical", "n/a", "Firm and high", "Slightly soft or low but holds", "Spongy, sinks, or near floor", ai="no", fail="failed_test")
@@ -101,7 +102,7 @@ ck("ball_joint", "play", "Ball joint play", "measurement", "Dial indicator with 
    "numeric", "lower", "Within OEM spec / indicator protruding", "Within spec but boot torn", "Exceeds OEM spec, or wear indicator flush/recessed",
    spec="Vehicle spec", ai="no", fail="excessive_play | torn")
 for cls in ["shock_absorber", "strut_assembly"]:
-    ck(cls, "leak", "Damper leak", "visual", "Oil on damper body", "—", "categorical", "n/a", "Dry or light misting (normal)",
+    ck(cls, "leak", "Damper leak", "visual", "Oil wet on the damper body or dust boot (light misting is normal), dents in the body, broken mounts", "—", "categorical", "n/a", "Dry or light misting (normal)",
        "Oil film/wet body, no drip", "Oil running down body or dripping; bent or broken", ai="yes", fail="leak | seepage | bent")
     ck(cls, "damping", "Damping (bounce / road test)", "functional", "Bounce test and road test", "oscillations", "numeric", "lower",
        "Settles in ≤ 1 cycle", "1–2 cycles, or noticeable body float", "Continued bouncing; clunk from mount", 1, 2, ai="no",
@@ -115,7 +116,7 @@ for cls in ["sway_bar_link", "control_arm", "suspension_bushing", "sway_bar_bush
        "Surface cracking, minor tearing", "Separated/torn through, broken, or excessive movement", fail="torn | crack | excessive_play | broken")
 
 # ---------------------------------------------------------------- driveline
-ck("cv_boot", "integrity", "CV boot integrity", "visual", "Full circumference incl. folds", "—", "visual", "n/a", "Intact, no grease",
+ck("cv_boot", "integrity", "CV boot integrity", "visual", "Splits or cracks in the folds (turn the wheel to open them), loose or missing clamps, grease thrown nearby; check the full circumference", "—", "visual", "n/a", "Intact, no grease",
    "Cracked/aged but sealed", "Torn or split with grease loss", ai="yes", fail="torn | crack | leak")
 ck("cv_axle", "joint", "CV joint", "functional", "Clicking on turns, play, vibration", "—", "pass_fail", "n/a", "Quiet, no play", "—",
    "Clicking/clunking or play", ai="no", fail="abnormal_noise | excessive_play")
@@ -132,7 +133,7 @@ for cls in ["differential_fluid", "transfer_case_fluid", "manual_transmission_fl
 ck("engine_oil", "level", "Engine oil level", "measurement", "Dipstick (engine off, level ground) or electronic level", "—", "categorical", "n/a",
    "Between ADD and FULL", "At ADD mark (about 1 qt low), or slightly above FULL", "Below ADD / not on stick, or overfilled about 1 qt or more (foaming risk)", evidence="Dipstick photo",
    ai="partial", fail="low_level | overfilled")
-ck("engine_oil", "condition", "Engine oil condition", "visual", "Color/consistency on dipstick", "—", "categorical", "n/a", "Normal",
+ck("engine_oil", "condition", "Engine oil condition", "visual", "On the dipstick: black and gritty, milky (coolant), fuel smell, metal flakes or sludge", "—", "categorical", "n/a", "Normal",
    "Dark / due", "Milky (coolant), sludge, fuel smell, metal flakes", ai="partial", fail="degraded_fluid | contaminated")
 ck("engine_oil", "oil_life", "Oil life / interval", "service_interval", "Oil-life monitor %, or miles since last change vs interval", "% remaining",
    "numeric", "higher", "> 25%", "6% – 25% (or within 500 mi of interval)", "≤ 5% or past interval", 25, 5, spec="Vehicle oil-life monitor / OEM schedule",
@@ -143,16 +144,16 @@ ck("engine_coolant", "freeze_point", "Coolant freeze protection", "test_equipmen
 ck("thermostat", "regulation", "Thermostat regulation", "scan_tool", "Warm-up curve / coolant temperature PID; DTCs such as P0128", "°F", "categorical", "n/a",
    "Reaches normal operating temperature", "Slow warm-up or P0128 stored (poor heat, fuel economy)", "Overheating / stuck closed", spec="OEM operating temperature",
    evidence="Scan data / code screen", ai="no", fail="failed_test")
-ck("engine_coolant", "level", "Coolant level", "visual", "Reservoir level, engine cold", "—", "categorical", "n/a", "At COLD/FULL",
+ck("engine_coolant", "level", "Coolant level", "visual", "Reservoir level with the engine cold; oil film, rust or debris in the coolant", "—", "categorical", "n/a", "At COLD/FULL",
    "Below COLD mark", "Empty reservoir or not visible", ai="yes", fail="low_level")
 ck("engine_coolant", "condition", "Coolant condition", "visual", "Color, oil, rust, debris; test strip pH if used", "—", "categorical", "n/a",
    "Clean, correct color", "Discolored / old / strip out of range", "Oil or rust contamination, sludge", ai="partial", fail="degraded_fluid | contaminated | discolored")
 ck("automatic_transmission_fluid", "level_condition", "ATF level and condition", "measurement", "Dipstick at operating temp per OEM; sealed units per OEM procedure", "—",
    "categorical", "n/a", "In range, red/pink, no odor", "Slightly low, or dark", "Well low, burnt odor, debris/metal", spec="OEM procedure",
    ai="partial", fail="low_level | degraded_fluid | contaminated")
-ck("power_steering_fluid", "level_condition", "Power steering fluid", "visual", "Reservoir marks", "—", "categorical", "n/a", "In range",
+ck("power_steering_fluid", "level_condition", "Power steering fluid", "visual", "Level on the reservoir or cap stick marks; dark, burnt or foamy fluid", "—", "categorical", "n/a", "In range",
    "Low or dark", "Empty, foamy, or pump whining", ai="yes", fail="low_level | degraded_fluid")
-ck("windshield_washer_fluid", "level", "Washer fluid level", "visual", "Reservoir", "—", "categorical", "n/a", "Above low mark", "Low or empty (top off)",
+ck("windshield_washer_fluid", "level", "Washer fluid level", "visual", "Level in the reservoir or on the level stick; spray from both nozzles", "—", "categorical", "n/a", "Above low mark", "Low or empty (top off)",
    "—", ai="yes", fail="low_level")
 ck("diesel_exhaust_fluid", "level", "DEF level", "measurement", "Gauge/cluster reading", "% full", "numeric", "higher", "> 25%", "10% – 25%",
    "< 10% (engine derate risk)", 25, 10, ai="yes", fail="low_level")
@@ -162,9 +163,9 @@ ck("engine_assembly", "leaks", "Engine leak check", "visual", "Gaskets, seals, o
    "Seepage / residue", "Active drip, or oil/coolant on exhaust", ai="yes", fail="seepage | leak | residue")
 ck("engine_assembly", "running", "Running condition", "functional", "Idle quality, misfire, knocks, smoke", "—", "categorical", "n/a", "Smooth, quiet",
    "Minor noise/rough idle", "Knock, misfire, heavy smoke", ai="no", fail="abnormal_noise | failed_test")
-ck("engine_air_filter", "condition", "Engine air filter", "visual", "Filter face in light", "—", "categorical", "n/a", "Clean", "Moderately dirty",
+ck("engine_air_filter", "condition", "Engine air filter", "visual", "Hold the filter face to light: dirt build-up, leaves or debris, oil soaking, damaged or collapsed pleats, rodent nesting", "—", "categorical", "n/a", "Clean", "Moderately dirty",
    "Heavily restricted, wet, damaged, or missing", ai="yes", fail="contaminated | debris_buildup | damaged")
-ck("cabin_air_filter", "condition", "Cabin air filter", "visual", "Filter face", "—", "categorical", "n/a", "Clean", "Dirty, blocked, leaves/debris",
+ck("cabin_air_filter", "condition", "Cabin air filter", "visual", "Filter face: dirt and dust build-up, leaves or debris, musty smell or mold, damaged pleats", "—", "categorical", "n/a", "Clean", "Dirty, blocked, leaves/debris",
    "Missing or torn (unfiltered air)", ai="yes", fail="contaminated | debris_buildup | missing")
 ck("accessory_drive_belt", "wear", "Belt wear (EPDM gauge) and condition", "measurement", "Groove wear gauge; ribs; tension indicator", "—",
    "pass_fail", "n/a", "Gauge pass, ribs intact", "Minor rib cracks, glazing, noise", "Gauge fail, chunks missing, fraying, cords showing",
@@ -234,7 +235,7 @@ ck("wiper_motor", "operation", "Wiper operation", "functional", "All speeds and 
    "Inoperative", ai="no", fail="inoperative")
 ck("windshield_washer_pump", "operation", "Washer spray", "functional", "Spray pattern", "—", "pass_fail", "n/a", "Good spray on glass", "Weak/misdirected",
    "No spray", ai="no", fail="inoperative | obstructed")
-ck("side_mirror_glass", "condition", "Mirror glass", "visual", "Cracks, missing, adjustment", "—", "visual", "n/a", "Intact, adjusts", "Adjuster inoperative",
+ck("side_mirror_glass", "condition", "Mirror glass", "visual", "Cracked or missing glass, glass loose in the housing, power or manual adjustment that doesn't work", "—", "visual", "n/a", "Intact, adjusts", "Adjuster inoperative",
    "Cracked, broken, or missing", fail="crack | broken | missing")
 ck("seat_belt", "function", "Seat belt function", "functional", "Latch, release, retract, lock on quick pull; webbing", "—", "pass_fail", "n/a",
    "All functions normal", "Slow retraction, light wear", "Won't latch/lock/retract, webbing cut or frayed", ai="partial", fail="inoperative | frayed | cut | torn")
@@ -253,7 +254,7 @@ for cls in ["exhaust_pipe", "muffler", "catalytic_converter", "exhaust_manifold"
     ck(cls, "leak_integrity", "Exhaust leak and integrity", "visual", "Holes, rust-through, joints; listen/feel for leaks", "—", "categorical", "n/a",
        "Sealed, surface rust only", "Heavy scale rust, loose hanger/shield", "Any leak, hole, or disconnected section", ai="partial", fail="leak | rust | corrosion | punctured")
 for cls in ["fuel_line", "fuel_tank", "fuel_hose", "fuel_filler_neck"]:
-    ck(cls, "leak", "Fuel leak check", "visual", "Wetness, odor, rust", "—", "categorical", "n/a", "Dry, no odor", "Surface rust", "Any fuel leak or fuel odor",
+    ck(cls, "leak", "Fuel leak check", "visual", "Wet spots or drips, fuel odor, rust-through or heavy scale, chafing against the body", "—", "categorical", "n/a", "Dry, no odor", "Surface rust", "Any fuel leak or fuel odor",
        ai="partial", fail="leak | corrosion")
 ck("cabin_air_vent", "ac_performance", "A/C vent temperature", "measurement", "Center vent, max A/C, recirculate, ambient 70–90°F", "°F", "numeric", "lower",
    "≤ 45°F", "Above 45°F, including not cooling (comfort item)", "— (use compressor check for failure risk)", 45, None, ai="no", fail="poor_performance")
@@ -273,15 +274,26 @@ ck("charge_port_inlet", "pins", "Charge port pins and seal", "visual", "Pins, se
 ck("trailer_hitch_receiver", "integrity", "Hitch receiver", "visual", "Welds, cracks, mounting bolts", "—", "visual", "n/a", "Intact",
    "Surface rust", "Crack, bent, loose mounting", fail="crack | bent | loose")
 
-# ---------------------------------------------------------------- generic visual check for every class without its own visual check
+# ---------------------------------------------------------------- visual check for every class without its own visual check
+# Each says what to look for on that part (lookfor.py). Parts in REMOVE get none: nothing useful to see, or their other
+# checks already cover it. Every part keeps at least one check.
 have_visual = {x["cname"] for x in CHECKS if x["method"] == "visual"}
+has_check = {x["cname"] for x in CHECKS}
 for c in CLASSES:
     if c["name"] in have_visual:
         continue
+    if c["name"] in REMOVE:
+        assert c["name"] in has_check, f"{c['name']} would be left with no check"
+        continue
+    assert c["name"] in LOOK_FOR, f"No look-fors written for {c['name']}"
     fk = c["finding_keys"]
-    ck(c["name"], "visual", "Visual condition", "visual", "Look for applicable findings (Class Findings sheet)", "—", "visual", "n/a",
+    ck(c["name"], "visual", "Visual condition", "visual", LOOK_FOR[c["name"]], "—", "visual", "n/a",
        "No applicable findings", "Findings whose default rating is monitor", "Any finding whose default rating is immediate attention",
        evidence="Photo", fail=" | ".join(fk[:6]) + (" …" if len(fk) > 6 else ""), basis="Rating comes from Class Findings")
+
+unused = (set(LOOK_FOR) | REMOVE) - {c["name"] for c in CLASSES}
+assert not unused, f"Look-fors for unknown parts: {unused}"
+assert not (set(LOOK_FOR) & have_visual), f"Parts with their own visual check: {set(LOOK_FOR) & have_visual}"
 
 # keep only failing findings that are valid for the class
 for x in CHECKS:

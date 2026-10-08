@@ -489,7 +489,10 @@ export const actions = {
   async loadChecksOff() {
     if (state.mode !== 'live' || !state.workspace?.shop) return;
     try {
-      const c = await rpc<ChecksOff>('disabled_checks', { p_shop: state.workspace.shop.id });
+      const raw = await rpc<ChecksOff>('disabled_checks', { p_shop: state.workspace.shop.id });
+      // Checks retired from the catalog are kept off on the server; they aren't shown or counted here.
+      const known = (keys: string[]) => keys.filter((k) => k in ONTOLOGY.checks);
+      const c = { ...raw, platform: known(raw.platform), shop: known(raw.shop) };
       setDisabledChecks(c.platform, c.shop); set({ checksOff: c });
     } catch { /* keep what we have: every check stays available */ }
   },

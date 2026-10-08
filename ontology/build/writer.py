@@ -220,6 +220,10 @@ sheet("Data Model", t, d, list(base.DM_HDR), DM, [28, 30, 20, 34, 16, 26, 80], "
 log("Workbook", "Shop template + example", "(none)", "Shop Template Points, Shop Template Map, Example Inspection",
     "Maps the shop's current MPI to components and tests the rating rules on a real inspection.", "No", "1.2.0")
 log("Shop Template", "EV / Hybrid section", "(none)", "4 points: HV battery, HV cables, charge port, electric drive units", "Electrified vehicles need their own points; the section only applies when the vehicle is EV/PHEV/HEV.", "Yes", "1.3.0")
+log("Condition Checks", "Visual condition (220 parts)", "Look for applicable findings (Class Findings sheet)", "What to look for on that specific part (ontology/build/lookfor.py); also given to the photo AI",
+    "Techs and the AI need part-specific cues, not a pointer to the findings list.", "Yes", "1.3.0")
+log("Condition Checks", "Visual condition removed (11 parts)", "Generic visual check", "Removed: ATF, manual trans fluid, differential fluid, transfer case fluid, DEF, thermostat, warning indicator, wiper motor, blower motor, parking brake control, wheel hub bearing",
+    "Hidden part, or the part's other checks already cover what the eye would see. Each keeps its other checks; old results stay.", "Yes", "1.3.0")
 log("Classes", "thermostat (ID 281)", "(missing)", "thermostat", "Shop notes attribute P0128 to the thermostat; only thermostat_housing existed.", "No", "1.2.0")
 log("Condition Checks", "Battery measured CCA %", "(none)", "OK ≥ 85%, Monitor 70–84%, Immediate < 70%", "Shop records rated vs tested CCA (800 → 601). Threshold is a Wrynch default.", "Yes", "1.2.0")
 log("Condition Checks", "Engine oil overfill", "Above FULL = Immediate", "Slightly above FULL = Monitor; ~1 qt or more over = Immediate", "Tech rated a slight overfill as yellow.", "No", "1.2.0")
