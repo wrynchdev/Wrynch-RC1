@@ -4,7 +4,7 @@ import { buildMappedPoint, candidatesFor, explainAiError, resetAiState, validate
 import { mapVpic } from './vin';
 import { adminPilotApprove, aiNote, aiSort, aiWording, appRoot, pilot, report, sendReport, status, tekmetricExport, tekmetricImport, tekmetricWebhook, templateMap, templateRead } from './routes';
 import { resetTekmetricToken, roIdFromWebhook, toImport } from './tekmetric';
-import { aiKey, apiRouter, ROUTES, training, trainingExport, trainingSuggest } from './routes';
+import { aiKey, apiRouter, ROUTES, transcribe, training, trainingExport, trainingSuggest } from './routes';
 import { readFileSync } from 'node:fs';
 import { imageSize } from './detector';
 import { openSecret, sealSecret } from './secrets';
@@ -815,6 +815,31 @@ test('app-config gives the iOS app the public database settings, and nothing sec
   assert.ok(!JSON.stringify(out).includes('service'), 'never the service key');
   delete process.env.SUPABASE_ANON_KEY;
   assert.equal((await apiRouter(new Request('https://app.test/api/app-config'))).status, 503);
+});
+
+test('voice notes: the recording becomes text through OpenAI, only for people who can open the inspection', async () => {
+  const audio = new Uint8Array([1, 2, 3, 4]);
+  const req = (headers: Record<string, string> = {}) => new Request('https://app.test/api/transcribe?inspectionId=i-4r-now', {
+    method: 'POST', headers: { authorization: 'Bearer user-jwt', 'content-type': 'audio/webm', ...headers }, body: audio,
+  });
+  respond = (url) => {
+    if (url.endsWith('/get_inspection')) return bundle(() => undefined);
+    if (url.endsWith('/shop_ai_key_secret')) return null;
+    if (url === 'https://api.openai.com/v1/audio/transcriptions') return { text: ' Front pads at 3 mm, rotors grooved. ' };
+    return null;
+  };
+  process.env.ANTHROPIC_API_KEY = 'k';
+  assert.equal((await transcribe(req())).status, 503, 'Anthropic has no speech-to-text');
+  delete process.env.ANTHROPIC_API_KEY;
+  process.env.OPENAI_API_KEY = 'sk-wrynch-openai-key-1234567890';
+  const r = await transcribe(req());
+  assert.deepEqual(await r.json(), { text: 'Front pads at 3 mm, rotors grooved.' });
+  const call = calls.find((c) => c.url === 'https://api.openai.com/v1/audio/transcriptions')!;
+  assert.equal(call.auth, 'Bearer sk-wrynch-openai-key-1234567890');
+  assert.ok(calls.some((c) => c.url.endsWith('/get_inspection') && c.auth === 'Bearer user-jwt'), 'access checked as the user first');
+  assert.equal((await transcribe(req({ 'content-type': 'image/png' }))).status, 415);
+  respond = (url) => (url.endsWith('/get_inspection') ? new Response(JSON.stringify({ message: 'permission denied' }), { status: 403 }) : null);
+  assert.equal((await transcribe(req())).status, 403, 'outsiders get nothing transcribed');
 });
 
 // ---------------------------------------------------------------- one function for all routes

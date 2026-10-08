@@ -1,7 +1,7 @@
 // HTTP endpoints. Each is deployed as its own function under /api/<name> (see scripts/build.mjs).
 import { analyzePhotos, type PhotoAnalysis } from '../src/domain/aiStub';
 import type { Inspection, Template, Vehicle } from '../src/domain/types';
-import { aiMode, analyzePhoto, locateParts, locatePartsStub, candidatesFor, mapTemplatePoints, mapTemplatePointsStub, model, readTemplate, rewriteNote, validateAnalysis, writePointNote, type DraftPoint } from './ai';
+import { aiMode, analyzePhoto, transcribeAudio, locateParts, locatePartsStub, candidatesFor, mapTemplatePoints, mapTemplatePointsStub, model, readTemplate, rewriteNote, validateAnalysis, writePointNote, type DraftPoint } from './ai';
 import { draftNote, pointFacts, type NoteStyle } from '../src/domain/noteDraft';
 import { CORNER_LABEL, isCorner } from '../src/domain/corner';
 import { decodeVin } from './vin';
@@ -411,6 +411,23 @@ export const templateMap: Handler = route({
   },
 });
 
+// POST /api/transcribe?inspectionId=… (body: the recording) -> { text }
+// A spoken note as text, for phones without built-in speech recognition. Members of the inspection's shop only.
+export const transcribe: Handler = route({
+  POST: async (req) => {
+    const jwt = bearer(req);
+    rateLimit(req, 'transcribe', 120, 3600_000);
+    const inspectionId = new URL(req.url).searchParams.get('inspectionId') ?? '';
+    if (!inspectionId) throw new HttpError(400, 'Which inspection is this note for?');
+    const bytes = new Uint8Array(await req.arrayBuffer());
+    if (!bytes.length) throw new HttpError(400, 'The recording was empty.');
+    if (bytes.length > 10_000_000) throw new HttpError(413, 'That recording is too long. Keep voice notes under a few minutes.');
+    await loadAsUser(jwt, inspectionId); // must be able to open this inspection
+    const text = await withShopAi(await shopAiFor(inspectionId), () => transcribeAudio({ bytes, type: req.headers.get('content-type') ?? '' }));
+    return json({ text });
+  },
+});
+
 // GET /api/app-config: the public settings the iOS app needs to reach the database (the same ones the web app has
 // built in), so no keys are compiled into the app.
 export const appConfig: Handler = route({
@@ -564,7 +581,7 @@ export const trainingExport: Handler = route({
 });
 
 export const ROUTES: Record<string, Handler> = {
-  'app-config': appConfig, status, pilot, 'ai-note': aiNote, 'template-read': templateRead, 'template-map': templateMap, 'ai-sort': aiSort, 'ai-wording': aiWording, vin, report, 'send-report': sendReport,
+  'app-config': appConfig, transcribe, status, pilot, 'ai-note': aiNote, 'template-read': templateRead, 'template-map': templateMap, 'ai-sort': aiSort, 'ai-wording': aiWording, vin, report, 'send-report': sendReport,
   'ai-key': aiKey, 'admin-pilot-approve': adminPilotApprove, training, 'training-suggest': trainingSuggest, 'training-export': trainingExport, 'tekmetric-webhook': tekmetricWebhook, 'tekmetric-import': tekmetricImport, 'tekmetric-export': tekmetricExport,
 };
 

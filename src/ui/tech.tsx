@@ -10,7 +10,9 @@ import { actions, isLive, jobList, noteStyle, photoSrc, templateList, templateSw
 import { autoNotePoints, NOTE_STYLES } from '../domain/noteDraft';
 import { CORNER_LABEL, CORNER_SHORT, CORNERS, type Corner } from '../domain/corner';
 import { CameraSheet } from './camera';
-import { visibleSections } from '../domain/progress';
+import { inspectionSteps, nextUnfinished, visibleSections } from '../domain/progress';
+import { enterFullScreen, JumpSheet, rememberedPoint, rememberPoint, WizardFooter } from './wizard';
+import { MicButton } from './dictation';
 import { InspectionClock } from './profile';
 import { AiChip, fmtDate, fmtMi, Icon, Sheet, StateChip, Tile, TopBar } from './kit';
 import { enc, go, pointStatus, useInspection, useVehicleHistory } from './hooks';
@@ -176,7 +178,8 @@ export function Setup({ id }: { id: string }) {
         </div>
       </div>
       <div className="footer">
-        <a className="btn primary block" href={`#/insp/${id}`} onClick={() => { if (insp.status === 'not_started') actions.start(id); }}>{insp.status === 'not_started' ? 'Start inspection' : 'Back to inspection'}</a>
+        <a className="btn primary block" href={(() => { const to = insp.status === 'submitted' || insp.status === 'sent' ? null : nextUnfinished(insp, vehicle) ?? inspectionSteps(vehicle)[0]?.pointId; return to ? `#/insp/${id}/point/${to}` : `#/insp/${id}`; })()}
+          onClick={() => { enterFullScreen(); if (insp.status === 'not_started') actions.start(id); }}>{insp.status === 'not_started' ? 'Start inspection' : 'Back to inspection'}</a>
       </div>
     </div>
   );
@@ -192,9 +195,11 @@ export function Overview({ id }: { id: string }) {
   // Only one stage is open at a time. Until the tech picks one, it's the stage they were last working in, or the
   // first stage that isn't finished.
   const [picked, setPicked] = useState<string | null | undefined>(undefined);
+  const [jumping, setJumping] = useState(false);
   if (!data) return <Missing />;
   const { insp, vehicle } = data;
   const sum = summarize(insp, vehicle);
+  const resume = nextUnfinished(insp, vehicle, rememberedPoint(id)) ?? rememberedPoint(id) ?? inspectionSteps(vehicle)[0]?.pointId ?? null;
   const gate = completionGate(insp, vehicle);
   const aiItems = gate.filter((g) => g.kind !== 'required').length;
   const visible = visibleSections(vehicle);
@@ -212,6 +217,15 @@ export function Overview({ id }: { id: string }) {
         right={<a className="linkbtn" href={`#/setup/${id}`}>Vehicle</a>} />
       <div className="body">
         {locked && <div className="card pad row"><Icon name="lock" /><span className="grow">Submitted. Changes are locked.</span><a href={`#/advisor/${id}`}>Advisor view</a></div>}
+        {!locked && resume && (
+          <div className="resume">
+            <a className="btn primary" href={`#/insp/${id}/point/${resume}`} onClick={() => enterFullScreen()}>
+              <span className="wiz-label"><span>{pointsDone ? 'Continue inspection' : 'Start with the first point'}</span><small>{getPoint(resume).name}</small></span>
+              <Icon name="next" size={26} />
+            </a>
+            <button type="button" className="btn quiet" onClick={() => setJumping(true)}><Icon name="jump" size={24} />Jump to a point</button>
+          </div>
+        )}
         <div className="card pad stack">
           <div className="row between"><strong>{pointsDone} of {allPoints.length} points done</strong><span className="small muted">{insp.media.filter((m) => !m.excluded).length} photos</span></div>
           <InspectionClock startedAt={insp.startedAt} firstSubmittedAt={insp.firstSubmittedAt} />
@@ -247,7 +261,7 @@ export function Overview({ id }: { id: string }) {
               <div className="list" style={{ borderTop: '1px solid var(--line2)' }}>
                 {st.map(({ p, st: ps }) => (
                   <a key={p.id} className="item" href={`#/insp/${id}/point/${p.id}`}>
-                    <div className="grow"><div className="t">{p.name}</div><div className="d">{ps.count} parts{ps.photos ? ` · ${ps.photos} photos` : ''}</div></div>
+                    <div className="grow"><div className="t">{p.name}</div><div className="d">{ps.count} {ps.count === 1 ? 'part' : 'parts'}{ps.photos ? ` · ${ps.photos} ${ps.photos === 1 ? 'photo' : 'photos'}` : ''}</div></div>
                     {ps.count === 0 ? <span className="chip na">Symptom check</span> : ps.pendingFindings > 0 ? <AiChip>{ps.pendingFindings} to review</AiChip> : ps.pendingOk > 0 && ps.state === 'unrated' ? <AiChip>{ps.pendingOk} look OK</AiChip> : <StateChip state={ps.state} />}
                   </a>
                 ))}
@@ -275,6 +289,7 @@ export function Overview({ id }: { id: string }) {
           </a>
         </div>
       )}
+      {jumping && <JumpSheet insp={insp} vehicle={vehicle} current={rememberedPoint(id)} onClose={() => setJumping(false)} />}
     </div>
   );
 }
@@ -557,6 +572,12 @@ export function PointView({ id, pointId }: { id: string; pointId: string }) {
   try { p = getPoint(pointId); } catch { return <Missing />; }
   const section = sectionOfPoint(pointId);
   rememberStage(id, section.id);
+  rememberPoint(id, pointId);
+  const steps = inspectionSteps(vehicle);
+  const stepIdx = steps.findIndex((x) => x.pointId === pointId);
+  const doneCount = steps.filter((x) => pointStatus(insp, vehicle, x.pointId).done).length;
+  const stagePhotos = insp.media.filter((m) => m.sectionId === section.id && !m.excluded).length;
+  const firstOfStage = section.points[0]?.id === pointId;
   const all = pointComponents(p, vehicle.config);
   const comps = all.filter((c) => c.applies);
   const na = all.filter((c) => !c.applies);
@@ -573,13 +594,18 @@ export function PointView({ id, pointId }: { id: string; pointId: string }) {
   const okPending = insp.observations.filter((o) => o.status === 'pending' && st.keys.includes(o.compKey) && componentState(insp, o.compKey) === 'unrated');
   const n = insp.notes.find((x) => x.pointId === pointId);
   const noteText = note ?? n?.techText ?? '';
-  const idx = section.points.findIndex((x) => x.id === pointId);
-  const nextP = section.points[idx + 1];
   const locked = insp.status !== 'in_progress';
+  // Spoken words are added to the end of the note and saved right away (the tech can edit them like typing).
+  const addSpoken = (text: string) => {
+    const base = (note ?? n?.techText ?? '').trimEnd();
+    const next = base ? `${base}${/[.!?]$/.test(base) ? '' : '.'} ${text}` : text;
+    setNote(next);
+    actions.setNote(id, pointId, next);
+  };
   const unrated = comps.filter((c) => componentState(insp, c.key) === 'unrated').length;
   return (
     <div className="phone">
-      <TopBar title={p.name} sub={`${section.name} · ${comps.length} parts`} back={`#/insp/${id}`}
+      <TopBar title={p.name} sub={`Point ${stepIdx + 1} of ${steps.length} · ${section.name}`} back={`#/insp/${id}`}
         right={!locked && comps.length > 0 ? (
           <label className="iconbtn" htmlFor="point-files" title="Add photos for this point" aria-label={`Add photos for ${p.name}`} style={{ cursor: 'pointer' }}>
             <Icon name="camera" size={22} />
@@ -589,7 +615,17 @@ export function PointView({ id, pointId }: { id: string; pointId: string }) {
         <input id="point-files" className="sr" type="file" accept="image/*" multiple
           onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ''; addHere(fs); }} />
       )}
+      <div className="wiz-progress" role="progressbar" aria-label="Points done" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={doneCount}>
+        <div style={{ width: `${(doneCount / Math.max(steps.length, 1)) * 100}%` }} />
+      </div>
       <div className="body">
+        {!locked && firstOfStage && stagePhotos === 0 && comps.length > 0 && (
+          <a className="card pad row stage-shoot" href={`#/insp/${id}/capture/${section.id}`}>
+            <Icon name="camera" size={28} />
+            <span className="grow"><strong>Shoot {section.name.toLowerCase()} first?</strong><span className="small muted" style={{ display: 'block' }}>One burst of photos and the AI sorts them onto these points.</span></span>
+            <Icon name="next" />
+          </a>
+        )}
         {comps.length === 0 && (
           <div className="card pad small">{p.note ?? 'This point has no parts on this vehicle.'}</div>
         )}
@@ -674,6 +710,7 @@ export function PointView({ id, pointId }: { id: string; pointId: string }) {
         <section className="card pad stack">
           <label className="label" htmlFor="note">Your note</label>
           <span className="small muted" style={{ marginTop: -6 }}>The customer sees this note as written, unless you approve a reworded version.</span>
+          {!locked && <MicButton inspId={id} onText={addSpoken} />}
           <textarea id="note" className="input" rows={2} value={noteText} disabled={locked}
             onChange={(e) => setNote(e.target.value)} onBlur={() => note !== null && actions.setNote(id, pointId, note)} />
           {!locked && !draft && (
@@ -712,10 +749,7 @@ export function PointView({ id, pointId }: { id: string; pointId: string }) {
           )}
         </section>
       </div>
-      <div className="footer">
-        {nextP ? <a className="btn primary block" href={`#/insp/${id}/point/${nextP.id}`}>Next: {nextP.name}<Icon name="next" /></a>
-          : <a className="btn primary block" href={`#/insp/${id}`}>Back to overview</a>}
-      </div>
+      <WizardFooter insp={insp} vehicle={vehicle} pointId={pointId} />
     </div>
   );
 }
@@ -745,6 +779,8 @@ export function ComponentView({ id, compKeyEnc, pointId }: { id: string; compKey
   const status = insp.statuses.find((s) => s.compKey === key)?.notInspected;
   const locked = insp.status !== 'in_progress';
   const back = pointId ? `#/insp/${id}/point/${pointId}` : `#/insp/${id}`;
+  const siblings = pointId ? pointComponents(getPoint(pointId), vehicle.config).filter((x) => x.applies).map((x) => x.key) : [];
+  const nextPart = siblings[siblings.indexOf(key) + 1] ?? null;
   return (
     <div className="phone">
       <TopBar title={compLabel(key)} sub={`${cap(c.category.replace(/_/g, ' '))}${c.safety ? ' · safety part' : ''}`} back={back}
@@ -799,6 +835,14 @@ export function ComponentView({ id, compKeyEnc, pointId }: { id: string; compKey
         <div className="card pad small" style={{ color: 'var(--text2)' }}><strong>Capture tip:</strong> {c.capture}</div>
         {!locked && <button className="btn quiet" onClick={() => setSkip(true)}>Couldn't check this part</button>}
       </div>
+      <nav className="footer wizard" aria-label="Parts">
+        <a className="btn quiet wiz-back" href={back}><Icon name="back" size={26} /><span>{pointId ? 'Point' : 'Overview'}</span></a>
+        {nextPart ? (
+          <a className="btn primary wiz-next" href={compHref(id, nextPart, pointId)}>
+            <span className="wiz-label"><span>Next part</span><small>{compLabel(nextPart, true)}</small></span><Icon name="next" size={26} />
+          </a>
+        ) : <a className="btn primary wiz-next" href={back}><span className="wiz-label"><span>Done</span><small>Back to the point</small></span><Icon name="check" size={26} /></a>}
+      </nav>
       {adding && <AddFinding insp={insp} compKey={key} onClose={() => setAdding(false)} />}
       {skip && <SkipSheet insp={insp} compKey={key} onClose={() => setSkip(false)} />}
     </div>

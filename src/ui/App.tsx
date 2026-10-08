@@ -8,6 +8,7 @@ import { ComponentChecks } from './components';
 import { Join, NewInspection, NoShop, Pilot, SetPassword, Settings, SignIn, Team, TemplateEditor } from './account';
 import { AdvisorList, AdvisorResults, DemoReport, LiveReport, Rules, VehicleHistory } from './advisor';
 import { go, useHash } from './hooks';
+import { exitFullScreen } from './wizard';
 import { Icon, Wordmark } from './kit';
 import { Dashboard } from './dashboard';
 import { Admin } from './admin';
@@ -93,6 +94,10 @@ export function App() {
       return <div className="phone"><div className="body"><p className="muted" role="status">Opening {s.workspace.shop?.name}…</p></div></div>;
     }
   }
+
+  // During an inspection the app's menu and header get out of the way: the inspection fills the screen.
+  if (parts[0] === 'setup' || parts[0] === 'insp') return <div className="inspect-mode">{route(parts, 'jobs')}<Overlays /></div>;
+  if (document.fullscreenElement) exitFullScreen(); // left the inspection
 
   const role = s.mode === 'demo' ? 'owner' : s.workspace?.role ?? 'technician';
   const canAdvise = role !== 'technician';

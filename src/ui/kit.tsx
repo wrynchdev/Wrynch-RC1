@@ -37,6 +37,10 @@ const P: Record<string, ReactNode> = {
   eye: <><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" /><circle cx="12" cy="12" r="3" /></>,
   recover: <><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" /><path d="M4 4.5v4h4" /><path d="M12 8v4.5l3 1.8" /></>,
   car: <><path d="M5 16h14v-4l-2-5H7l-2 5z" /><circle cx="8" cy="16.5" r="1.8" /><circle cx="16" cy="16.5" r="1.8" /><path d="M5 12h14" /></>,
+  mic: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /></>,
+  jump: <><path d="M4 6h10M4 12h10M4 18h10" /><circle cx="19" cy="6" r="1.4" /><circle cx="19" cy="12" r="1.4" /><circle cx="19" cy="18" r="1.4" /></>,
+  expand: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
+  exit: <><path d="M14 4h5v16h-5" /><path d="M9 8l-4 4 4 4M5 12h10" /></>,
 };
 
 export function Icon({ name, size = 18, label, stroke = 2.2 }: { name: keyof typeof P | string; size?: number; label?: string; stroke?: number }) {

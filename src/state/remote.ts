@@ -173,6 +173,12 @@ export async function fn<T = unknown>(name: string, body?: unknown, method = 'PO
   return parse(r) as Promise<T>;
 }
 
+/** Send a file (e.g. a voice recording) to one of this app's /api functions; the answer is JSON. */
+export async function fnBlob<T = unknown>(path: string, blob: Blob): Promise<T> {
+  const r = await fetch(`/api/${path}`, { method: 'POST', headers: { authorization: `Bearer ${await fresh()}`, 'content-type': blob.type || 'application/octet-stream' }, body: blob });
+  return parse(r) as Promise<T>;
+}
+
 export async function upload(path: string, blob: Blob) {
   const token = await fresh();
   const r = await fetch(`${URL_}/storage/v1/object/inspection-media/${path}`, {
