@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { execFileSync } from 'node:child_process';
 import { completionGate, componentState, summarize } from '../../src/domain/rating';
-import { pointStatus, visibleSections } from '../../src/domain/progress';
+import { inspectionSteps, nextUnfinished, pointStatus, visibleSections } from '../../src/domain/progress';
 import type { Inspection, Vehicle } from '../../src/domain/types';
 
 execFileSync(process.execPath, ['--import', 'tsx', 'scripts/build-ios-domain.mjs'], { stdio: 'ignore' });
@@ -44,6 +44,26 @@ test('overview matches the web app: summary, gate, stages and point progress', (
     assert.equal(p.done, st.done, p.id);
   }
   assert.ok(o.stages.find((s: { id: string }) => s.id === 'under_car').pending > 0, 'AI items to review in the stage with photos');
+});
+
+test('wizard order matches the web app: Back / Next run across stages, and Continue resumes where the web would', () => {
+  const call = jsc();
+  call('configure', null, null, null);
+  const steps = inspectionSteps(vehicle);
+  assert.equal(call('overview', inspection, vehicle).resumePointId, nextUnfinished(inspection, vehicle) ?? steps[0].pointId);
+  const first = call('point', inspection, vehicle, steps[0].pointId);
+  assert.equal(first.step, 1);
+  assert.equal(first.steps, steps.length);
+  assert.equal(first.prevPoint, null);
+  assert.equal(first.nextPoint.id, steps[1].pointId);
+  // The last point of one stage leads into the first point of the next.
+  const k = steps.findIndex((s, i) => i > 0 && s.stageId !== steps[i - 1].stageId);
+  const edge = call('point', inspection, vehicle, steps[k - 1].pointId);
+  assert.equal(edge.nextPoint.id, steps[k].pointId);
+  assert.equal(call('point', inspection, vehicle, steps[k].pointId).prevPoint.id, steps[k - 1].pointId);
+  const last = call('point', inspection, vehicle, steps[steps.length - 1].pointId);
+  assert.equal(last.nextPoint, null);
+  assert.equal(last.step, steps.length);
 });
 
 test('point, part, sort, place and finish give each screen what it shows', () => {

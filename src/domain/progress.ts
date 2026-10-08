@@ -26,3 +26,19 @@ export function pointStatus(insp: Inspection, vehicle: Vehicle, pointId: string)
   const done = comps.length === 0 || (requiredUnrated === 0 && (comps.some((c) => c.required) || anyRated));
   return { keys, state: pointState(insp, keys), done, pendingFindings, pendingPhotos, pendingOk, photos, count: keys.length };
 }
+
+/** The inspection in wizard order: every point on this vehicle, stage by stage. */
+export function inspectionSteps(vehicle: Vehicle) {
+  return visibleSections(vehicle).flatMap((s) => s.points.map((p) => ({ pointId: p.id, pointName: p.name, stageId: s.id, stageName: s.name })));
+}
+
+/** Where to pick up: the first point after `fromPointId` (wrapping round) that isn't done, else the first that isn't. */
+export function nextUnfinished(insp: Inspection, vehicle: Vehicle, fromPointId?: string | null): string | null {
+  const steps = inspectionSteps(vehicle);
+  const start = fromPointId ? steps.findIndex((s) => s.pointId === fromPointId) + 1 : 0;
+  for (let k = 0; k < steps.length; k++) {
+    const s = steps[(start + k) % steps.length];
+    if (!pointStatus(insp, vehicle, s.pointId).done) return s.pointId;
+  }
+  return null;
+}

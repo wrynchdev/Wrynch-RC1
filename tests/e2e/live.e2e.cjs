@@ -182,7 +182,22 @@ const B = `${ROOT}/app/`;
       await p.check('label:has-text("Transfer case") input');
       await p.waitForTimeout(400);
       await p.click('text=Start inspection');
+      // Inspection mode: full screen (no app menu), straight into the first point, wizard Back / Jump / Next.
+      await p.waitForSelector('text=/Point 1 of \\d+/');
+      if (await p.locator('.side').count()) errs.push('the app menu is still shown during the inspection');
+      if (!(await p.locator('button.mic').count())) errs.push('no voice note button on the point');
+      const big = await p.locator('.footer.wizard .wiz-next').boundingBox();
+      if (!big || big.height < 64) errs.push('Next button is not glove-sized: ' + JSON.stringify(big));
+      await shot('L06a-wizard-point');
+      await p.click('.footer.wizard .wiz-next'); await p.waitForSelector('text=/Point 2 of \\d+/').catch(() => errs.push('Next did not move to point 2'));
+      await p.click('.footer.wizard .wiz-back'); await p.waitForSelector('text=/Point 1 of \\d+/').catch(() => errs.push('Back did not return to point 1'));
+      await p.click('.footer.wizard .wiz-jump'); await p.waitForSelector('.jump-list');
+      await shot('L06b-jump');
+      await p.locator('.jump-item', { hasText: 'Brake fluid' }).first().click();
+      await p.waitForSelector('.topbar h1:has-text("Brake fluid")').catch(() => errs.push('jumping to a point did not open it'));
+      await p.goto(p.url().replace(/\/point\/.*$/, ''));
       await p.waitForSelector('text=points done'); await shot('L06-overview');
+      if (!(await p.locator('.resume a:has-text("Continue inspection"), .resume a:has-text("Start with the first point")').count())) errs.push('no Continue button on the overview');
       // One stage open at a time; tapping another stage's name opens it and closes the first.
       if ((await p.locator('.stage.open').count()) !== 1) errs.push('expected exactly one open stage');
       const heads = p.locator('.stage-head');

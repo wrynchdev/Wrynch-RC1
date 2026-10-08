@@ -133,6 +133,8 @@ struct SetupView: View {
                         model.startInspection(id)
                         path.removeLast()
                         path.append(.inspection(id))
+                        // Straight into the wizard at the next point not finished yet.
+                        if let p = model.overview(id)?.resumePointId { path.append(.point(id, p)) }
                     } label: { Text(b.status == "not_started" ? "Start inspection" : "Back to inspection") }
                     .primaryButton()
                     .padding(.horizontal, 16).padding(.bottom, 8)

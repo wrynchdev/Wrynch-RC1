@@ -540,3 +540,35 @@ export async function locateParts(image: { bytes: Uint8Array; type: string }, pa
 export function locatePartsStub(parts: { key: string }[]) {
   return parts.map((p, i) => ({ key: p.key, x: 0.05 + (i % 3) * 0.31, y: 0.1 + Math.floor(i / 3) * 0.3, w: 0.28, h: 0.25 }));
 }
+
+const AUDIO_TYPES = ['audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/x-m4a', 'audio/aac'];
+/**
+ * Turn a technician's spoken note into text (OpenAI speech-to-text). Used when the phone's own speech recognition
+ * isn't available. The text goes into the technician's note field for them to read and edit; it's their words.
+ */
+export async function transcribeAudio(audio: { bytes: Uint8Array; type: string }): Promise<string> {
+  const acct = currentAi();
+  if (!acct || acct.provider !== 'openai') {
+    throw new HttpError(503, 'Voice notes need an OpenAI key on the server or in Settings, because this phone can’t turn speech into text by itself.');
+  }
+  const type = audio.type.split(';')[0].trim().toLowerCase();
+  if (!AUDIO_TYPES.includes(type)) throw new HttpError(415, 'That recording format isn’t supported.');
+  const ext = type.includes('mp4') || type.includes('m4a') || type.includes('aac') ? 'm4a' : type.includes('mpeg') ? 'mp3' : type.split('/')[1];
+  const form = new FormData();
+  form.append('file', new Blob([new Uint8Array(audio.bytes)], { type }), `note.${ext}`);
+  form.append('model', env('OPENAI_TRANSCRIBE_MODEL') ?? 'whisper-1');
+  form.append('prompt', 'An auto repair technician describing vehicle inspection findings: brake pads, rotors, tread depth in 32nds, mm, psi, CV boots, leaks.');
+  let r: Response;
+  try {
+    r = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST', headers: { authorization: `Bearer ${acct.key}` }, body: form, signal: AbortSignal.timeout(45_000),
+    });
+  } catch { throw new HttpError(504, 'Couldn’t reach the speech service. Try again.'); }
+  if (!r.ok) {
+    const t = await r.text();
+    console.error('OpenAI transcription error', r.status, t.slice(0, 300));
+    throw new HttpError(502, explainAiError(r.status, t, 'openai', acct.source));
+  }
+  const out = (await r.json()) as { text?: string };
+  return (out.text ?? '').trim();
+}

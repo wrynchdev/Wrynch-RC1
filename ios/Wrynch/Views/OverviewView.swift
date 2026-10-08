@@ -6,6 +6,7 @@ struct OverviewView: View {
     let id: String
     @Binding var path: [Route]
     @State private var openStage: String??   // nil = not picked yet; .some(nil) = all closed
+    @State private var jumping = false
 
     var body: some View {
         Group {
@@ -14,6 +15,17 @@ struct OverviewView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         if vm.locked && vm.status != "not_started" {
                             Card { Label("Sent to the advisor. Changes are locked.", systemImage: "lock") }
+                        }
+                        if !vm.locked, let resume = vm.resumePointId {
+                            HStack(spacing: 10) {
+                                Button { path.append(.point(id, resume)) } label: {
+                                    Label(vm.pointsDone == 0 ? "Start with the first point" : "Continue inspection", systemImage: "play.fill")
+                                }
+                                .primaryButton()
+                                Button { jumping = true } label: { Image(systemName: "list.bullet").font(.title2.weight(.bold)) }
+                                    .secondaryButton().frame(width: 76)
+                                    .accessibilityLabel("Jump to a point")
+                            }
                         }
                         Card {
                             HStack {
@@ -60,6 +72,10 @@ struct OverviewView: View {
                 }
             }
         }
+        .sheet(isPresented: $jumping) {
+            JumpSheet(id: id, current: nil, onPoint: { path.append(.point(id, $0)) }, onOverview: {}, onFinish: { path.append(.finish(id)) })
+        }
+        .inspectionChrome()
         .task { await model.loadInspection(id) }
         .refreshable { await model.loadInspection(id) }
     }
@@ -110,7 +126,7 @@ struct OverviewView: View {
                                 if p.ai { AiChip(text: badge) } else { Text(badge).font(.caption.weight(.semibold)).foregroundStyle(Theme.na) }
                             } else { StateChip(state: p.state) }
                         }
-                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .padding(.horizontal, 14).frame(minHeight: 64)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)

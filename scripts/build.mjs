@@ -38,6 +38,13 @@ export function writeIndex() {
   cpSync('site', 'dist', { recursive: true });
   cpSync('index.html', 'dist/app/index.html');
   writeFileSync('dist/app/robots.txt', 'User-agent: *\nDisallow: /\n');
+  // Installable from the browser ("Add to Home Screen"): opens full screen, like an app.
+  cpSync('brand/wrynch-icon-512.png', 'dist/app/icon-512.png');
+  writeFileSync('dist/app/manifest.webmanifest', JSON.stringify({
+    name: 'Wrynch', short_name: 'Wrynch', start_url: '/', scope: '/', display: 'standalone', orientation: 'portrait',
+    background_color: '#0A1020', theme_color: '#0A1020',
+    icons: [{ src: '/app/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }],
+  }, null, 2));
 }
 
 // Domains: the marketing site and the app (each shop gets <number>.<app domain>).
@@ -47,7 +54,7 @@ const esc = (d) => d.replace(/[.]/g, '\\.');
 export const APP_HOST = `(?:[0-9]+\\.|www\\.)?${esc(APP_DOMAIN)}`;
 export const SITE_HOST = `(?:www\\.)?${esc(SITE_DOMAIN)}`;
 
-const ROUTE_NAMES = ['app-config', 'status', 'pilot', 'ai-note', 'template-read', 'template-map', 'ai-sort', 'ai-wording', 'vin', 'report', 'send-report', 'tekmetric-webhook', 'tekmetric-import', 'tekmetric-export', 'ai-key', 'admin-pilot-approve', 'training', 'training-suggest', 'training-export'];
+const ROUTE_NAMES = ['app-config', 'transcribe', 'status', 'pilot', 'ai-note', 'template-read', 'template-map', 'ai-sort', 'ai-wording', 'vin', 'report', 'send-report', 'tekmetric-webhook', 'tekmetric-import', 'tekmetric-export', 'ai-key', 'admin-pilot-approve', 'training', 'training-suggest', 'training-export'];
 
 async function buildFunctions() {
   const out = '.vercel/output';

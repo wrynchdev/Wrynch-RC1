@@ -16,7 +16,7 @@ import { analyzePhotos, applyAnalysis, suggestWording, wordingKeepsFacts } from 
 import type {
   CompKey, EstimateLine, Inspection, NotInspectedReason, Rating, Severity, Template, Vehicle, VehicleConfig,
 } from '../domain/types';
-import { ApiError, auth, fn, getSession, hostInfo, LIVE, onSession, rpc, rpcAnon, shared, shrinkPhoto, signPhotos, upload, type Session } from './remote';
+import { ApiError, auth, fn, fnBlob, getSession, hostInfo, LIVE, onSession, rpc, rpcAnon, shared, shrinkPhoto, signPhotos, upload, type Session } from './remote';
 import { dashFromInspections, type DashData } from '../domain/dashboard';
 export type { DeclinedItem, Followup, FollowupStatus };
 import { draftNote, pointFacts, type NoteStyle } from '../domain/noteDraft';
@@ -824,6 +824,13 @@ export const actions = {
     const loc = (x: Inspection) => { for (const it of items) x.results.push({ compKey: it.key, checkKey: it.check, value: null, rating: 'ok', at: now() }); };
     if (state.mode === 'demo') return edit(inspId, loc);
     void liveEdit(inspId, loc, () => rpc('mark_ok', { p_inspection: inspId, p_items: items }));
+  },
+
+  /** A spoken note as text (server speech-to-text, for phones without their own). */
+  async transcribe(inspId: string, audio: Blob): Promise<string> {
+    if (state.mode === 'demo') throw new Error('Voice notes on this phone need the connected app.');
+    const r = await fnBlob<{ text: string }>(`transcribe?inspectionId=${encodeURIComponent(inspId)}`, audio);
+    return r.text ?? '';
   },
 
   // ---- notes & AI wording

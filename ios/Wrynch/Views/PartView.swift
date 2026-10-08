@@ -42,7 +42,7 @@ struct PartView: View {
                         HStack {
                             Text("Findings").font(.headline)
                             Spacer()
-                            if !vm.locked { Button("+ Add finding") { adding = true } }
+                            if !vm.locked { Button { adding = true } label: { Label("Add finding", systemImage: "plus") }.secondaryButton() }
                         }
                         if vm.findings.isEmpty { Text("None recorded.").font(.footnote).foregroundStyle(Theme.muted) }
                         ForEach(vm.findings) { f in
@@ -102,23 +102,24 @@ private struct CheckCard: View {
             }
             if check.measured {
                 HStack {
-                    TextField("Value", text: $value).keyboardType(.decimalPad).font(.body.monospaced()).focused($focused)
-                        .frame(maxWidth: 140).padding(10).background(Theme.card2, in: RoundedRectangle(cornerRadius: 10))
+                    TextField("Value", text: $value).keyboardType(.decimalPad).font(.title3.monospaced()).focused($focused)
+                        .frame(maxWidth: 160, minHeight: 44).padding(10).background(Theme.card2, in: RoundedRectangle(cornerRadius: 10))
                         .disabled(locked)
                     Text(check.unit ?? "").foregroundStyle(Theme.muted)
                     Spacer()
-                    Button("Save") { save() }.buttonStyle(.borderedProminent).disabled(locked || Double(value) == nil)
+                    Button { save() } label: { Text("Save").font(.headline).frame(minWidth: 90, minHeight: 56) }
+                        .buttonStyle(.borderedProminent).disabled(locked || Double(value) == nil)
                 }
                 .onAppear { if value.isEmpty, let v = check.result?.value { value = format(v) } }
             } else {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     ForEach(check.ratings, id: \.self) { r in
                         let on = check.result?.rating == r
                         Button {
                             if on { model.clearCheck(id, key: part, check: check.key) }
                             else { model.setCheck(id, key: part, check: check.key, value: nil, rating: r) }
                         } label: {
-                            Text(Labels.state(r)).font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 40)
+                            Text(Labels.state(r)).font(.headline).frame(maxWidth: .infinity, minHeight: 64)
                                 .foregroundStyle(on ? Color.black : Theme.color(r))
                                 .background(on ? Theme.color(r) : Theme.color(r).opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
                         }

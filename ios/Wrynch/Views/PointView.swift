@@ -12,25 +12,31 @@ struct PointView: View {
     @State private var drafting = false
     @State private var picks: [PhotosPickerItem] = []
     @State private var camera = false
+    @State private var jumping = false
     @FocusState private var noteFocused: Bool
 
     var body: some View {
         Group {
             if let vm = model.point(id, pointId) {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 14) { content(vm) }.padding(16).padding(.bottom, 80)
+                    VStack(alignment: .leading, spacing: 14) { content(vm) }.padding(16).padding(.bottom, 24)
                 }
-                .safeAreaInset(edge: .bottom) {
-                    Group {
-                        if let next = vm.nextPoint {
-                            Button { saveNote(); path.removeLast(); path.append(.point(id, next.id)) } label: { Label("Next: \(next.name)", systemImage: "chevron.right") }
-                        } else {
-                            Button { saveNote(); path.removeLast() } label: { Text("Back to overview") }
-                        }
-                    }
-                    .primaryButton().padding(.horizontal, 16).padding(.bottom, 8)
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    InspectionHeader(title: vm.name, subtitle: "Point \(vm.step) of \(vm.steps) · \(vm.stageName)", step: vm.step, steps: vm.steps,
+                                     busy: model.saving.contains(id)) { saveNote(); path.removeLast() }
                 }
-                .navigationTitle(vm.name)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    WizardFooter(step: vm.step, steps: vm.steps, prevName: vm.prevPoint?.name, nextName: vm.nextPoint?.name,
+                                 onBack: { if let prev = vm.prevPoint { goTo(prev.id) } else { saveNote(); path.removeLast() } },
+                                 onJump: { saveNote(); jumping = true },
+                                 onNext: { if let next = vm.nextPoint { goTo(next.id) } else { saveNote(); path.removeLast(); path.append(.finish(id)) } })
+                }
+                .sheet(isPresented: $jumping) {
+                    JumpSheet(id: id, current: pointId,
+                              onPoint: { p in if p != pointId { goTo(p) } },
+                              onOverview: { path.removeLast() },
+                              onFinish: { path.removeLast(); path.append(.finish(id)) })
+                }
                 .fullScreenCover(isPresented: $camera) {
                     CameraScreen(title: vm.name, corners: false) { data, _ in
                         Task { await model.addPhotos(id, stageId: vm.stageId, images: [data], pointId: pointId, quiet: true) }
@@ -50,14 +56,30 @@ struct PointView: View {
             }
         }
         .background(Theme.paper)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar { if model.saving.contains(id) { ToolbarItem(placement: .topBarTrailing) { ProgressView() } } }
+        .toolbar(.hidden, for: .navigationBar)
+        .inspectionChrome()
         .onDisappear { saveNote() }
         .task { if model.bundle(id) == nil { await model.loadInspection(id) } }
     }
 
     @ViewBuilder private func content(_ vm: PointVM) -> some View {
-        Text(vm.stageName).font(.footnote).foregroundStyle(Theme.muted)
+        if vm.stagePhotosFirst && !vm.locked {
+            Button { saveNote(); path.append(.capture(id, vm.stageId)) } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "camera").font(.title2)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Shoot \(vm.stageName.lowercased()) first?").font(.headline)
+                        Text("One burst of photos and the AI sorts them onto these points.").font(.footnote).foregroundStyle(Theme.muted).multilineTextAlignment(.leading)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right").foregroundStyle(Theme.muted)
+                }
+                .padding(14).frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+                .background(Theme.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.blue.opacity(0.6)))
+            }
+            .buttonStyle(.plain)
+        }
         if vm.partCount == 0 {
             Card { Text(vm.note ?? "This point has no parts on this vehicle.").font(.subheadline) }
         } else {
@@ -82,7 +104,8 @@ struct PointView: View {
                             if let badge = p.badge { AiChip(text: badge) } else { StateChip(state: p.state) }
                             Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.muted)
                         }
-                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .padding(.horizontal, 14).frame(minHeight: 68)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     Divider().background(Theme.line).padding(.leading, 14)
@@ -117,9 +140,12 @@ struct PointView: View {
                 Text("Photos · \(vm.photos.count)").font(.headline)
                 Spacer()
                 if !vm.locked && vm.partCount > 0 {
-                    Button { camera = true } label: { Image(systemName: "camera") }.accessibilityLabel("Take photos for this point")
-                    PhotosPicker(selection: $picks, maxSelectionCount: 20, matching: .images) { Image(systemName: "photo.on.rectangle") }
-                        .accessibilityLabel("Add photos from the library")
+                    Button { camera = true } label: { Image(systemName: "camera").font(.title2).frame(width: 60, height: 56).background(Theme.card2, in: RoundedRectangle(cornerRadius: 12)) }
+                        .buttonStyle(.plain).accessibilityLabel("Take photos for this point")
+                    PhotosPicker(selection: $picks, maxSelectionCount: 20, matching: .images) {
+                        Image(systemName: "photo.on.rectangle").font(.title2).frame(width: 60, height: 56).background(Theme.card2, in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain).accessibilityLabel("Add photos from the library")
                 }
             }
             if vm.photos.isEmpty { Text("Photos added here are matched only to this point's parts.").font(.footnote).foregroundStyle(Theme.muted) }
@@ -143,9 +169,11 @@ struct PointView: View {
             Text("Your note").font(.headline)
             Text("The customer sees this note as written, unless you approve a reworded version.").font(.caption).foregroundStyle(Theme.muted)
             TextField("Note", text: Binding(get: { note ?? vm.noteText }, set: { note = $0 }), axis: .vertical)
-                .lineLimit(2...6).focused($noteFocused).disabled(vm.locked)
-                .padding(10).background(Theme.card2, in: RoundedRectangle(cornerRadius: 10))
+                .lineLimit(3...8).focused($noteFocused).disabled(vm.locked)
+                .font(.body).frame(minHeight: 60, alignment: .topLeading)
+                .padding(12).background(Theme.card2, in: RoundedRectangle(cornerRadius: 10))
                 .onChange(of: noteFocused) { _, focused in if !focused { saveNote() } }
+            if !vm.locked { MicButton { addSpoken($0) } }
             if !vm.locked, draft == nil {
                 Button {
                     Task {
@@ -182,6 +210,20 @@ struct PointView: View {
                 .simultaneousGesture(TapGesture().onEnded { saveNote() })
             }
         }
+    }
+
+    /// Next, Back or a jump: save the note and swap this point for the other one.
+    private func goTo(_ other: String) {
+        saveNote()
+        path[path.count - 1] = .point(id, other)
+    }
+
+    /// Spoken words go on the end of the note and are saved; the technician can still edit them.
+    private func addSpoken(_ text: String) {
+        let current = (note ?? model.point(id, pointId)?.noteText ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let joined = current.isEmpty ? text : current + (current.hasSuffix(".") || current.hasSuffix("!") || current.hasSuffix("?") ? " " : ". ") + text
+        model.setNote(id, pointId: pointId, text: joined)
+        note = nil
     }
 
     private func saveNote() {

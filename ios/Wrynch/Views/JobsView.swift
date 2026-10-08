@@ -51,6 +51,8 @@ struct JobsView: View {
             }
         }
         .refreshable { await model.loadWorkspace() }
+        // Out of the inspection, the screen can sleep again.
+        .onAppear { UIApplication.shared.isIdleTimerDisabled = false }
     }
 
     private func open(_ j: JobHeader) {
