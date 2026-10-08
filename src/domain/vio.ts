@@ -6,7 +6,7 @@
  * through external mappings; VIO owns the vehicle's changing state and history.
  */
 
-export const VIO_VERSION = '1.0.0';
+export const VIO_VERSION = '1.0.1';
 
 export type VioNodeType =
   | 'vehicle' | 'vehicle_configuration' | 'system' | 'component' | 'part'
