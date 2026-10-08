@@ -125,8 +125,7 @@ export function assessFitment(
     return { status: 'unknown', score: 0.25, confidence: 0, reasons: ['No fitment evidence is available.'], requirements: [], effects: [] };
   }
 
-  const applicable = rules.filter((r) => r.status !== 'unknown');
-  const incompatible = applicable.filter((r) => r.status === 'incompatible');
+  const incompatible = rules.filter((r) => r.status === 'incompatible');
   if (incompatible.length) {
     const confidence = Math.max(...incompatible.map((r) => r.confidence ?? 0));
     return {
@@ -134,26 +133,41 @@ export function assessFitment(
       score: 0,
       confidence,
       reasons: ['At least one applicable source explicitly marks the configuration incompatible.'],
-      requirements: incompatible.map((r) => r.exclusions),
-      effects: incompatible.map((r) => r.effects),
+      requirements: incompatible.map((r) => r.requirements).filter((x) => Object.keys(x).length > 0),
+      effects: incompatible.map((r) => r.effects).filter((x) => Object.keys(x).length > 0),
     };
   }
 
-  const best = [...applicable].sort((a, b) => STATUS_SCORE[b.status] - STATUS_SCORE[a.status])[0];
-  const confidence = Math.max(...applicable.map((r) => r.confidence ?? 0));
+  const known = rules.filter((r) => r.status !== 'unknown');
+  if (!known.length) {
+    return {
+      status: 'unknown',
+      score: STATUS_SCORE.unknown,
+      confidence: Math.max(...rules.map((r) => r.confidence ?? 0)),
+      reasons: ['Available fitment evidence is inconclusive.'],
+      requirements: [],
+      effects: [],
+    };
+  }
+
+  // Status expresses the strongest supported outcome; confidence belongs to
+  // that selected evidence, not to an unrelated stronger-confidence rule.
+  const best = [...known].sort((a, b) =>
+    STATUS_SCORE[b.status] - STATUS_SCORE[a.status] ||
+    (b.confidence ?? 0) - (a.confidence ?? 0)
+  )[0];
   const reasons: string[] = [];
   if (best.status === 'direct') reasons.push('A direct fitment relationship exists.');
   if (best.status === 'conditional') reasons.push('Fitment is conditional on vehicle configuration.');
   if (best.status === 'modification_required') reasons.push('A supporting modification is required.');
-  if (best.status === 'unknown') reasons.push('Available fitment evidence is inconclusive.');
 
   return {
     status: best.status,
     score: STATUS_SCORE[best.status],
-    confidence,
+    confidence: best.confidence ?? 0,
     reasons,
-    requirements: applicable.flatMap((r) => Object.keys(r.requirements).length ? [r.requirements] : []),
-    effects: applicable.flatMap((r) => Object.keys(r.effects).length ? [r.effects] : []),
+    requirements: known.flatMap((r) => Object.keys(r.requirements).length ? [r.requirements] : []),
+    effects: known.flatMap((r) => Object.keys(r.effects).length ? [r.effects] : []),
   };
 }
 
