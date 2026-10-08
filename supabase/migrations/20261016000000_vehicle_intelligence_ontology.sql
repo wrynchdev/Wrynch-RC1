@@ -27,7 +27,7 @@ on conflict (key) do nothing;
 create table public.vio_node (
   id uuid primary key default gen_random_uuid(),
   shop_id uuid references public.shop(id) on delete cascade,
-  node_type text not null,
+  node_type text not null check (node_type in ('vehicle','vehicle_configuration','system','component','part','fitment_rule','modification','maintenance_service','maintenance_record','dtc','symptom','diagnostic_test','repair','inspection','measurement','trip','observation','source','evidence')),
   canonical_key text not null,
   label text not null,
   external_ref jsonb not null default '{}'::jsonb,
@@ -47,7 +47,7 @@ create table public.vio_relationship (
   id uuid primary key default gen_random_uuid(),
   shop_id uuid references public.shop(id) on delete cascade,
   source_node_id uuid not null references public.vio_node(id) on delete cascade,
-  predicate text not null,
+  predicate text not null check (predicate in ('HAS_COMPONENT','BELONGS_TO_SYSTEM','FITS','COMPATIBLE_WITH','INCOMPATIBLE_WITH','REQUIRES','RECOMMENDS','REPLACES','SUPERSEDES','REPLACED_BY','DEPENDS_ON','CAUSES','SYMPTOM_OF','DIAGNOSED_BY','REPAIRED_BY','MAINTAINED_BY','MODIFIED_BY','INSTALLED_ON','REMOVED_FROM','MEASURED_BY','CONNECTED_TO','CONTROLLED_BY','POWERED_BY','USES_FLUID','USES_PART','HAS_SPECIFICATION','HAS_MEASUREMENT','HAS_HISTORY','HAS_FINDING','HAS_SYMPTOM','HAS_DTC','AFFECTS_FITMENT','OBSERVED_ON')),
   target_node_id uuid not null references public.vio_node(id) on delete cascade,
   confidence numeric check (confidence between 0 and 1),
   source_id uuid references public.vio_source(id),
@@ -149,7 +149,8 @@ create table public.vio_fitment_rule (
   valid_from timestamptz,
   valid_to timestamptz,
   created_at timestamptz not null default now(),
-  check (vehicle_node_id is not null or part_id is not null)
+  check (vehicle_node_id is not null or part_id is not null),
+  check (valid_to is null or valid_from is null or valid_to > valid_from)
 );
 create index vio_fitment_vehicle on public.vio_fitment_rule(vehicle_node_id,status);
 create index vio_fitment_part on public.vio_fitment_rule(part_id,status);
@@ -264,7 +265,7 @@ create table public.vio_usage_trip (
   idle_minutes numeric check (idle_minutes is null or idle_minutes >= 0),
   operating_conditions jsonb not null default '{}'::jsonb,
   source_id uuid references public.vio_source(id),
-  evidence jsonb not null default '{}'
+  evidence jsonb not null default '{}'::jsonb
 );
 create index vio_usage_trip_vehicle on public.vio_usage_trip(vehicle_id,started_at desc);
 
@@ -281,7 +282,7 @@ create table public.vio_usage_observation (
   latitude numeric,
   longitude numeric,
   source_id uuid references public.vio_source(id),
-  evidence jsonb not null default '{}'
+  evidence jsonb not null default '{}'::jsonb
 );
 create index vio_usage_observation_vehicle on public.vio_usage_observation(vehicle_id,signal_key,observed_at desc);
 
@@ -300,6 +301,90 @@ create table public.vio_assertion_evidence (
   metadata jsonb not null default '{}'
 );
 create index vio_evidence_entity on public.vio_assertion_evidence(entity_type,entity_id);
+
+-- ------------------------------------------------------------------ cross-row integrity
+-- These checks prevent a graph/digital-twin record from accidentally joining
+-- objects belonging to different vehicles or shops. RLS protects reads; these
+-- triggers protect semantic integrity for service-role writes.
+create or replace function public.vio_check_shop_consistency() returns trigger
+language plpgsql security definer set search_path = public as $
+declare node_shop uuid; other_shop uuid; vehicle_shop uuid; config_vehicle uuid; part_shop uuid;
+begin
+  if tg_table_name = 'vio_relationship' then
+    select shop_id into node_shop from vio_node where id = new.source_node_id;
+    if node_shop is not null and new.shop_id is distinct from node_shop then
+      raise exception 'VIO relationship source node belongs to another shop';
+    end if;
+    select shop_id into other_shop from vio_node where id = new.target_node_id;
+    if other_shop is not null and new.shop_id is distinct from other_shop then
+      raise exception 'VIO relationship target node belongs to another shop';
+    end if;
+  elsif tg_table_name = 'vio_vehicle_node' then
+    select v.shop_id into vehicle_shop from vehicle v where v.id = new.vehicle_id;
+    select n.shop_id into node_shop from vio_node n where n.id = new.node_id;
+    if node_shop is not null and node_shop is distinct from vehicle_shop then
+      raise exception 'VIO vehicle node belongs to another shop';
+    end if;
+  elsif tg_table_name = 'vio_configuration_state' then
+    select v.shop_id into vehicle_shop from vehicle v where v.id = new.vehicle_id;
+    if vehicle_shop is distinct from new.shop_id then raise exception 'VIO configuration shop does not match vehicle'; end if;
+  elsif tg_table_name = 'vio_installed_part' then
+    select v.shop_id into vehicle_shop from vehicle v where v.id = new.vehicle_id;
+    select c.vehicle_id into config_vehicle from vio_configuration_state c where c.id = new.configuration_state_id;
+    select p.shop_id into part_shop from vio_part p where p.id = new.part_id;
+    if vehicle_shop is distinct from new.shop_id then raise exception 'VIO installed-part shop does not match vehicle'; end if;
+    if config_vehicle is distinct from new.vehicle_id then raise exception 'VIO installed part configuration belongs to another vehicle'; end if;
+    if part_shop is not null and part_shop is distinct from new.shop_id then raise exception 'VIO installed part references another shop part'; end if;
+    if new.component_instance_id is not null and not exists (select 1 from component_instance ci where ci.id=new.component_instance_id and ci.vehicle_id=new.vehicle_id) then
+      raise exception 'VIO installed part component belongs to another vehicle';
+    end if;
+  elsif tg_table_name = 'vio_fitment_rule' then
+    if new.shop_id is not null and new.vehicle_node_id is not null then
+      select n.shop_id into node_shop from vio_node n where n.id=new.vehicle_node_id;
+      if node_shop is not null and node_shop is distinct from new.shop_id then raise exception 'VIO fitment vehicle node belongs to another shop'; end if;
+    end if;
+    if new.shop_id is not null and new.part_id is not null then
+      select p.shop_id into part_shop from vio_part p where p.id=new.part_id;
+      if part_shop is not null and part_shop is distinct from new.shop_id then raise exception 'VIO fitment part belongs to another shop'; end if;
+    end if;
+  elsif tg_table_name = 'vio_modification' then
+    select v.shop_id into vehicle_shop from vehicle v where v.id=new.vehicle_id;
+    if vehicle_shop is distinct from new.shop_id then raise exception 'VIO modification shop does not match vehicle'; end if;
+    if new.configuration_state_id is not null and not exists (select 1 from vio_configuration_state c where c.id=new.configuration_state_id and c.vehicle_id=new.vehicle_id) then
+      raise exception 'VIO modification configuration belongs to another vehicle';
+    end if;
+  elsif tg_table_name = 'vio_maintenance_record' then
+    select v.shop_id into vehicle_shop from vehicle v where v.id=new.vehicle_id;
+    if vehicle_shop is distinct from new.shop_id then raise exception 'VIO maintenance shop does not match vehicle'; end if;
+    if new.component_instance_id is not null and not exists (select 1 from component_instance ci where ci.id=new.component_instance_id and ci.vehicle_id=new.vehicle_id) then
+      raise exception 'VIO maintenance component belongs to another vehicle';
+    end if;
+  elsif tg_table_name = 'vio_usage_trip' then
+    select v.shop_id into vehicle_shop from vehicle v where v.id=new.vehicle_id;
+    if vehicle_shop is distinct from new.shop_id then raise exception 'VIO trip shop does not match vehicle'; end if;
+    if new.ended_at is not null and new.ended_at < new.started_at then raise exception 'VIO trip cannot end before it starts'; end if;
+  elsif tg_table_name = 'vio_usage_observation' then
+    select v.shop_id into vehicle_shop from vehicle v where v.id=new.vehicle_id;
+    if vehicle_shop is distinct from new.shop_id then raise exception 'VIO observation shop does not match vehicle'; end if;
+    if new.numeric_value is null and new.text_value is null then raise exception 'VIO observation requires a numeric or text value'; end if;
+  end if;
+  return new;
+end $;
+
+create trigger vio_relationship_integrity before insert or update on public.vio_relationship for each row execute function public.vio_check_shop_consistency();
+create trigger vio_vehicle_node_integrity before insert or update on public.vio_vehicle_node for each row execute function public.vio_check_shop_consistency();
+create trigger vio_configuration_integrity before insert or update on public.vio_configuration_state for each row execute function public.vio_check_shop_consistency();
+create trigger vio_installed_part_integrity before insert or update on public.vio_installed_part for each row execute function public.vio_check_shop_consistency();
+create trigger vio_fitment_integrity before insert or update on public.vio_fitment_rule for each row execute function public.vio_check_shop_consistency();
+create trigger vio_modification_integrity before insert or update on public.vio_modification for each row execute function public.vio_check_shop_consistency();
+create trigger vio_maintenance_integrity before insert or update on public.vio_maintenance_record for each row execute function public.vio_check_shop_consistency();
+create trigger vio_trip_integrity before insert or update on public.vio_usage_trip for each row execute function public.vio_check_shop_consistency();
+create trigger vio_observation_integrity before insert or update on public.vio_usage_observation for each row execute function public.vio_check_shop_consistency();
+
+-- Only one open factory/current state may exist for a vehicle. Historical
+-- states are allowed to coexist but must have valid time bounds.
+create unique index vio_one_factory_state on public.vio_configuration_state(vehicle_id) where state_kind='factory';
+create unique index vio_one_current_state on public.vio_configuration_state(vehicle_id) where state_kind='current' and effective_to is null;
 
 -- RLS: global ontology/catalog rows are readable; shop-scoped rows are readable by shop members.
 -- Writes are intentionally reserved for service_role/server functions until VIO APIs are added.
