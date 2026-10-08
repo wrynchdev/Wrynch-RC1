@@ -376,7 +376,8 @@ create policy vio_usage_observation_read on public.vio_usage_observation for sel
   exists (select 1 from public.shop_member m where m.shop_id=vio_usage_observation.shop_id and m.user_id=auth.uid())
 );
 create policy vio_evidence_read on public.vio_assertion_evidence for select using (
-  source_id is not null or exists (
+  (relationship_id is null and entity_id is null)
+  or exists (
     select 1 from public.vio_relationship r join public.shop_member m on m.shop_id=r.shop_id
     where r.id=vio_assertion_evidence.relationship_id and m.user_id=auth.uid()
   )
