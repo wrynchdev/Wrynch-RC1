@@ -46,7 +46,11 @@ final class AppModel {
     // MARK: messages
 
     func show(_ text: String, error: Bool = false) { message = (text, error) }
-    func show(_ error: Error) { message = (error.localizedDescription, true) }
+    func show(_ error: Error) {
+        // A load cancelled because the technician moved on (a screen closed mid-request) isn't a problem to report.
+        if error is CancellationError || (error as? URLError)?.code == .cancelled { return }
+        message = (error.localizedDescription, true)
+    }
 
     // MARK: session
 

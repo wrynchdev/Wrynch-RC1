@@ -48,7 +48,14 @@ final class FlowUITests: XCTestCase {
         let next = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Next: '")).firstMatch
         XCTAssertTrue(next.exists, "Next button — " + screen(app))
         XCTAssertGreaterThanOrEqual(next.frame.height, 64, "Next is big enough for gloves")
-        XCTAssertTrue(app.buttons["Speak a note"].exists, "voice note button — " + screen(app))
+        // The note box (with the voice-note button) opens only from the add-note icon.
+        XCTAssertFalse(app.buttons["Speak a note"].exists, "note box shown before tapping add note")
+        let addNote = app.buttons["Add note"]
+        XCTAssertTrue(addNote.waitForExistence(timeout: 10), "add note icon — " + screen(app))
+        for _ in 0..<4 where addNote.frame.maxY > next.frame.minY - 8 { app.swipeUp(); sleep(1) }
+        addNote.tap()
+        XCTAssertTrue(app.buttons["Speak a note"].waitForExistence(timeout: 10), "voice note button — " + screen(app))
+        app.buttons["Done"].tap()
 
         // The overview shows progress; Continue goes back to the first unfinished point.
         app.buttons["Inspection overview"].tap()
