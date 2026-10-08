@@ -1,7 +1,7 @@
 import XCTest
 
 /// A technician's flow in the real app against the local test server (scripts/ios-ui-test.sh seeds it):
-/// sign in, open today's inspection, set up and start it, open a point, mark "nothing found", and see it counted.
+/// sign in, open today's inspection, set up and start it, move through points with Back / Next / Jump, mark "nothing found", and see it counted.
 final class FlowUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
 
@@ -33,19 +33,38 @@ final class FlowUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["RO 77001"].exists)
         vehicle.tap()
 
-        // Vehicle setup, then start.
+        // Vehicle setup, then start: the inspection opens full screen on its first unfinished point.
         let start = app.buttons["Start inspection"]
         XCTAssertTrue(start.waitForExistence(timeout: 20), "vehicle setup — " + screen(app))
         XCTAssertTrue(app.staticTexts["JTEBU5JR4B5012345"].exists)
         start.tap()
 
-        // Overview: the first unfinished stage is open; open its first point.
+        let pointOne = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Point 1 of'")).firstMatch
+        let pointTwo = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Point 2 of'")).firstMatch
+        XCTAssertTrue(pointOne.waitForExistence(timeout: 20), "wizard on the first point — " + screen(app))
+        XCTAssertTrue(app.staticTexts["Walkaround, VIN, and tire placard photos"].exists)
+
+        // Glove-sized controls and the voice-note button.
+        let next = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Next: '")).firstMatch
+        XCTAssertTrue(next.exists, "Next button — " + screen(app))
+        XCTAssertGreaterThanOrEqual(next.frame.height, 64, "Next is big enough for gloves")
+        XCTAssertTrue(app.buttons["Speak a note"].exists, "voice note button — " + screen(app))
+
+        // The overview shows progress; Continue goes back to the first unfinished point.
+        app.buttons["Inspection overview"].tap()
         let progress = app.staticTexts.matching(NSPredicate(format: "label ENDSWITH 'points done'")).firstMatch
         XCTAssertTrue(progress.waitForExistence(timeout: 20), "overview with progress — " + screen(app))
         let before = Int(progress.label.split(separator: " ").first ?? "") ?? -1
-        let point = app.staticTexts["Walkaround, VIN, and tire placard photos"]
-        XCTAssertTrue(point.waitForExistence(timeout: 10), "road test stage open — " + screen(app))
-        point.tap()
+        let resume = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Continue inspection' OR label CONTAINS 'Start with the first point'")).firstMatch
+        XCTAssertTrue(resume.exists, "continue button — " + screen(app))
+        resume.tap()
+        XCTAssertTrue(pointOne.waitForExistence(timeout: 20), "continue resumes at point 1 — " + screen(app))
+
+        // Next and Back move one point at a time.
+        next.tap()
+        XCTAssertTrue(pointTwo.waitForExistence(timeout: 20), "Next goes to point 2 — " + screen(app))
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Back'")).firstMatch.tap()
+        XCTAssertTrue(pointOne.waitForExistence(timeout: 20), "Back returns to point 1 — " + screen(app))
 
         // "Nothing found" rates the point's untouched parts OK.
         let nothing = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Nothing found'")).firstMatch
@@ -55,8 +74,18 @@ final class FlowUITests: XCTestCase {
         XCTAssertTrue(ok.waitForExistence(timeout: 20), "the point shows OK after saving — " + screen(app))
         XCTAssertFalse(nothing.exists, "nothing left unrated on this point")
 
+        // Jump straight to another point, then to the overview.
+        app.buttons["Jump to a point"].tap()
+        let cranking = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Engine cranking'")).firstMatch
+        XCTAssertTrue(cranking.waitForExistence(timeout: 10), "jump list — " + screen(app))
+        cranking.tap()
+        XCTAssertTrue(pointTwo.waitForExistence(timeout: 20), "jumped to Engine cranking — " + screen(app))
+        app.buttons["Jump to a point"].tap()
+        let overview = app.buttons["Overview"]
+        XCTAssertTrue(overview.waitForExistence(timeout: 10), "jump list overview button — " + screen(app))
+        overview.tap()
+
         // Back on the overview, the point counts as done and Finish is still locked.
-        app.navigationBars.buttons.element(boundBy: 0).tap()
         let done = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "\(before + 1) of ")).firstMatch
         XCTAssertTrue(done.waitForExistence(timeout: 20), "one more point done — " + screen(app))
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS 'items left'")).firstMatch.exists, "finish locked until everything is rated")

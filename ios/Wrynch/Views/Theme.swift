@@ -132,12 +132,13 @@ struct PhotoThumb: View {
 extension View {
     /// Primary, full-width button look.
     func primaryButton(_ enabled: Bool = true) -> some View {
-        self.font(.headline).frame(maxWidth: .infinity, minHeight: 50)
+        // Sized for gloved or greasy hands.
+        self.font(.headline).frame(maxWidth: .infinity, minHeight: 60)
             .foregroundStyle(.white)
             .background(enabled ? Theme.blue : Theme.card2, in: RoundedRectangle(cornerRadius: 12))
     }
     func secondaryButton() -> some View {
-        self.font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 44)
+        self.font(.headline).frame(maxWidth: .infinity, minHeight: 56)
             .foregroundStyle(Theme.ink)
             .background(Theme.card2, in: RoundedRectangle(cornerRadius: 12))
     }

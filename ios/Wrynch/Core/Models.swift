@@ -26,6 +26,7 @@ struct OverviewVM: Decodable {
     let summary: Summary
     let aiItems: Int, gateCount: Int, pointsDone: Int, pointsTotal: Int, photos: Int
     let firstOpenStage: String?
+    let resumePointId: String?
     let stages: [Stage]
     let dtcs: [String]
 }
@@ -59,6 +60,9 @@ struct PointVM: Decodable {
     let noteText: String
     let noteStatus: String?
     let nextPoint: Next?
+    let prevPoint: Next?
+    let step: Int, steps: Int
+    let stagePhotosFirst: Bool
     let locked: Bool
 }
 

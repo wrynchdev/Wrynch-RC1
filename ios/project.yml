@@ -38,6 +38,8 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         NSCameraUsageDescription: Wrynch uses the camera to photograph the parts you inspect.
+        NSMicrophoneUsageDescription: Wrynch listens when you tap Speak a note, so you can say your inspection notes instead of typing.
+        NSSpeechRecognitionUsageDescription: Wrynch turns what you say into text for your inspection notes. You can edit it before anything is sent.
         ITSAppUsesNonExemptEncryption: false
         # Plain http only to this device's own network (the local test server); wrynch.app itself is https.
         NSAppTransportSecurity:

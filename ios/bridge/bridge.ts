@@ -7,7 +7,7 @@ import {
   sections, setDisabledChecks, setTemplate, setThresholds, vehicleComponents, DEFAULT_TEMPLATE, type Threshold,
 } from '../../src/domain/ontology';
 import { completionGate, componentState, findingRating, isPendingAi, mediaPending, photosOf, summarize } from '../../src/domain/rating';
-import { pointStatus, visibleSections } from '../../src/domain/progress';
+import { inspectionSteps, nextUnfinished, pointStatus, visibleSections } from '../../src/domain/progress';
 import { autoNotePoints } from '../../src/domain/noteDraft';
 import { BLANK_CONFIG, quickCheck } from '../../src/domain/seed';
 import { SEVERITIES, SIDE_UNSURE_CONFIDENCE } from '../../src/domain/types';
@@ -97,6 +97,8 @@ export function overview(insp: Inspection, vehicle: Vehicle) {
     summary: sum, aiItems: gate.filter((g) => g.kind !== 'required').length, gateCount: gate.length,
     pointsDone, pointsTotal: all.length, photos: insp.media.filter((m) => !m.excluded).length,
     firstOpenStage: visible.find((s) => !s.points.every((p) => pointStatus(insp, vehicle, p.id).done))?.id ?? visible[0]?.id ?? null,
+    // Where Continue inspection goes: the next point not finished yet (or the first point).
+    resumePointId: nextUnfinished(insp, vehicle) ?? inspectionSteps(vehicle)[0]?.pointId ?? null,
     stages, dtcs: insp.dtcs.map((d) => d.code),
   };
 }
@@ -118,8 +120,12 @@ export function point(insp: Inspection, vehicle: Vehicle, pointId: string) {
   }
   const photos = insp.media.filter((m) => !m.excluded && (m.links.some((l) => st.keys.includes(l.compKey)) || m.pointId === pointId));
   const n = insp.notes.find((x) => x.pointId === pointId);
-  const idx = section.points.findIndex((x) => x.id === pointId);
-  const next = section.points[idx + 1] ?? null;
+  // Wizard order runs across stages, the same as the web app.
+  const steps = inspectionSteps(vehicle);
+  const idx = steps.findIndex((x) => x.pointId === pointId);
+  const prev = idx > 0 ? steps[idx - 1] : null;
+  const next = idx >= 0 ? steps[idx + 1] ?? null : null;
+  const firstOfStage = idx >= 0 && (idx === 0 || steps[idx - 1].stageId !== section.id);
   return {
     id: p.id, name: p.name, stageId: section.id, stageName: section.name, note: p.note, state: st.state as string,
     partCount: comps.length,
@@ -148,7 +154,10 @@ export function point(insp: Inspection, vehicle: Vehicle, pointId: string) {
       firstPart: m.links.find((l) => st.keys.includes(l.compKey))?.compKey ?? null,
     })),
     noteText: n?.techText ?? '', noteStatus: n?.status ?? null,
-    nextPoint: next ? { id: next.id, name: next.name } : null,
+    nextPoint: next ? { id: next.pointId, name: next.pointName } : null,
+    prevPoint: prev ? { id: prev.pointId, name: prev.pointName } : null,
+    step: idx + 1, steps: steps.length,
+    stagePhotosFirst: firstOfStage && insp.media.every((m) => m.sectionId !== section.id),
     locked: insp.status !== 'in_progress',
   };
 }
