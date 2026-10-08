@@ -22,7 +22,7 @@ const unitText = (checkKey: string, value: number) => {
 export function describe(insp: Inspection, key: CompKey): string {
   const vals = insp.results.filter((r) => r.compKey === key && r.value !== null).map((r) => `${ONTOLOGY.checks[r.checkKey].name}: ${unitText(r.checkKey, r.value!)}`);
   const fs = insp.findings.filter((f) => f.compKey === key && countsFinding(f)).map((f) => `${findingLabel(f.key)} (${f.severity})`);
-  const picked = insp.results.filter((r) => r.compKey === key && r.value === null && r.rating !== 'ok').map((r) => ONTOLOGY.checks[r.checkKey].name);
+  const picked = insp.results.filter((r) => r.compKey === key && r.value === null && r.rating !== 'ok').map((r) => ONTOLOGY.checks[r.checkKey]?.name ?? 'Visual condition');
   const dtc = insp.dtcs.filter((d) => d.compKey === key).map((d) => d.code);
   return [...vals, ...fs, ...picked, ...dtc].join(' · ') || 'No findings';
 }

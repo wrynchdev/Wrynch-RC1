@@ -23,6 +23,14 @@ test('candidates for under car on the 4Runner exclude parts that do not apply an
   assert.equal(new Set(keys).size, keys.length, 'no duplicates');
 });
 
+test('each photo candidate carries what to look for on that part, and a template that turns the check off drops it', () => {
+  const c = candidatesFor(DEFAULT_TEMPLATE, 'under_car', runner.config);
+  const joint = c.find((x) => x.key.startsWith(`${clsByName('ball_joint').id}@`))!;
+  assert.ok(joint.lookFor.some((t) => /boot/i.test(t)), joint.lookFor.join(' | '));
+  const off = candidatesFor({ ...DEFAULT_TEMPLATE, checksOff: ['ball_joint.visual'] }, 'under_car', runner.config);
+  assert.deepEqual(off.find((x) => x.key === joint.key)!.lookFor, []);
+});
+
 test('photos taken from one point are matched only to that point\'s parts', () => {
   const all = candidatesFor(DEFAULT_TEMPLATE, 'under_car', runner.config);
   const point = DEFAULT_TEMPLATE.sections.find((x) => x.id === 'under_car')!.points.find((p) => p.id === 'S24')!;

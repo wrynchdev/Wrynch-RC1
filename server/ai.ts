@@ -1,6 +1,6 @@
 // AI vision for photo sorting (Anthropic or OpenAI), and customer wording. Every AI answer is validated against the ontology
 // and the shop template before it is stored, and everything stored is a pending proposal (rules R4, R10).
-import { cls, compLabel, DEFAULT_TEMPLATE, findingLabel, ONTOLOGY, parseKey, pointComponents } from '../src/domain/ontology';
+import { checkOff, cls, compLabel, DEFAULT_TEMPLATE, findingLabel, ONTOLOGY, parseKey, pointComponents } from '../src/domain/ontology';
 import { suggestWording, wordingKeepsFacts, type PartReading, type PhotoAnalysis } from '../src/domain/aiStub';
 import { filterByCorner, type Corner } from '../src/domain/corner';
 import { draftKeepsFacts, factsText, type NoteStyle, type PointFacts } from '../src/domain/noteDraft';
@@ -9,7 +9,7 @@ import { SIDE_UNSURE_CONFIDENCE } from '../src/domain/types';
 import { currentAi, DEFAULT_ANTHROPIC_MODEL, type AiAccount, type AiProvider } from './aiContext';
 import { env, HttpError } from './lib';
 
-export interface Candidate { key: CompKey; stage: string; point: string; label: string; findings: string[] }
+export interface Candidate { key: CompKey; stage: string; point: string; label: string; findings: string[]; lookFor: string[] }
 
 /**
  * Parts a photo could show: the photo-capable parts of the inspection points in the stage the photo was taken in.
@@ -25,10 +25,15 @@ export function candidatesFor(template: Template, sectionId: string, config: Veh
       if (!c.applies || out.has(c.key)) continue;
       const k = cls(parseKey(c.key).classId);
       if (k.aiPhoto === 'no') continue;
-      out.set(c.key, { key: c.key, stage: section.name, point: p.name, label: compLabel(c.key), findings: Object.keys(k.findings) });
+      out.set(c.key, { key: c.key, stage: section.name, point: p.name, label: compLabel(c.key), findings: Object.keys(k.findings), lookFor: lookFor(k.checks, template.checksOff ?? []) });
     }
   }
   return filterByCorner([...out.values()], (c) => c.key, corner);
+}
+
+/** What to look for on a part: its visual checks that are on in this template. */
+function lookFor(checks: readonly string[], off: readonly string[]): string[] {
+  return checks.map((k) => ONTOLOGY.checks[k]).filter((c) => c && c.method === 'visual' && checkOff(c.key, off) === null).map((c) => c.how);
 }
 
 const SEVERITIES = ['minor', 'moderate', 'severe', 'critical'];
@@ -227,7 +232,7 @@ export async function analyzePhoto(image: { bytes: Uint8Array; type: string }, c
   const byPoint = new Map<string, Candidate[]>();
   for (const c of candidates) byPoint.set(c.point, [...(byPoint.get(c.point) ?? []), c]);
   const list = [...byPoint.entries()].map(([point, cs]) => `${point}:\n` + cs.map((c) =>
-    `- ${c.key}: ${c.label} (findings: ${c.findings.map((k) => findingLabel(k).toLowerCase()).join(', ')})`).join('\n')).join('\n\n');
+    `- ${c.key}: ${c.label}${c.lookFor.length ? `; look for: ${c.lookFor.join('; ')}` : ''} (findings: ${c.findings.map((k) => findingLabel(k).toLowerCase()).join(', ')})`).join('\n')).join('\n\n');
   const res = await askAi({
     max_tokens: 4000,
     system: [
