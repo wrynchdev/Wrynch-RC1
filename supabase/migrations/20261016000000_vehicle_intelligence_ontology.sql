@@ -73,7 +73,8 @@ create table public.vio_configuration_state (
   evidence jsonb not null default '{}'::jsonb,
   notes text,
   created_at timestamptz not null default now(),
-  check (effective_to is null or effective_to > effective_from)
+  check (effective_to is null or effective_to > effective_from),
+  check ((state_kind = 'current' and effective_to is null) or state_kind <> 'current')
 );
 create index vio_configuration_vehicle on public.vio_configuration_state(vehicle_id,effective_from desc);
 
@@ -359,6 +360,13 @@ begin
     if new.component_instance_id is not null and not exists (select 1 from component_instance ci where ci.id=new.component_instance_id and ci.vehicle_id=new.vehicle_id) then
       raise exception 'VIO maintenance component belongs to another vehicle';
     end if;
+    if new.part_id is not null and exists (select 1 from vio_part p where p.id=new.part_id and p.shop_id is not null and p.shop_id is distinct from new.shop_id) then
+      raise exception 'VIO maintenance part belongs to another shop';
+    end if;
+  elsif tg_table_name = 'vio_modification_part' then
+    if not exists (select 1 from vio_modification m join vio_part p on p.id=new.part_id where m.id=new.modification_id and (p.shop_id is null or p.shop_id=m.shop_id)) then
+      raise exception 'VIO modification part belongs to another shop';
+    end if;
   elsif tg_table_name = 'vio_usage_trip' then
     select v.shop_id into vehicle_shop from vehicle v where v.id=new.vehicle_id;
     if vehicle_shop is distinct from new.shop_id then raise exception 'VIO trip shop does not match vehicle'; end if;
@@ -366,6 +374,9 @@ begin
   elsif tg_table_name = 'vio_usage_observation' then
     select v.shop_id into vehicle_shop from vehicle v where v.id=new.vehicle_id;
     if vehicle_shop is distinct from new.shop_id then raise exception 'VIO observation shop does not match vehicle'; end if;
+    if new.trip_id is not null and not exists (select 1 from vio_usage_trip t where t.id=new.trip_id and t.vehicle_id=new.vehicle_id) then
+      raise exception 'VIO observation trip belongs to another vehicle';
+    end if;
     if new.numeric_value is null and new.text_value is null then raise exception 'VIO observation requires a numeric or text value'; end if;
   end if;
   return new;
@@ -377,6 +388,7 @@ create trigger vio_configuration_integrity before insert or update on public.vio
 create trigger vio_installed_part_integrity before insert or update on public.vio_installed_part for each row execute function public.vio_check_shop_consistency();
 create trigger vio_fitment_integrity before insert or update on public.vio_fitment_rule for each row execute function public.vio_check_shop_consistency();
 create trigger vio_modification_integrity before insert or update on public.vio_modification for each row execute function public.vio_check_shop_consistency();
+create trigger vio_modification_part_integrity before insert or update on public.vio_modification_part for each row execute function public.vio_check_shop_consistency();
 create trigger vio_maintenance_integrity before insert or update on public.vio_maintenance_record for each row execute function public.vio_check_shop_consistency();
 create trigger vio_trip_integrity before insert or update on public.vio_usage_trip for each row execute function public.vio_check_shop_consistency();
 create trigger vio_observation_integrity before insert or update on public.vio_usage_observation for each row execute function public.vio_check_shop_consistency();
