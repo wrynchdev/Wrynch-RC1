@@ -69,6 +69,8 @@ final class FlowUITests: XCTestCase {
         // "Nothing found" rates the point's untouched parts OK.
         let nothing = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Nothing found'")).firstMatch
         XCTAssertTrue(nothing.waitForExistence(timeout: 20), "point screen — " + screen(app))
+        // Scroll it clear of the Back / Jump / Next footer before tapping.
+        app.scrollViews.firstMatch.swipeUp()
         nothing.tap()
         let ok = app.staticTexts.matching(NSPredicate(format: "label == 'OK'")).firstMatch
         XCTAssertTrue(ok.waitForExistence(timeout: 20), "the point shows OK after saving — " + screen(app))
