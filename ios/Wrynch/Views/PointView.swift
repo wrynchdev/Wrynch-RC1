@@ -8,8 +8,7 @@ struct PointView: View {
     let pointId: String
     @Binding var path: [Route]
     @State private var note: String?
-    @State private var draft: String?
-    @State private var drafting = false
+    @State private var writing = false
     @State private var picks: [PhotosPickerItem] = []
     @State private var camera = false
     @State private var jumping = false
@@ -165,49 +164,46 @@ struct PointView: View {
                 }
             }
         }
+        if vm.partCount > 0 {
+            Card {
+                Text("Findings").font(.headline)
+                if vm.findingLines.isEmpty {
+                    Text(vm.unrated > 0 ? "Nothing found yet." : "No problems found.").font(.footnote).foregroundStyle(Theme.muted)
+                }
+                ForEach(vm.findingLines) { line in
+                    HStack(alignment: .top, spacing: 8) {
+                        if let r = line.rating { StateChip(state: r) }
+                        Text(line.text).font(.subheadline)
+                    }
+                }
+            }
+        }
         Card {
-            Text("Your note").font(.headline)
-            Text("The customer sees this note as written, unless you approve a reworded version.").font(.caption).foregroundStyle(Theme.muted)
-            TextField("Note", text: Binding(get: { note ?? vm.noteText }, set: { note = $0 }), axis: .vertical)
-                .lineLimit(3...8).focused($noteFocused).disabled(vm.locked)
-                .font(.body).frame(minHeight: 60, alignment: .topLeading)
-                .padding(12).background(Theme.card2, in: RoundedRectangle(cornerRadius: 10))
-                .onChange(of: noteFocused) { _, focused in if !focused { saveNote() } }
-            if !vm.locked { MicButton { addSpoken($0) } }
-            if !vm.locked, draft == nil {
-                Button {
-                    Task {
-                        saveNote(); drafting = true
-                        do { draft = try await model.draftNote(id, pointId: pointId) } catch { model.show(error) }
-                        drafting = false
+            HStack {
+                Text("Technician note").font(.headline)
+                Spacer()
+                if !vm.locked && !writing {
+                    Button { writing = true } label: {
+                        Image(systemName: (note ?? vm.noteText).isEmpty ? "plus" : "square.and.pencil").font(.title2.weight(.semibold))
+                            .frame(width: 56, height: 56).background(Theme.card2, in: RoundedRectangle(cornerRadius: 14))
                     }
-                } label: {
-                    Label(drafting ? "Writing a draft…" : ((note ?? vm.noteText).isEmpty ? "Draft note with AI" : "Redraft with AI"), systemImage: "sparkles")
-                        .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ai)
-                }
-                .disabled(drafting)
-            }
-            if let d = draft {
-                AiBox {
-                    HStack { Label("AI draft", systemImage: "sparkles").foregroundStyle(Theme.ai).font(.subheadline.weight(.bold)); Spacer(); AiChip(text: "Not your note yet") }
-                    TextField("Draft", text: Binding(get: { d }, set: { draft = $0 }), axis: .vertical).lineLimit(3...8)
-                    Text("Check it and edit anything before you use it.").font(.caption).foregroundStyle(Theme.muted)
-                    HStack {
-                        Button((note ?? vm.noteText).isEmpty ? "Use this note" : "Replace my note") {
-                            let t = d.trimmingCharacters(in: .whitespacesAndNewlines)
-                            model.setNote(id, pointId: pointId, text: t); note = nil; draft = nil
-                        }
-                        .primaryButton(!d.trimmingCharacters(in: .whitespaces).isEmpty)
-                        Button("Discard") { draft = nil }.secondaryButton().frame(maxWidth: 110)
-                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel((note ?? vm.noteText).isEmpty ? "Add note" : "Edit note")
                 }
             }
-            if !vm.locked && !(note ?? vm.noteText).isEmpty {
-                NavigationLink(value: Route.wording(id, pointId)) {
-                    Label(vm.noteStatus == "ai_suggested" ? "Customer wording suggested · review" : "Customer wording", systemImage: "sparkles")
-                        .font(.footnote.weight(.bold)).foregroundStyle(Theme.ai)
-                }
-                .simultaneousGesture(TapGesture().onEnded { saveNote() })
+            if writing {
+                MicButton { addSpoken($0) }
+                TextField("Summarize what you found at this point", text: Binding(get: { note ?? vm.noteText }, set: { note = $0 }), axis: .vertical)
+                    .lineLimit(3...8).focused($noteFocused)
+                    .font(.body).frame(minHeight: 60, alignment: .topLeading)
+                    .padding(12).background(Theme.card2, in: RoundedRectangle(cornerRadius: 10))
+                    .onChange(of: noteFocused) { _, focused in if !focused { saveNote() } }
+                Button { saveNote(); noteFocused = false; writing = false } label: { Label("Done", systemImage: "checkmark") }.secondaryButton()
+            } else if !(note ?? vm.noteText).isEmpty {
+                Text(note ?? vm.noteText).font(.body)
+            } else {
+                Text("No note needed. Without one, the AI writes a customer-friendly summary of this point's findings, and the service advisor approves it before the report goes out.")
+                    .font(.footnote).foregroundStyle(Theme.muted)
             }
         }
     }

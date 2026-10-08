@@ -120,6 +120,8 @@ export interface Finding {
   compKey: CompKey;
   key: string;
   severity: Severity;
+  /** The check this finding explains (shown while that check is rated Monitor or Immediate). Null = a part-level finding. */
+  checkKey?: string | null;
   source: 'ai' | 'technician';
   status: ReviewStatus;     // technician findings are 'confirmed' on entry
   confidence: number | null;
@@ -176,6 +178,8 @@ export interface PointNote {
   aiText: string | null;
   status: WordingStatus;
   customerText: string | null; // what the customer sees once approved
+  /** The service advisor approved this as the report note. */
+  approved?: boolean;
 }
 
 export interface EstimateLine {

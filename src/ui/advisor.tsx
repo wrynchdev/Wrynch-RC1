@@ -4,6 +4,8 @@ import {
   allPoints, cls, compLabel, defaultThreshold, findingLabel, ONTOLOGY, pointComponents, setTemplate, vehicleComponents, type Threshold,
 } from '../domain/ontology';
 import { completionGate, componentState, countsFinding, linkConfirmed, mediaConfirmed, pointState, summarize } from '../domain/rating';
+import { autoNotePoints, notesToApprove, pointFindingLines, proposedNote } from '../domain/noteDraft';
+import { visibleSections } from '../domain/progress';
 import type { CompKey, EstimateLine, Inspection, Op, Rating, Template, Vehicle } from '../domain/types';
 import { actions, isLive, jobList, photoSrc, toast, useStore } from '../state/store';
 import { fn } from '../state/remote';
@@ -104,7 +106,8 @@ export function AdvisorResults({ id }: { id: string }) {
   const by = (r: Rating) => applies.filter((k) => componentState(insp, k) === r);
   const notChecked = applies.filter((k) => ['not_inspected', 'unable_to_assess'].includes(componentState(insp, k)));
   const gate = completionGate(insp, vehicle);
-  const approvedWords = insp.notes.filter((n) => n.customerText && n.status !== 'ai_suggested').length;
+  const waiting = notesToApprove(insp, vehicle);
+  const pointCount = visibleSections(vehicle).reduce((n, x) => n + x.points.length, 0);
   const canAdvise = role === 'owner' || role === 'advisor';
   const lineFor = (k: CompKey) => insp.estimate.filter((e) => e.compKey === k);
   const total = insp.estimate.reduce((a, e) => a + Number(e.parts) + Number(e.labor), 0);
@@ -137,7 +140,7 @@ export function AdvisorResults({ id }: { id: string }) {
           <h2 className="h2" style={{ fontSize: 15 }}>Before it goes out</h2>
           <Check ok={gate.filter((g) => g.kind === 'ai_finding').length === 0} text="Every AI finding confirmed by the tech" />
           <Check ok={gate.filter((g) => g.kind === 'photo').length === 0} text={`Only confirmed photos (${insp.media.filter(mediaConfirmed).length})`} />
-          <Check ok={gate.filter((g) => g.kind === 'wording').length === 0} text={`Customer wording approved (${approvedWords})`} />
+          <Check ok={waiting.length === 0} text={`Report notes approved (${pointCount - waiting.length} of ${pointCount})`} />
           <Check ok={gate.filter((g) => g.kind === 'required').length === 0} text="Every required part rated or explained" />
         </div>
         {insp.estimate.length > 0 && (
@@ -159,7 +162,11 @@ export function AdvisorResults({ id }: { id: string }) {
             {(insp.status === 'submitted' || insp.status === 'sent') && <a className="btn secondary sm" href={isLive() ? `#/r/${insp.reportToken}` : `#/report/${id}`}>Preview customer report</a>}
             {canAdvise && insp.status === 'submitted' && <button className="btn quiet sm" onClick={() => actions.reopen(id)}>Reopen for the tech</button>}
             {canAdvise && <TekmetricExportButton inspId={id} status={insp.status} />}
-            {canAdvise && (insp.status === 'submitted' || insp.status === 'sent') && <button className="btn primary sm" onClick={() => setSending(true)}>{insp.status === 'sent' ? 'Send again' : 'Send to customer'}</button>}
+            {canAdvise && (insp.status === 'submitted' || insp.status === 'sent') && (
+              <button className="btn primary sm" disabled={waiting.length > 0} title={waiting.length ? 'Approve every report note first' : undefined} onClick={() => setSending(true)}>
+                {waiting.length ? <><Icon name="lock" size={16} />{insp.status === 'sent' ? 'Send again' : 'Send to customer'}</> : insp.status === 'sent' ? 'Send again' : 'Send to customer'}
+              </button>
+            )}
             {insp.status === 'sent' && <span className="chip ok"><Icon name="check" size={14} />Sent</span>}
           </div>
         </div>
@@ -212,6 +219,7 @@ export function AdvisorResults({ id }: { id: string }) {
             {insp.estimate.filter((e) => !e.compKey).length === 0 && <span className="small muted">Diagnosis, shop supplies or anything not tied to one part.</span>}
           </section>
         )}
+        {(insp.status === 'submitted' || insp.status === 'sent') && <ReportNotes insp={insp} vehicle={vehicle} canEdit={canAdvise} waiting={waiting} />}
         {notChecked.length > 0 && (
           <section className="card">
             <h2 className="group-h">Not checked · {notChecked.length}</h2>
@@ -226,6 +234,97 @@ export function AdvisorResults({ id }: { id: string }) {
       </main>
       {sending && <SendSheet insp={insp} vehicle={vehicle} onClose={() => setSending(false)} />}
       {editing && <EstimateSheet inspId={id} line={editing} onClose={() => setEditing(null)} />}
+    </div>
+  );
+}
+
+/**
+ * Every inspection point's report note. Points without a technician note get an AI summary of their findings (written
+ * as soon as this opens); the service advisor approves each note as written or edits it. Nothing is sent until all are.
+ */
+function ReportNotes({ insp, vehicle, canEdit, waiting }: { insp: Inspection; vehicle: Vehicle; canEdit: boolean; waiting: string[] }) {
+  const [tried] = useState(() => new Set<string>());
+  const [writing, setWriting] = useState<{ done: number; total: number } | null>(null);
+  const todo = insp.status === 'submitted'
+    ? autoNotePoints(insp, vehicle, visibleSections(vehicle).flatMap((s) => s.points)).filter((x) => !tried.has(x.pointId)) : [];
+  const todoKey = todo.map((x) => x.pointId).join(',');
+  useEffect(() => {
+    if (!todoKey || writing) return;
+    const ids = todoKey.split(',');
+    ids.forEach((x) => tried.add(x));
+    setWriting({ done: 0, total: ids.length });
+    void actions.autoNotes(insp.id, ids, (done) => setWriting((w) => (w ? { ...w, done } : w)))
+      .then((failed) => { setWriting(null); if (failed) toast(`${failed} note${failed === 1 ? '' : 's'} couldn’t be written automatically. Write ${failed === 1 ? 'it' : 'them'} here.`, 'error'); });
+  }, [todoKey, writing, insp.id]);
+  const open = canEdit && (insp.status === 'submitted' || insp.status === 'sent');
+  const ready = waiting.filter((pid) => proposedNote(insp.notes.find((n) => n.pointId === pid)).trim());
+  return (
+    <section className="card report-notes-review" aria-label="Report notes">
+      <div className="row between" style={{ padding: '14px 16px 4px', flexWrap: 'wrap' }}>
+        <h2 className="h2" style={{ margin: 0 }}>Report notes · {waiting.length ? `${waiting.length} to approve` : 'all approved'}</h2>
+        {open && ready.length > 1 && !writing && (
+          <button className="btn secondary sm" onClick={() => { for (const pid of ready) actions.approveNote(insp.id, pid, proposedNote(insp.notes.find((n) => n.pointId === pid))); }}>
+            <Icon name="check" size={16} />Approve {ready.length} as written
+          </button>
+        )}
+      </div>
+      <p className="small muted" style={{ margin: '0 16px 8px' }}>
+        {writing ? `Writing summaries for points without a technician note… ${writing.done} of ${writing.total}`
+          : 'Every point appears on the customer’s report with this note. Approve it as written or edit it first.'}
+      </p>
+      {visibleSections(vehicle).map((sec) => (
+        <div key={sec.id}>
+          <h3 className="caps" style={{ margin: '10px 16px 4px' }}>{sec.name}</h3>
+          <div className="list">
+            {sec.points.map((p) => <NoteRow key={p.id} insp={insp} vehicle={vehicle} pointId={p.id} open={open} />)}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function NoteRow({ insp, vehicle, pointId, open }: { insp: Inspection; vehicle: Vehicle; pointId: string; open: boolean }) {
+  const p = allPoints().find((x) => x.id === pointId)!;
+  const n = insp.notes.find((x) => x.pointId === pointId);
+  const proposed = proposedNote(n);
+  const [text, setText] = useState(proposed);
+  const [editing, setEditing] = useState(false);
+  useEffect(() => { if (!editing) setText(proposed); }, [proposed, editing]);
+  const keys = pointComponents(p, vehicle.config).filter((c) => c.applies).map((c) => c.key);
+  const state = keys.length ? pointState(insp, keys) : null;
+  const found = pointFindingLines(insp, vehicle, p);
+  const approved = !!(n?.approved && n.customerText?.trim());
+  const fromAi = n?.status === 'ai_suggested' || (!n?.techText.trim() && !!n?.aiText);
+  return (
+    <div className={`item note-row${approved ? ' approved' : ''}`} data-point={pointId} style={{ alignItems: 'stretch', flexDirection: 'column', gap: 8 }}>
+      <div className="row between">
+        <strong>{p.name}</strong>
+        <span className="row" style={{ gap: 6 }}>
+          {state && state !== 'unrated' && <StateChip state={state} />}
+          {approved ? <span className="chip ok"><Icon name="check" size={14} />Approved</span> : fromAi ? <span className="chip ai"><Icon name="ai" size={14} />AI summary</span> : null}
+        </span>
+      </div>
+      {found.length > 0 && <div className="small" style={{ color: 'var(--text2)' }}>{found.map((x) => x.text).join(' · ')}</div>}
+      {n?.techText.trim() && <div className="small muted">Technician: {n.techText}</div>}
+      {approved && !editing ? (
+        <div className="row between" style={{ alignItems: 'flex-start' }}>
+          <p style={{ margin: 0, lineHeight: 1.45 }}>{n!.customerText}</p>
+          {open && <button className="linkbtn" onClick={() => setEditing(true)}>Edit</button>}
+        </div>
+      ) : open ? (
+        <>
+          <label className="sr" htmlFor={`rn-${pointId}`}>Report note for {p.name}</label>
+          <textarea id={`rn-${pointId}`} className="input" rows={2} value={text} onChange={(e) => setText(e.target.value)}
+            placeholder={proposed ? undefined : 'Writing a summary…'} />
+          <div className="row">
+            {editing && <button className="btn quiet sm" onClick={() => { setEditing(false); setText(proposed); }}>Cancel</button>}
+            <button className="btn primary sm grow" disabled={!text.trim()} onClick={() => { actions.approveNote(insp.id, pointId, text); setEditing(false); }}>
+              <Icon name="check" size={16} />{text.trim() === proposed.trim() ? 'Approve' : 'Approve edit'}
+            </button>
+          </div>
+        </>
+      ) : <p className="small muted" style={{ margin: 0 }}>{proposed || 'No note yet.'}</p>}
     </div>
   );
 }
@@ -473,6 +572,7 @@ function Report({ insp, vehicle, shopName, shopPhone, approved, onToggle }: Repo
   const sum = summarize(insp, vehicle);
   const { applies } = vehicleComponents(vehicle.config, insp.extraComponents);
   const flagged = (r: Rating) => applies.filter((k) => componentState(insp, k) === r);
+  const approvedNote = (pointId: string) => { const n = insp.notes.find((x) => x.pointId === pointId); return n?.approved && n.customerText?.trim() ? n.customerText.trim() : null; };
   // Prefer the point where the part is required (the battery belongs to "Battery", not "Engine cranking").
   const pointOf = (k: CompKey) =>
     allPoints().find((p) => pointComponents(p, vehicle.config).some((c) => c.key === k && c.required))
@@ -484,21 +584,19 @@ function Report({ insp, vehicle, shopName, shopPhone, approved, onToggle }: Repo
     for (const k of flagged(r)) { const p = pointOf(k); const gid = p?.id ?? k; m.set(gid, [...(m.get(gid) ?? []), k]); }
     return [...m.entries()].map(([gid, keys]) => {
       const p = allPoints().find((x) => x.id === gid);
-      const note = p ? insp.notes.find((x) => x.pointId === p.id && x.customerText && x.status !== 'ai_suggested')?.customerText ?? null : null;
+      const note = p ? approvedNote(p.id) : null;
       return { gid, title: p ? p.name : compLabel(keys[0]), keys, note };
     });
   };
   const approvedTotal = priceOf(approved);
-  // Every other point's note from the technician, including points where everything was fine. Points with parts to
-  // replace or plan for are shown above with their notes, so they aren't repeated here.
-  const flaggedPoints = new Set([...groups('immediate'), ...groups('monitor')].map((g) => g.gid));
-  const otherNotes = allPoints().flatMap((p) => {
-    if (flaggedPoints.has(p.id)) return [];
-    const note = insp.notes.find((x) => x.pointId === p.id && x.customerText && x.status !== 'ai_suggested')?.customerText?.trim();
-    if (!note) return [];
-    const keys = pointComponents(p, vehicle.config).filter((c) => c.applies).map((c) => c.key);
-    return [{ id: p.id, name: p.name, note, state: keys.length ? pointState(insp, keys) : null }];
-  });
+  // Every inspection point, stage by stage, with the note the service advisor approved for it.
+  const stages = visibleSections(vehicle).map((sec) => ({
+    id: sec.id, name: sec.name,
+    points: sec.points.map((p) => {
+      const keys = pointComponents(p, vehicle.config).filter((c) => c.applies).map((c) => c.key);
+      return { id: p.id, name: p.name, note: approvedNote(p.id), state: keys.length ? pointState(insp, keys) : null };
+    }),
+  }));
   const Group = ({ g, strong }: { g: ReturnType<typeof groups>[number]; strong?: boolean }) => {
     const photos = insp.media.filter((m) => !m.excluded && m.customerVisible && g.keys.some((k) => linkConfirmed(m, k)));
     const isOn = g.keys.every((k) => approved.includes(k));
@@ -544,19 +642,23 @@ function Report({ insp, vehicle, shopName, shopPhone, approved, onToggle }: Repo
         {groups('immediate').map((g) => <Group key={g.gid} g={g} strong />)}
         {flagged('monitor').length > 0 && <h2 className="h2" style={{ fontSize: 20 }}>Plan for · {flagged('monitor').length} parts</h2>}
         {groups('monitor').map((g) => <Group key={g.gid} g={g} />)}
-        {otherNotes.length > 0 && (
-          <>
-            <h2 className="h2" style={{ fontSize: 20 }}>Notes from your technician</h2>
-            <div className="card list report-notes">
-              {otherNotes.map((n) => (
-                <div key={n.id} className="item" style={{ alignItems: 'flex-start' }}>
-                  <div className="grow"><div className="t">{n.name}</div><div className="d" style={{ color: 'var(--ink)', lineHeight: 1.45, marginTop: 2 }}>{n.note}</div></div>
+        <h2 className="h2" style={{ fontSize: 20 }}>Everything we inspected</h2>
+        {stages.map((st) => (
+          <section key={st.id} className="card report-points" aria-label={st.name}>
+            <h3 className="group-h">{st.name}</h3>
+            <div className="list report-notes">
+              {st.points.map((n) => (
+                <div key={n.id} className="item" data-point={n.id} style={{ alignItems: 'flex-start' }}>
+                  <div className="grow">
+                    <div className="t">{n.name}</div>
+                    <div className="d" style={{ color: n.note ? 'var(--ink)' : undefined, lineHeight: 1.45, marginTop: 2 }}>{n.note ?? 'Note waiting for the service advisor’s approval.'}</div>
+                  </div>
                   {n.state && n.state !== 'unrated' && <StateChip state={n.state} customer />}
                 </div>
               ))}
             </div>
-          </>
-        )}
+          </section>
+        ))}
         <h2 className="h2" style={{ fontSize: 20 }}>Good · {sum.ok}</h2>
         <details className="card pad"><summary style={{ cursor: 'pointer', fontWeight: 700 }}>See all {sum.ok} parts in good shape</summary>
           <p className="small" style={{ lineHeight: 1.6 }}>{applies.filter((k) => componentState(insp, k) === 'ok').map((k) => compLabel(k, true)).join(' · ')}</p>

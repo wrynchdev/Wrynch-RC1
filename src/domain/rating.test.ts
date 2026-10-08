@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ONTOLOGY, clsByName, compKey, vehicleComponents, pointComponents, point } from './ontology';
-import { componentState, completionGate, customerView, findingRating, rateValue, summarize } from './rating';
+import { ONTOLOGY, aiFilingCheck, checkFindingOptions, clsByName, compKey, vehicleComponents, pointComponents, point } from './ontology';
+import { checkFindings, componentState, completionGate, customerView, findingRating, rateValue, summarize } from './rating';
 import { applyUnderCarExample, seedInspections, vehicle } from './seed';
 import { analyzePhotos, applyAnalysis, suggestWording, wordingKeepsFacts } from './aiStub';
 import type { Inspection } from './types';
@@ -136,4 +136,28 @@ test('one photo can show several parts; looks-OK suggestions count for nothing u
   assert.ok(completionGate(insp, v).some((g) => g.kind === 'photo' && g.id === 'p1'), 'unconfirmed AI links block finishing');
   applyAnalysis(insp, [{ mediaId: 'p1', parts: [{ key: rotor, confidence: 0.9, condition: 'looks_ok', note: '', findings: [] }] }]);
   assert.equal(insp.observations.length, 1, 'a photo is analysed once');
+});
+
+test('findings under a check explain its rating and do not rate the part again', () => {
+  const i = structuredClone(current());
+  const caliper = compKey(clsByName('brake_caliper').id, 'right_front');
+  i.results = i.results.filter((r) => r.compKey !== caliper);
+  i.findings = i.findings.filter((f) => f.compKey !== caliper);
+  i.statuses = i.statuses.filter((s) => s.compKey !== caliper);
+  i.results.push({ compKey: caliper, checkKey: 'brake_caliper.visual', value: null, rating: 'monitor', at: i.date });
+  // "leak" at severe would be Immediate on its own; under a Monitor check it only says why.
+  i.findings.push({ id: 'f-x', compKey: caliper, checkKey: 'brake_caliper.visual', key: 'leak', severity: 'critical', source: 'technician', status: 'confirmed',
+    confidence: null, rationale: null, mediaId: null, reviewedAt: i.date, aiOriginal: null });
+  assert.equal(componentState(i, caliper), 'monitor');
+  assert.deepEqual(checkFindings(i, caliper, 'brake_caliper.visual').map((f) => f.key), ['leak']);
+});
+
+test('which findings a check offers: everything on the visual check, the failing findings on the others', () => {
+  const pad = clsByName('brake_pad');
+  assert.deepEqual(checkFindingOptions('brake_pad.lining_thickness'), ONTOLOGY.checks['brake_pad.lining_thickness'].failFindings);
+  assert.deepEqual(checkFindingOptions('ball_joint.visual').sort(), Object.keys(clsByName('ball_joint').findings).sort());
+  assert.ok(checkFindingOptions('horn.operation').includes('inoperative'));
+  assert.ok(pad.checks.length > 0);
+  assert.equal(aiFilingCheck(clsByName('brake_rotor').id), 'brake_rotor.surface', 'same check the database picks');
+  assert.equal(aiFilingCheck(clsByName('ball_joint').id), 'ball_joint.visual');
 });

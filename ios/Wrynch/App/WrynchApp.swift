@@ -24,7 +24,6 @@ enum Route: Hashable {
     case sort(String, String)
     case capture(String, String)
     case finish(String)
-    case wording(String, String)
 }
 
 struct RootView: View {
@@ -70,7 +69,6 @@ struct RootView: View {
         case .sort(let id, let s): SortView(id: id, stageId: s, path: $path)
         case .capture(let id, let s): CaptureView(id: id, stageId: s, path: $path)
         case .finish(let id): FinishView(id: id, path: $path)
-        case .wording(let id, let p): WordingView(id: id, pointId: p)
         }
     }
 }

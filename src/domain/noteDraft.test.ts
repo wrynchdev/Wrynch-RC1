@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { autoNotePoints, draftKeepsFacts, draftNote, factsText, pointFacts, worthANote } from './noteDraft';
-import { sections } from './ontology';
+import { autoNotePoints, draftKeepsFacts, draftNote, factsText, pointFacts } from './noteDraft';
+import { pointComponents, sections } from './ontology';
 import { point } from './ontology';
 import { seedInspections, VEHICLES } from './seed';
 
@@ -55,19 +55,30 @@ test('customer-style draft uses plain words and keeps the same numbers as the te
   assert.ok(draftKeepsFacts(f, plain) && plain.includes('2 mm'));
 });
 
-test('automatic notes: reword written notes, draft blank points with something to report, leave reviewed ones alone', () => {
+test('automatic notes: reword written notes, summarize every blank point, leave suggested and approved ones alone', () => {
   const i = insp();
   const points = sections().flatMap((s) => s.points);
   i.notes = [
     { pointId: 'S24', techText: 'fronts 4mm', aiText: null, status: 'technician_original', customerText: 'fronts 4mm' },
-    { pointId: 'S14', techText: '', aiText: 'x', status: 'ai_rejected', customerText: '' },
+    { pointId: 'S14', techText: '', aiText: 'x', status: 'ai_suggested', customerText: null },
+    { pointId: 'S15', techText: '', aiText: null, status: 'technician_original', customerText: 'All good.', approved: true },
+    { pointId: 'S16', techText: '', aiText: 'x', status: 'ai_rejected', customerText: '' },
   ];
   const todo = autoNotePoints(i, vehicle, points);
   assert.deepEqual(todo.find((x) => x.pointId === 'S24'), { pointId: 'S24', kind: 'reword' });
-  assert.ok(!todo.some((x) => x.pointId === 'S14'), 'a note the tech already dealt with is skipped');
-  for (const t of todo.filter((x) => x.kind === 'draft')) assert.ok(worthANote(pointFacts(i, vehicle, points.find((p) => p.id === t.pointId)!)));
-  const unrated = points.filter((p) => !todo.some((x) => x.pointId === p.id) && p.id !== 'S14');
-  for (const p of unrated) assert.ok(!worthANote(pointFacts(i, vehicle, p)), `${p.id} has ratings but got no note`);
-  const okOnly = points.find((p) => { const f = pointFacts(i, vehicle, p); return f.parts.length && f.parts.every((x) => x.state === 'ok'); });
-  assert.ok(okOnly && todo.some((x) => x.pointId === okOnly.id && x.kind === 'draft'), 'an all-OK point gets a drafted note too');
+  assert.ok(!todo.some((x) => x.pointId === 'S14'), 'a point with a suggestion waiting is skipped');
+  assert.ok(!todo.some((x) => x.pointId === 'S15'), 'an approved note is never rewritten');
+  assert.deepEqual(todo.find((x) => x.pointId === 'S16'), { pointId: 'S16', kind: 'draft' }, 'a reviewed note left blank gets a summary');
+  assert.equal(todo.length, points.length - 2, 'every other point gets a note, rated or not');
+});
+
+test('a point with nothing rated still gets a plain note', () => {
+  const i = insp();
+  i.results = []; i.findings = []; i.statuses = []; i.media = [];
+  const brakes = sections().flatMap((s) => s.points).find((p) => pointComponents(p, vehicle.config).some((c) => c.applies))!;
+  assert.equal(draftNote(pointFacts(i, vehicle, brakes), 'customer'), 'We didn\'t check this on this visit.');
+  const symptom = sections().flatMap((s) => s.points).find((p) => p.components.length === 0)!;
+  assert.equal(draftNote(pointFacts(i, vehicle, symptom), 'customer'), 'No concerns were noticed here.');
+  const notHere = sections().flatMap((s) => s.points).find((p) => p.components.length > 0 && !pointComponents(p, vehicle.config).some((c) => c.applies));
+  if (notHere) assert.equal(draftNote(pointFacts(i, vehicle, notHere), 'customer'), 'This doesn\'t apply to your vehicle.');
 });

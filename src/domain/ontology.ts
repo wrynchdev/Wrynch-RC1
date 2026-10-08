@@ -39,6 +39,22 @@ export function canTurnOff(checkKey: string, scope: 'platform' | 'template' = 't
   if (!c) return false;
   return cls(c.classId).checks.some((k) => k !== checkKey && (scope === 'platform' ? !platformOff.has(k) : !checkOff(k, inTemplate)));
 }
+/**
+ * Findings a technician can pick under a check rated Monitor or Immediate. A part's visual condition check can see
+ * anything the part can have; any other check offers the findings that fail it.
+ */
+export function checkFindingOptions(checkKey: string): string[] {
+  const c = ONTOLOGY.checks[checkKey];
+  if (!c) return [];
+  const all = Object.keys(cls(c.classId).findings);
+  if (checkKey.endsWith('.visual')) return all;
+  const own = c.failFindings.filter((k) => all.includes(k));
+  return own.length ? own : all;
+}
+/** Where a confirmed AI finding is filed: the part's first visual check that is on, by key (the database picks the same). */
+export function aiFilingCheck(classId: number, inTemplate: readonly string[] = templateOff()): string | null {
+  return [...cls(classId).checks].filter((k) => ONTOLOGY.checks[k]?.valueType === 'visual' && !checkOff(k, inTemplate)).sort()[0] ?? null;
+}
 /** The part's checks that are on, in catalog order (all of them if every one is off). */
 export function enabledChecks(classId: number, inTemplate: readonly string[] = templateOff()): string[] {
   const all = cls(classId).checks;

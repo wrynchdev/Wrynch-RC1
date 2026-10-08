@@ -420,3 +420,21 @@ select.input { appearance: auto; }
 .mic-wrap .heard { font-style: italic; min-height: 1.4em; }
 @keyframes mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(229,83,75,.55); } 50% { box-shadow: 0 0 0 10px rgba(229,83,75,0); } }
 @media (prefers-reduced-motion: reduce) { .mic.on { animation: none; } }
+
+/* Findings under a check rated Monitor or Immediate */
+.check-findings { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--card2); border-left: 4px solid var(--mon); }
+.check-findings.immediate { border-left-color: var(--imm); }
+.pill.ai { border-style: dashed; border-color: var(--ai-line, var(--ai)); color: var(--ai); }
+.pill.ai[aria-pressed="true"] { background: rgba(139, 108, 240, 0.18); color: var(--ai); border-color: var(--ai); opacity: 1; }
+.pill.ai { display: inline-flex; align-items: center; gap: 4px; }
+.skip-part { justify-content: flex-start; }
+/* Point summary and the technician note */
+.find-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.find-list li { display: flex; gap: 10px; align-items: flex-start; line-height: 1.4; }
+.find-list li .chip { flex: none; }
+.tech-note .note-add { width: 56px; height: 56px; border-radius: 14px; background: var(--card2); }
+/* Advisor: report notes */
+.note-row.approved { background: rgba(76, 195, 138, 0.06); }
+.report-points .group-h { margin: 0; }
+
+.footer.wizard.two { grid-template-columns: minmax(92px, 1fr) minmax(0, 2.4fr); }

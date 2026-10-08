@@ -135,8 +135,11 @@ select public.ai_record_sort((select v::uuid from t.ids where k = 'insp'),
 select t.eq((select count(*) from public.media_part), 3::bigint, 'second AI run ignored');
 
 select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
-select t.expect_error($$ select public.submit_inspection((select v::uuid from t.ids where k = 'insp'), '{}') $$, '%Resolve 1 AI findings, 1 photos%');
+select t.expect_error($$ select public.submit_inspection((select v::uuid from t.ids where k = 'insp'), '{}') $$, '%Resolve 1 AI findings and 1 photos%');
 select public.review_finding((select id from public.finding where source = 'ai'), 'confirm');
+-- A confirmed AI finding is filed under the part's visual check, which takes the finding's rating.
+select t.eq((select check_key from public.finding where source = 'ai'), 'brake_rotor.surface', 'confirmed AI finding filed under the visual check');
+select t.eq((select rating from public.check_result where check_key = 'brake_rotor.surface') in ('monitor', 'immediate'), true, 'and that check is rated');
 -- Tech drops the tire from the photo: its pending looks-OK goes with it.
 select public.set_photo_parts('00000000-0000-0000-0000-0000000000f1', array['71@left_front', '72@left_front', '73@left_front']);
 select t.eq((select string_agg(status, ',' order by status) from public.media_part), 'confirmed,confirmed,technician_added', 'kept links confirmed, added one');
@@ -155,9 +158,22 @@ select public.add_media((select v::uuid from t.ids where k = 'insp'), '00000000-
 select t.act('service_role', null);
 select public.ai_record_sort((select v::uuid from t.ids where k = 'insp'), '[{"mediaId":"00000000-0000-0000-0000-0000000000f2","parts":[{"key":"73@left_front","confidence":0.7,"condition":"unclear"}]}]');
 select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
-select t.expect_error($$ select public.submit_inspection((select v::uuid from t.ids where k = 'insp'), '{}') $$, '%Resolve 0 AI findings, 2 photos%');
+select t.expect_error($$ select public.submit_inspection((select v::uuid from t.ids where k = 'insp'), '{}') $$, '%Resolve 0 AI findings and 2 photos%');
 select t.eq(public.confirm_placements((select v::uuid from t.ids where k = 'insp'), 'under_car'), 1, 'one AI link confirmed');
 select public.exclude_photo('00000000-0000-0000-0000-0000000000f3');
+-- Findings belong to a check, and only while it is rated Monitor or Immediate.
+select t.expect_error($$ select public.set_check_findings((select v::uuid from t.ids where k = 'insp'), '72@left_front', 'brake_caliper.visual', array['leak']) $$, '%Monitor or Immediate%');
+select public.set_check((select v::uuid from t.ids where k = 'insp'), '72@left_front', 'brake_caliper.visual', null, 'monitor');
+select t.expect_error($$ select public.set_check_findings((select v::uuid from t.ids where k = 'insp'), '72@left_front', 'brake_caliper.visual', array['dent']) $$, '%not used for this part%');
+select public.set_check_findings((select v::uuid from t.ids where k = 'insp'), '72@left_front', 'brake_caliper.visual', array['leak', 'seepage']);
+select t.eq((select count(*)::int from public.finding where check_key = 'brake_caliper.visual'), 2, 'two findings under the check');
+select public.set_check_findings((select v::uuid from t.ids where k = 'insp'), '72@left_front', 'brake_caliper.visual', array['leak']);
+select t.eq((select string_agg(finding_key || ':' || severity, ',') from public.finding where check_key = 'brake_caliper.visual'), 'leak:moderate', 'picks replaced');
+select public.set_check((select v::uuid from t.ids where k = 'insp'), '72@left_front', 'brake_caliper.visual', null, 'ok');
+select t.eq((select count(*)::int from public.finding where check_key = 'brake_caliper.visual'), 0, 'rating the check OK removes its findings');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000c');
+select t.expect_error($$ select public.set_check_findings((select v::uuid from t.ids where k = 'insp'), '72@left_front', 'brake_caliper.visual', array['leak']) $$, '%permission%');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
 select public.set_note((select v::uuid from t.ids where k = 'insp'), 'S24', 'fronts 4mm rotors grooved');
 -- Automatic notes: an AI note for a point with a blank tech note is a suggestion that blocks sending until resolved.
 select t.act('service_role', null);
@@ -165,7 +181,6 @@ select public.ai_record_wording((select v::uuid from t.ids where k = 'insp'), 'S
 select public.ai_record_wording((select v::uuid from t.ids where k = 'insp'), 'S24', 'Front pads at 4 mm and the rotors are grooved; keep an eye on them.');
 select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
 select t.eq((select tech_text || '|' || status from public.point_note where point_id = 'S14'), '|ai_suggested', 'blank note gets a suggestion row');
-select t.expect_error($$ select public.submit_inspection((select v::uuid from t.ids where k = 'insp'), '{}') $$, '%and 2 wording suggestions%');
 select t.expect_error($$ select public.ai_record_wording((select v::uuid from t.ids where k = 'insp'), 'S14', 'x') $$, '%permission denied%');
 select public.resolve_wording((select v::uuid from t.ids where k = 'insp'), 'S14', 'accept');
 select public.resolve_wording((select v::uuid from t.ids where k = 'insp'), 'S24', 'reject');
@@ -180,13 +195,33 @@ select t.expect_error($$ select public.set_note_style((select v::uuid from t.ids
 select t.act('authenticated', '00000000-0000-0000-0000-00000000000c');
 select t.eq(public.note_style_for((select v::uuid from t.ids where k = 'insp')) is null, true, 'strangers get no style');
 select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
-select public.submit_inspection((select v::uuid from t.ids where k = 'insp'), '{"immediate":0,"monitor":2,"ok":0}');
+-- AI wording waiting for approval no longer blocks the technician's submit.
+select t.act('service_role', null);
+select public.ai_record_wording((select v::uuid from t.ids where k = 'insp'), 'S15', 'Suggested, not approved.');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
+select public.submit_inspection((select v::uuid from t.ids where k = 'insp'), '{"immediate":0,"monitor":2,"ok":0,"points":["S14","S24","S15","S16"]}');
 select t.expect_error($$ select public.set_check((select v::uuid from t.ids where k = 'insp'), '73@left_front', 'brake_pad.lining_thickness', 9, null) $$, '%submitted and can''t be changed%');
 select t.expect_error($$ select public.mark_sent((select v::uuid from t.ids where k = 'insp'), 'link', null, 'sent', null) $$, '%permission%');
 
 -- 7. Customer report only has confirmed content; approvals work once sent.
 select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
 select public.save_estimate_line((select v::uuid from t.ids where k = 'insp'), null, '71@left_front', 'Replace front rotors', 180, 120);
+-- Every point's note needs the advisor's approval before anything is sent.
+select t.expect_error($$ select public.mark_sent((select v::uuid from t.ids where k = 'insp'), 'link', null, 'sent', null) $$, '%Approve the report notes first (4 waiting)%');
+select t.act('service_role', null);
+select t.eq(public.notes_waiting((select v::uuid from t.ids where k = 'insp')), 4, 'four notes waiting (one has no note yet)');
+select public.ai_record_wording((select v::uuid from t.ids where k = 'insp'), 'S16', 'Everything here checked out fine.');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
+select t.expect_error($$ select public.approve_note((select v::uuid from t.ids where k = 'insp'), 'S14', 'ok') $$, '%permission%');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
+select t.expect_error($$ select public.approve_note((select v::uuid from t.ids where k = 'insp'), 'S14', '  ') $$, '%can''t be blank%');
+select public.approve_note((select v::uuid from t.ids where k = 'insp'), 'S14', 'Brake fluid needs attention now.');
+select public.approve_note((select v::uuid from t.ids where k = 'insp'), 'S24', 'Front pads are at 4 mm and the rotors are grooved.');
+select public.approve_note((select v::uuid from t.ids where k = 'insp'), 'S15', 'Suggested, not approved.');
+select t.eq((select status from public.point_note where point_id = 'S15'), 'ai_accepted', 'approving the suggestion as written accepts it');
+select t.expect_error($$ select public.mark_sent((select v::uuid from t.ids where k = 'insp'), 'link', null, 'sent', null) $$, '%(1 waiting)%');
+select public.approve_note((select v::uuid from t.ids where k = 'insp'), 'S16', 'All of this checked out fine.');
+select t.eq((select status || '|' || customer_text from public.point_note where point_id = 'S16'), 'ai_edited|All of this checked out fine.', 'advisor rewrite kept');
 select public.mark_sent((select v::uuid from t.ids where k = 'insp'), 'link', null, 'sent', null);
 select t.act('service_role', null);
 select t.eq(jsonb_array_length(public.customer_report((select report_token from public.inspection)) -> 'inspection' -> 'findings'), 1, 'report findings');
