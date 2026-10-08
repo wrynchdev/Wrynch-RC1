@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  checkOff, cls, compLabel, findingLabel, ONTOLOGY, parseKey, point as getPoint, pointComponents, positionLabel, sections,
+  checkFindingOptions, checkOff, cls, compLabel, findingLabel, ONTOLOGY, parseKey, point as getPoint, pointComponents, positionLabel, sections,
   sectionOfPoint, vehicleComponents,
 } from '../domain/ontology';
-import { completionGate, componentState, findingRating, isPendingAi, mediaPending, photosOf, summarize } from '../domain/rating';
+import { checkFindings, completionGate, componentState, findingRating, isPendingAi, mediaPending, photosOf, summarize } from '../domain/rating';
 import type { CompKey, Finding, Inspection, Media, NotInspectedReason, Rating, Severity, Vehicle, VehicleConfig } from '../domain/types';
 import { SEVERITIES, SIDE_UNSURE_CONFIDENCE } from '../domain/types';
-import { actions, isLive, jobList, noteStyle, photoSrc, templateList, templateSwitchable, toast, useStore, type NoteDraft } from '../state/store';
-import { autoNotePoints, NOTE_STYLES } from '../domain/noteDraft';
+import { actions, isLive, jobList, photoSrc, templateList, templateSwitchable, toast, useStore } from '../state/store';
+import { pointFindingLines } from '../domain/noteDraft';
 import { CORNER_LABEL, CORNER_SHORT, CORNERS, type Corner } from '../domain/corner';
 import { CameraSheet } from './camera';
 import { inspectionSteps, nextUnfinished, visibleSections } from '../domain/progress';
@@ -559,13 +559,8 @@ function PlaceSheet({ insp, vehicle, media, onClose }: { insp: Inspection; vehic
 export function PointView({ id, pointId }: { id: string; pointId: string }) {
   const data = useInspection(id);
   const [note, setNote] = useState<string | null>(null);
-  const [draft, setDraft] = useState<NoteDraft | null>(null);
-  const [drafting, setDrafting] = useState(false);
-  useEffect(() => { setDraft(null); setNote(null); }, [id, pointId]); // a draft belongs to one point
-  const makeDraft = async () => {
-    setDrafting(true);
-    try { setDraft(await actions.draftNote(id, pointId)); } catch (e) { toast(e instanceof Error ? e.message : 'Couldn’t write a draft', 'error'); } finally { setDrafting(false); }
-  };
+  const [writing, setWriting] = useState(false);
+  useEffect(() => { setNote(null); setWriting(false); }, [id, pointId]); // the note box belongs to one point
   if (!data) return <Missing />;
   const { insp, vehicle } = data;
   let p;
@@ -603,6 +598,7 @@ export function PointView({ id, pointId }: { id: string; pointId: string }) {
     actions.setNote(id, pointId, next);
   };
   const unrated = comps.filter((c) => componentState(insp, c.key) === 'unrated').length;
+  const found = pointFindingLines(insp, vehicle, p);
   return (
     <div className="phone">
       <TopBar title={p.name} sub={`Point ${stepIdx + 1} of ${steps.length} · ${section.name}`} back={`#/insp/${id}`}
@@ -707,45 +703,43 @@ export function PointView({ id, pointId }: { id: string; pointId: string }) {
             </div>}
           </section>
         )}
-        <section className="card pad stack">
-          <label className="label" htmlFor="note">Your note</label>
-          <span className="small muted" style={{ marginTop: -6 }}>The customer sees this note as written, unless you approve a reworded version.</span>
-          {!locked && <MicButton inspId={id} onText={addSpoken} />}
-          <textarea id="note" className="input" rows={2} value={noteText} disabled={locked}
-            onChange={(e) => setNote(e.target.value)} onBlur={() => note !== null && actions.setNote(id, pointId, note)} />
-          {!locked && !draft && (
-            <button type="button" className="ai-draft" disabled={drafting} onClick={makeDraft}
-              aria-label="Write this note with AI from the confirmed ratings and photos">
-              <span className="ic"><Icon name="ai" size={18} /></span>
-              <span>{drafting ? 'Writing a draft…' : noteText.trim() ? 'Redraft with AI' : 'Draft note with AI'}</span>
-              <span className="small muted hide-sm">From your ratings and confirmed photos</span>
-            </button>
-          )}
-          {draft && (
-            <div className="ai-card stack" role="region" aria-label="AI draft note">
-              <div className="row between">
-                <span className="row" style={{ gap: 6, fontWeight: 700, color: 'var(--ai)' }}><Icon name="ai" />{draft.source === 'ai' ? 'AI draft' : 'Draft from your ratings'}</span>
-                <span className="chip ai">Not your note yet</span>
-              </div>
-              <label className="sr" htmlFor="draft">Edit the draft</label>
-              <textarea id="draft" className="input" rows={4} value={draft.text} onChange={(e) => setDraft({ ...draft, text: e.target.value })} />
-              <span className="small muted">
-                Based on {draft.basis.parts} rated {draft.basis.parts === 1 ? 'part' : 'parts'}{draft.basis.photos ? ` and ${draft.basis.photos} confirmed ${draft.basis.photos === 1 ? 'photo' : 'photos'}` : ''}.
-                {draft.source === 'rules' && isLive() ? ' The AI wasn’t available, so this was written from your ratings.' : ''} Check it and edit anything before you use it.
-              </span>
-              <div className="row">
-                <button className="btn primary grow" disabled={!draft.text.trim()} onClick={() => {
-                  actions.setNote(id, pointId, draft.text.trim()); setNote(draft.text.trim()); setDraft(null);
-                }}><Icon name="check" size={18} />{noteText.trim() ? 'Replace my note' : 'Use this note'}</button>
-                <button className="btn quiet" onClick={() => setDraft(null)}>Discard</button>
-              </div>
-            </div>
-          )}
-          {!locked && noteText.trim() && (
-            <a className="row small" style={{ fontWeight: 700, color: 'var(--ai)' }} href={`#/insp/${id}/wording/${pointId}`}
-              onClick={() => { if (note !== null) actions.setNote(id, pointId, note); }}>
-              <Icon name="ai" size={16} />{n?.status === 'ai_suggested' ? 'Customer wording suggested · review' : 'Customer wording'}
-            </a>
+        {comps.length > 0 && (
+          <section className="card pad stack point-findings" aria-label="Findings at this point">
+            <h2 className="h2" style={{ margin: 0 }}>Findings</h2>
+            {found.length === 0 ? (
+              <span className="small muted">{unrated > 0 ? 'Nothing found yet.' : 'No problems found.'}</span>
+            ) : (
+              <ul className="find-list">
+                {found.map((x) => (
+                  <li key={x.key}>{x.rating && <StateChip state={x.rating} />}<span>{x.text}</span></li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+        <section className="card pad stack tech-note">
+          <div className="row between">
+            <h2 className="h2" style={{ margin: 0 }}>Technician note</h2>
+            {!locked && !writing && (
+              <button type="button" className="iconbtn note-add" onClick={() => setWriting(true)} aria-label={noteText.trim() ? 'Edit note' : 'Add note'}>
+                <Icon name={noteText.trim() ? 'text' : 'plus'} size={26} />
+              </button>
+            )}
+          </div>
+          {!writing && (noteText.trim()
+            ? <p style={{ margin: 0, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{noteText}</p>
+            : <span className="small muted">No note needed. Without one, the AI writes a customer-friendly summary of this point’s findings, and the service advisor approves it before the report goes out.</span>)}
+          {writing && (
+            <>
+              <MicButton inspId={id} onText={addSpoken} />
+              <label className="sr" htmlFor="note">Technician note for {p.name}</label>
+              <textarea id="note" className="input" rows={3} value={noteText} autoFocus
+                placeholder="Summarize what you found at this point"
+                onChange={(e) => setNote(e.target.value)} onBlur={() => note !== null && actions.setNote(id, pointId, note)} />
+              <button type="button" className="btn secondary" onClick={() => { if (note !== null) actions.setNote(id, pointId, note); setWriting(false); }}>
+                <Icon name="check" size={18} />Done
+              </button>
+            </>
           )}
         </section>
       </div>
@@ -764,7 +758,6 @@ export const REASON_LABEL = Object.fromEntries(REASONS) as Record<NotInspectedRe
 
 export function ComponentView({ id, compKeyEnc, pointId }: { id: string; compKeyEnc: string; pointId?: string }) {
   const data = useInspection(id);
-  const [adding, setAdding] = useState(false);
   const [skip, setSkip] = useState(false);
   if (!data) return <Missing />;
   const { insp, vehicle } = data;
@@ -773,7 +766,8 @@ export function ComponentView({ id, compKeyEnc, pointId }: { id: string; compKey
   try { c = cls(parseKey(key).classId); } catch { return <Missing />; }
   const state = componentState(insp, key);
   const pending = insp.findings.filter((f) => f.compKey === key && isPendingAi(f));
-  const counted = insp.findings.filter((f) => f.compKey === key && !isPendingAi(f) && f.status !== 'denied');
+  // Older inspections (and AI findings with no visual check to go under) can have findings on the part itself.
+  const partLevel = insp.findings.filter((f) => f.compKey === key && !f.checkKey && !isPendingAi(f) && f.status !== 'denied');
   const photos = photosOf(insp, key);
   const okObs = state === 'unrated' ? insp.observations.filter((o) => o.compKey === key && o.status === 'pending') : [];
   const status = insp.statuses.find((s) => s.compKey === key)?.notInspected;
@@ -822,20 +816,28 @@ export function ComponentView({ id, compKeyEnc, pointId }: { id: string; compKey
         {c.checks.filter((k) => !checkOff(k) || insp.results.some((r) => r.compKey === key && r.checkKey === k))
           .map((k) => <CheckCard key={k} insp={insp} compKey={key} checkKey={k} locked={locked} />)}
 
-        <div className="row between"><h2 className="h2">Findings</h2>{!locked && <button className="linkbtn" onClick={() => setAdding(true)}>+ Add finding</button>}</div>
-        {counted.length === 0 && <div className="small muted">None recorded.</div>}
-        {counted.map((f) => (
-          <div key={f.id} className="card item">
-            <div className="grow"><div className="t">{findingLabel(f.key)}</div><div className="d">{cap(f.severity)} · {f.source === 'ai' ? `AI, ${f.status === 'modified' ? 'edited' : 'confirmed'} by you` : 'Entered by you'}</div></div>
-            <StateChip state={findingRating(c.id, f.key, f.severity)} />
-            {!locked && f.source === 'technician' && <button className="iconbtn" aria-label={`Remove ${findingLabel(f.key)}`} onClick={() => actions.removeFinding(id, f.id)}><Icon name="trash" /></button>}
-          </div>
-        ))}
+        {!locked && (
+          <button className={`btn ${status ? 'secondary' : 'quiet'} skip-part`} onClick={() => setSkip(true)}>
+            <Icon name="na" />{status ? `Couldn’t inspect: ${REASON_LABEL[status.reason].toLowerCase()} · change` : 'Couldn’t inspect this part'}
+          </button>
+        )}
+
+        {partLevel.length > 0 && (
+          <>
+            <h2 className="h2">Other findings</h2>
+            {partLevel.map((f) => (
+              <div key={f.id} className="card item">
+                <div className="grow"><div className="t">{findingLabel(f.key)}</div><div className="d">{cap(f.severity)} · {f.source === 'ai' ? `AI, ${f.status === 'modified' ? 'edited' : 'confirmed'} by you` : 'Entered by you'}</div></div>
+                <StateChip state={findingRating(c.id, f.key, f.severity)} />
+                {!locked && f.source === 'technician' && <button className="iconbtn" aria-label={`Remove ${findingLabel(f.key)}`} onClick={() => actions.removeFinding(id, f.id)}><Icon name="trash" /></button>}
+              </div>
+            ))}
+          </>
+        )}
 
         <div className="card pad small" style={{ color: 'var(--text2)' }}><strong>Capture tip:</strong> {c.capture}</div>
-        {!locked && <button className="btn quiet" onClick={() => setSkip(true)}>Couldn't check this part</button>}
       </div>
-      <nav className="footer wizard" aria-label="Parts">
+      <nav className="footer wizard two" aria-label="Parts">
         <a className="btn quiet wiz-back" href={back}><Icon name="back" size={26} /><span>{pointId ? 'Point' : 'Overview'}</span></a>
         {nextPart ? (
           <a className="btn primary wiz-next" href={compHref(id, nextPart, pointId)}>
@@ -843,7 +845,6 @@ export function ComponentView({ id, compKeyEnc, pointId }: { id: string; compKey
           </a>
         ) : <a className="btn primary wiz-next" href={back}><span className="wiz-label"><span>Done</span><small>Back to the point</small></span><Icon name="check" size={26} /></a>}
       </nav>
-      {adding && <AddFinding insp={insp} compKey={key} onClose={() => setAdding(false)} />}
       {skip && <SkipSheet insp={insp} compKey={key} onClose={() => setSkip(false)} />}
     </div>
   );
@@ -856,7 +857,7 @@ function CheckCard({ insp, compKey, checkKey, locked }: { insp: Inspection; comp
   const auto = !!check.auto;
   const save = () => { const v = parseFloat(val); if (!Number.isNaN(v)) actions.setCheck(insp.id, compKey, checkKey, v, null); };
   return (
-    <div className="card pad stack">
+    <div className="card pad stack check-card" data-check={checkKey}>
       <div className="row between" style={{ alignItems: 'flex-start' }}>
         <div className="grow"><div style={{ fontWeight: 700 }}>{check.name}</div><div className="small muted">{check.how}</div></div>
         {res && <StateChip state={res.rating} />}
@@ -879,6 +880,7 @@ function CheckCard({ insp, compKey, checkKey, locked }: { insp: Inspection; comp
           ))}
         </div>
       )}
+      {res && res.rating !== 'ok' && <CheckFindings insp={insp} compKey={compKey} checkKey={checkKey} rating={res.rating} locked={locked} />}
       <details className="small">
         <summary className="muted" style={{ cursor: 'pointer' }}>What counts as OK / Monitor / Immediate</summary>
         <div className="stack" style={{ gap: 4, marginTop: 6 }}>
@@ -936,19 +938,30 @@ function AiFindingCard({ insp, f, locked }: { insp: Inspection; f: Finding; lock
   );
 }
 
-function AddFinding({ insp, compKey, onClose }: { insp: Inspection; compKey: CompKey; onClose: () => void }) {
-  const c = cls(parseKey(compKey).classId);
-  const [key, setKey] = useState<string | null>(null);
-  const [sev, setSev] = useState<Severity>('moderate');
+/** Under a check rated Monitor or Immediate: what was found. Tap to pick or unpick; AI findings the tech confirmed show too. */
+function CheckFindings({ insp, compKey, checkKey, rating, locked }: { insp: Inspection; compKey: CompKey; checkKey: string; rating: Rating; locked: boolean }) {
+  const here = checkFindings(insp, compKey, checkKey);
+  const mine = here.filter((f) => f.source === 'technician').map((f) => f.key);
+  const fromAi = new Set(here.filter((f) => f.source === 'ai').map((f) => f.key));
+  const options = [...new Set([...checkFindingOptions(checkKey), ...here.map((f) => f.key)])];
+  const toggle = (k: string) => actions.setCheckFindings(insp.id, compKey, checkKey, mine.includes(k) ? mine.filter((x) => x !== k) : [...mine, k]);
   return (
-    <Sheet title={`Add finding · ${compLabel(compKey, true)}`} onClose={onClose}>
-      <span className="label">Finding</span>
-      <div className="pills">{Object.keys(c.findings).map((k) => <button key={k} className="pill" aria-pressed={k === key} onClick={() => setKey(k)}>{findingLabel(k)}</button>)}</div>
-      <span className="label">Severity</span>
-      <div className="seg" role="group" aria-label="Severity">{SEVERITIES.map((s) => <button key={s} aria-pressed={s === sev} onClick={() => setSev(s)}>{cap(s)}</button>)}</div>
-      {key && <div className="row"><span className="small muted">Default rating:</span><StateChip state={findingRating(c.id, key, sev)} /></div>}
-      <button className="btn primary" disabled={!key} onClick={() => { actions.addFinding(insp.id, compKey, key!, sev); onClose(); }}>Add finding</button>
-    </Sheet>
+    <div className={`check-findings ${rating}`} role="group" aria-label={`What you found (${rating === 'immediate' ? 'Immediate' : 'Monitor'})`}>
+      <span className="label">What did you find?</span>
+      <div className="pills">
+        {options.map((k) => {
+          const ai = fromAi.has(k);
+          const on = ai || mine.includes(k);
+          return (
+            <button key={k} type="button" className={`pill${ai ? ' ai' : ''}`} aria-pressed={on} disabled={locked || ai}
+              title={ai ? 'AI finding you confirmed' : undefined} onClick={() => toggle(k)}>
+              {ai && <Icon name="ai" size={14} />}{findingLabel(k)}
+            </button>
+          );
+        })}
+      </div>
+      {!here.length && !locked && <span className="small muted">Pick what you saw. It goes in the point’s summary and the report.</span>}
+    </div>
   );
 }
 
@@ -980,87 +993,25 @@ function SkipSheet({ insp, compKey, onClose }: { insp: Inspection; compKey: Comp
   );
 }
 
-// ------------------------------------------------------------------ Wording
-export function Wording({ id, pointId }: { id: string; pointId: string }) {
-  const data = useInspection(id);
-  const [editing, setEditing] = useState<string | null>(null);
-  if (!data) return <Missing />;
-  const { insp } = data;
-  const n = insp.notes.find((x) => x.pointId === pointId);
-  const p = getPoint(pointId);
-  const back = `#/insp/${id}/point/${pointId}`;
-  return (
-    <div className="phone">
-      <TopBar title="Customer wording" sub={p.name} back={back} />
-      <div className="body">
-        <div className="card pad stack">
-          <span className="small muted">Your note · always kept</span>
-          <p className="mono" style={{ margin: 0 }}>{n?.techText || '—'}</p>
-        </div>
-        {n && n.status === 'ai_suggested' && n.aiText && (
-          <div className="ai-card stack">
-            <div className="row between"><span className="row" style={{ gap: 6, fontWeight: 700, color: 'var(--ai)' }}><Icon name="ai" />Suggested for the customer</span><span className="chip ai">Not approved</span></div>
-            {editing === null ? <p style={{ margin: 0, fontSize: 16, lineHeight: 1.5 }}>{n.aiText}</p>
-              : <textarea className="input" rows={4} value={editing} onChange={(e) => setEditing(e.target.value)} aria-label="Edit wording" />}
-            <div className="small" style={{ color: 'var(--ok)' }}><Icon name="check" size={14} /> Keeps every measurement, adds no findings or repairs</div>
-          </div>
-        )}
-        {n && n.status !== 'ai_suggested' && n.customerText && (
-          <div className="card pad stack"><span className="small muted">Customer sees ({n.status.replace(/_/g, ' ')})</span><p style={{ margin: 0 }}>{n.customerText}</p></div>
-        )}
-        {n && n.status !== 'ai_suggested' && insp.status === 'in_progress' && (
-          <button className="btn secondary" onClick={() => actions.requestWording(id, pointId)}><Icon name="ai" />Suggest customer wording</button>
-        )}
-        <p className="small muted" style={{ margin: 0 }}>AI may only reword your note, or draft one from your confirmed ratings when it's blank. The customer sees nothing until you approve it.</p>
-      </div>
-      {n?.status === 'ai_suggested' && (
-        <div className="footer">
-          <button className="btn quiet" onClick={() => actions.resolveWording(id, pointId, 'reject')}>Keep mine</button>
-          {editing === null ? <button className="btn secondary" onClick={() => setEditing(n.aiText ?? '')}>Edit</button>
-            : <button className="btn secondary" onClick={() => { actions.resolveWording(id, pointId, { text: editing }); setEditing(null); }}>Save edit</button>}
-          <button className="btn primary grow" onClick={() => actions.resolveWording(id, pointId, 'accept')}>Approve</button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ------------------------------------------------------------------ Finish
 export function Finish({ id }: { id: string }) {
   const data = useInspection(id);
-  const role = useStore((x) => x.workspace?.role ?? null);
-  const style = useStore(() => noteStyle());
-  const [tried] = useState(() => new Set<string>());
-  const [writing, setWriting] = useState<{ done: number; total: number; failed: number } | null>(null);
-  const ready = !!data && data.insp.status === 'in_progress' && !completionGate(data.insp, data.vehicle).some((g) => g.kind === 'required');
-  const todo = ready ? autoNotePoints(data!.insp, data!.vehicle, sections().flatMap((s) => s.points)).filter((x) => !tried.has(x.pointId)) : [];
-  const todoKey = todo.map((x) => x.pointId).join(',');
-  // Once every required part is rated, write the automatic notes: reword the tech's notes, draft the blank ones.
-  useEffect(() => {
-    if (!todoKey || writing) return;
-    const ids = todoKey.split(',');
-    ids.forEach((x) => tried.add(x));
-    setWriting({ done: 0, total: ids.length, failed: 0 });
-    void actions.autoNotes(id, ids, (done) => setWriting((w) => (w ? { ...w, done } : w)))
-      .then((failed) => { setWriting(null); if (failed) toast(`${failed} note${failed === 1 ? '' : 's'} couldn’t be written automatically; the technician’s own note stays.`, 'error'); });
-  }, [todoKey, writing, id]);
   if (!data) return <Missing />;
   const { insp, vehicle } = data;
   const gate = completionGate(insp, vehicle);
   const sum = summarize(insp, vehicle);
-  const ai = gate.filter((g) => g.kind !== 'required' && g.kind !== 'wording');
+  const ai = gate.filter((g) => g.kind !== 'required');
   const req = gate.filter((g) => g.kind === 'required');
-  const notes = insp.notes.filter((n) => n.status === 'ai_suggested' && n.aiText);
+  const steps = inspectionSteps(vehicle);
+  const withNote = steps.filter((x) => insp.notes.find((n) => n.pointId === x.pointId)?.techText.trim()).length;
   const hrefFor = (g: (typeof gate)[number]) => {
     if (g.kind === 'ai_finding') { const f = insp.findings.find((x) => x.id === g.id)!; return compHref(id, f.compKey); }
     if (g.kind === 'photo') return `#/insp/${id}/sort/${insp.media.find((m) => m.id === g.id)!.sectionId}`;
-    if (g.kind === 'wording') return `#/insp/${id}/wording/${g.id}`;
     return compHref(id, g.id);
   };
   const labelFor = (g: (typeof gate)[number]) => {
     if (g.kind === 'ai_finding') { const f = insp.findings.find((x) => x.id === g.id)!; return [`AI finding`, `${compLabel(f.compKey, true)} · ${findingLabel(f.key).toLowerCase()}`]; }
     if (g.kind === 'photo') return ['Photo not confirmed', insp.media.find((m) => m.id === g.id)!.label];
-    if (g.kind === 'wording') return ['Note to approve', getPoint(g.id).name];
     return ['Required part not rated', compLabel(g.id, true)];
   };
   const others = [...ai, ...req];
@@ -1073,12 +1024,11 @@ export function Finish({ id }: { id: string }) {
             <div className="row" style={{ alignItems: 'flex-start' }}><Icon name="lock" size={22} />
               <div><strong style={{ fontSize: 18 }}>{gate.length} {gate.length === 1 ? 'thing needs' : 'things need'} you first</strong><div className="small" style={{ color: 'var(--text2)' }}>Nothing unconfirmed can reach the advisor or the customer.</div></div>
             </div>
-            {notes.length > 0 && <span className="small" style={{ color: 'var(--text2)' }}>{notes.length} automatic note{notes.length === 1 ? '' : 's'} to approve below.</span>}
             {others.slice(0, 30).map((g) => {
               const [a, b] = labelFor(g);
               return (
                 <a key={g.kind + g.id} href={hrefFor(g)} className="row" style={{ minHeight: 50, padding: '6px 12px', borderRadius: 10, background: 'var(--card2)', color: 'var(--ink)' }}>
-                  <Icon name={g.kind === 'ai_finding' ? 'ai' : g.kind === 'photo' ? 'image' : g.kind === 'wording' ? 'text' : 'na'} />
+                  <Icon name={g.kind === 'ai_finding' ? 'ai' : g.kind === 'photo' ? 'image' : 'na'} />
                   <span className="grow"><span style={{ display: 'block', fontWeight: 600 }}>{a}</span><span className="small" style={{ color: 'var(--text2)' }}>{b}</span></span>
                   <span className="small" style={{ fontWeight: 700, color: 'var(--blue-text)' }}>Open</span>
                 </a>
@@ -1096,25 +1046,15 @@ export function Finish({ id }: { id: string }) {
           <Tile kind="ok" n={sum.ok} label="OK" />
           <Tile kind="na" n={sum.notChecked} label="Not checked" />
           <Tile kind="na" n={sum.unrated} label="Not rated yet" />
-          <Tile kind="ai" n={ai.length + notes.length} label="AI to review" />
+          <Tile kind="ai" n={ai.length} label="AI to review" />
         </div>
-        {(writing || notes.length > 0 || (insp.status === 'in_progress' && ready)) && (
-          <section className="card pad stack auto-notes" aria-label="Automatic notes">
-            <div className="row between" style={{ flexWrap: 'wrap' }}>
-              <h2 className="h2" style={{ margin: 0 }}><Icon name="ai" /> Automatic notes</h2>
-              <span className="small muted">Style: <strong>{NOTE_STYLES[style]}</strong>{role === 'owner' && <> · <a href="#/settings">Change</a></>}</span>
-            </div>
-            {writing ? <p className="small muted" style={{ margin: 0 }} role="status">Writing notes… {writing.done} of {writing.total}</p>
-              : notes.length ? <p className="small muted" style={{ margin: 0 }}>Blank notes were drafted from your confirmed ratings and photos; your notes were reworded, keeping every measurement. Nothing reaches the advisor or the customer until you approve it.</p>
-              : <p className="small muted" style={{ margin: 0 }}>All notes are reviewed.</p>}
-            {!writing && notes.length > 1 && (
-              <button className="btn secondary" onClick={() => { for (const n of notes) actions.resolveWording(id, n.pointId, 'accept'); }}>
-                <Icon name="check" size={18} />Approve all {notes.length} as written
-              </button>
-            )}
-            {notes.map((n) => <NoteReview key={n.pointId} inspId={id} note={n} />)}
-          </section>
-        )}
+        <section className="card pad stack" aria-label="Report notes">
+          <h2 className="h2" style={{ margin: 0 }}><Icon name="text" /> Report notes</h2>
+          <p className="small" style={{ margin: 0, color: 'var(--text2)' }}>
+            {withNote} of {steps.length} points have your note. The AI writes a customer-friendly summary of the findings for the rest, so no point is blank.
+            The service advisor approves or edits every note before the report goes to the customer.
+          </p>
+        </section>
       </div>
       <div className="footer">
         {insp.status === 'in_progress' ? (
@@ -1122,24 +1062,6 @@ export function Finish({ id }: { id: string }) {
             {gate.length ? <><Icon name="lock" />Send to advisor</> : 'Send to advisor'}
           </button>
         ) : <a className="btn primary block" href={`#/advisor/${id}`}>Open advisor view</a>}
-      </div>
-    </div>
-  );
-}
-
-function NoteReview({ inspId, note }: { inspId: string; note: Inspection['notes'][number] }) {
-  const [text, setText] = useState(note.aiText ?? '');
-  useEffect(() => setText(note.aiText ?? ''), [note.aiText]);
-  const changed = text.trim() !== (note.aiText ?? '').trim();
-  const p = getPoint(note.pointId);
-  return (
-    <div className="ai-card stack note-review" data-point={note.pointId}>
-      <div className="row between"><strong>{p.name}</strong><span className="chip ai">{note.techText.trim() ? 'Reworded' : 'Drafted'} · not approved</span></div>
-      {note.techText.trim() && <p className="small muted mono" style={{ margin: 0 }}>Your note: {note.techText}</p>}
-      <textarea className="input" rows={3} value={text} onChange={(e) => setText(e.target.value)} aria-label={`Automatic note for ${p.name}`} />
-      <div className="row">
-        <button className="btn quiet" onClick={() => actions.resolveWording(inspId, note.pointId, 'reject')}>{note.techText.trim() ? 'Keep mine' : 'Skip'}</button>
-        <button className="btn primary grow" disabled={!text.trim()} onClick={() => actions.resolveWording(inspId, note.pointId, changed ? { text: text.trim() } : 'accept')}>{changed ? 'Approve edit' : 'Approve'}</button>
       </div>
     </div>
   );

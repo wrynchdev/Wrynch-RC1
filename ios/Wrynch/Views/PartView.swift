@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// One part: AI suggestions to confirm, its checks (measured or rated), findings, photos, and "couldn't check".
+/// One part: AI suggestions to confirm, its checks (measured or rated, with what was found under a Monitor or Immediate
+/// rating), "couldn't inspect" right under them, and photos.
 struct PartView: View {
     @Environment(AppModel.self) private var model
     let id: String
     let key: String
-    @State private var adding = false
     @State private var skipping = false
 
     var body: some View {
@@ -39,36 +39,38 @@ struct PartView: View {
                         }
                         Text("Checks").font(.headline)
                         ForEach(vm.checks) { c in CheckCard(id: id, part: key, check: c, locked: vm.locked) }
-                        HStack {
-                            Text("Findings").font(.headline)
-                            Spacer()
-                            if !vm.locked { Button { adding = true } label: { Label("Add finding", systemImage: "plus") }.secondaryButton() }
+                        if !vm.locked {
+                            Button { skipping = true } label: {
+                                Label(vm.notInspected.map { "Couldn't inspect: \(Labels.reason($0.reason).lowercased()) · change" } ?? "Couldn't inspect this part",
+                                      systemImage: "minus.circle")
+                            }
+                            .secondaryButton()
                         }
-                        if vm.findings.isEmpty { Text("None recorded.").font(.footnote).foregroundStyle(Theme.muted) }
-                        ForEach(vm.findings) { f in
-                            Card {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(f.label).font(.subheadline.weight(.semibold))
-                                        Text("\(f.severity.capitalized) · \(f.source == "ai" ? "AI, \(f.status == "modified" ? "edited" : "confirmed") by you" : "Entered by you")")
-                                            .font(.caption).foregroundStyle(Theme.muted)
-                                    }
-                                    Spacer()
-                                    StateChip(state: f.rating)
-                                    if !vm.locked && f.removable {
-                                        Button(role: .destructive) { model.removeFinding(id, findingId: f.id) } label: { Image(systemName: "trash") }
-                                            .accessibilityLabel("Remove \(f.label)")
+                        if !vm.findings.isEmpty {
+                            Text("Other findings").font(.headline)
+                            ForEach(vm.findings) { f in
+                                Card {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(f.label).font(.subheadline.weight(.semibold))
+                                            Text("\(f.severity.capitalized) · \(f.source == "ai" ? "AI, \(f.status == "modified" ? "edited" : "confirmed") by you" : "Entered by you")")
+                                                .font(.caption).foregroundStyle(Theme.muted)
+                                        }
+                                        Spacer()
+                                        StateChip(state: f.rating)
+                                        if !vm.locked && f.removable {
+                                            Button(role: .destructive) { model.removeFinding(id, findingId: f.id) } label: { Image(systemName: "trash").frame(width: 48, height: 48) }
+                                                .accessibilityLabel("Remove \(f.label)")
+                                        }
                                     }
                                 }
                             }
                         }
                         Card { Text("**Capture tip:** \(vm.capture)").font(.footnote).foregroundStyle(Theme.muted) }
-                        if !vm.locked { Button("Couldn't check this part") { skipping = true }.secondaryButton() }
                     }
                     .padding(16)
                 }
                 .navigationTitle(vm.title)
-                .sheet(isPresented: $adding) { AddFindingSheet(id: id, part: key, options: vm.findingOptions) }
                 .sheet(isPresented: $skipping) { SkipSheet(id: id, part: key, current: vm.notInspected) }
             } else {
                 ProgressView()
@@ -128,6 +130,9 @@ private struct CheckCard: View {
                         .accessibilityAddTraits(on ? .isSelected : [])
                     }
                 }
+            }
+            if let r = check.result, r.rating != "ok", !check.findingChoices.isEmpty {
+                FindingPicker(id: id, part: part, check: check, rating: r.rating, locked: locked)
             }
             DisclosureGroup("What counts as OK / Monitor / Immediate", isExpanded: $showBands) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -201,37 +206,50 @@ private struct AiFindingCard: View {
     private var rating: String { editing ? (options.first { $0.key == key }?.ratings[severity] ?? finding.rating) : finding.rating }
 }
 
-private struct AddFindingSheet: View {
+/// Under a check rated Monitor or Immediate: tap what you found. AI findings you confirmed show too and stay picked.
+private struct FindingPicker: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
     let id: String
     let part: String
-    let options: [PartVM.FindingOption]
-    @State private var key: String?
-    @State private var severity = "moderate"
+    let check: PartVM.Check
+    let rating: String
+    let locked: Bool
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Finding") {
-                    ForEach(options) { o in
-                        Button { key = o.key } label: { HStack { Text(o.label); Spacer(); if key == o.key { Image(systemName: "checkmark") } } }
+        VStack(alignment: .leading, spacing: 8) {
+            Text("What did you find?").font(.caption.weight(.bold)).foregroundStyle(Theme.muted)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 8)], alignment: .leading, spacing: 8) {
+                ForEach(check.findingChoices) { c in
+                    Button { toggle(c) } label: {
+                        HStack(spacing: 4) {
+                            if c.ai { Image(systemName: "sparkles").font(.caption) }
+                            Text(c.label).font(.subheadline.weight(.semibold)).lineLimit(2).minimumScaleFactor(0.85)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .padding(.horizontal, 8)
+                        .foregroundStyle(c.on ? (c.ai ? Theme.ai : .white) : Theme.ink)
+                        .background(c.on ? (c.ai ? Theme.ai.opacity(0.18) : Theme.blue) : Theme.card, in: RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(c.ai ? Theme.aiLine : Theme.line, style: StrokeStyle(lineWidth: 1, dash: c.ai ? [4, 3] : [])))
+                        .contentShape(Rectangle())
                     }
-                }
-                Section("Severity") {
-                    Picker("Severity", selection: $severity) { ForEach(Labels.severities, id: \.self) { Text($0.capitalized).tag($0) } }.pickerStyle(.segmented)
-                    if let k = key, let r = options.first(where: { $0.key == k })?.ratings[severity] { HStack { Text("Default rating"); Spacer(); StateChip(state: r) } }
+                    .buttonStyle(.plain)
+                    .disabled(locked || c.ai)
+                    .accessibilityAddTraits(c.on ? .isSelected : [])
                 }
             }
-            .navigationTitle("Add finding")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") { if let key { model.addFinding(id, key: part, finding: key, severity: severity) }; dismiss() }.disabled(key == nil)
-                }
+            if !check.findingChoices.contains(where: { $0.on }) && !locked {
+                Text("Pick what you saw. It goes in the point's summary and the report.").font(.caption).foregroundStyle(Theme.muted)
             }
         }
+        .padding(12)
+        .background(Theme.card2, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(alignment: .leading) { Rectangle().fill(Theme.color(rating)).frame(width: 4).clipShape(RoundedRectangle(cornerRadius: 2)) }
+    }
+
+    private func toggle(_ c: PartVM.Choice) {
+        let mine = check.findingChoices.filter { $0.on && !$0.ai }.map(\.key)
+        let next = mine.contains(c.key) ? mine.filter { $0 != c.key } : mine + [c.key]
+        model.setCheckFindings(id, key: part, check: check.key, findings: next)
     }
 }
 
@@ -247,7 +265,7 @@ private struct SkipSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Why couldn't you check it?") {
+                Section("Why couldn't you inspect it?") {
                     ForEach(Labels.reasons, id: \.self) { r in
                         Button { reason = r.key } label: { HStack { Text(r.label); Spacer(); if reason == r.key { Image(systemName: "checkmark") } } }
                     }
@@ -262,7 +280,7 @@ private struct SkipSheet: View {
                     Button("Clear", role: .destructive) { model.setNotInspected(id, key: part, kind: nil, reason: nil); dismiss() }
                 }
             }
-            .navigationTitle("Couldn't check")
+            .navigationTitle("Couldn't inspect")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }

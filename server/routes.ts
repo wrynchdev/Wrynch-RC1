@@ -146,69 +146,43 @@ export const aiSort: Handler = route({
 });
 
 // POST /api/ai-wording { inspectionId, pointId } -> { text, style }
-// Rewrites the technician note in the shop's note style, or drafts one from confirmed facts when the note is blank.
-// Stored as an ai_suggested note: it reaches the customer only after the technician approves it.
+// Rewrites the technician note in the shop's note style, or, when the note is blank, writes a summary of the point's
+// confirmed findings (every point gets one, so no point reaches the report blank). Stored as an ai_suggested note:
+// it reaches the customer only after the service advisor approves it.
 export const aiWording: Handler = route({
   POST: withInspectionAi(async (req) => {
     const jwt = bearer(req);
     const { inspectionId, pointId } = await readJson<{ inspectionId: string; pointId: string }>(req);
     const { inspection, vehicle, template } = await loadAsUser(jwt, inspectionId);
-    if (inspection.status !== 'in_progress') throw new HttpError(409, 'This inspection is no longer open');
+    if (inspection.status !== 'in_progress' && inspection.status !== 'submitted') throw new HttpError(409, 'This report has already been sent');
     const point = template.sections.flatMap((s) => s.points).find((p) => p.id === pointId);
     if (!point) throw new HttpError(404, 'Unknown inspection point');
     const style: NoteStyle = (await rpc<string | null>('note_style_for', { p_inspection: inspectionId }, jwt).catch(() => null)) === 'technical' ? 'technical' : 'customer';
     const note = inspection.notes.find((n) => n.pointId === pointId);
+    if (note?.approved) throw new HttpError(409, 'The service advisor already approved this note');
     let text: string | null;
     if (note?.techText.trim()) {
       // The technician wrote a note: reword it in the shop's style, keeping every number.
       text = await rewriteNote(note, point.name, style);
       if (!text) throw new HttpError(422, "Couldn't reword this note without changing its numbers; keep yours");
     } else {
-      // Blank note: draft one from the point's confirmed facts only.
+      // Blank note: summarize the point's confirmed findings only. With nothing rated there is nothing for the AI to
+      // add, so the plain rule text says so ("no concerns noted" / "not checked this visit").
       const facts = pointFacts(inspection, vehicle, point);
-      if (!facts.parts.some((p) => p.state !== 'unrated')) throw new HttpError(400, 'Nothing confirmed on this point to write about');
       text = null;
-      if (aiMode() === 'live') {
+      if (aiMode() === 'live' && facts.parts.some((p) => p.state !== 'unrated')) {
         try {
           const media = inspection.media.filter((m) => facts.photoIds.includes(m.id)).slice(0, 3);
           const photos = (await Promise.all(media.map((m) => downloadObject(m.url).catch(() => null)))).filter((x): x is { bytes: Uint8Array; type: string } => !!x);
-          text = await writePointNote(facts, photos, style);
+          text = await writePointNote(facts, photos, 'customer');
         } catch (e) {
           console.error('ai-wording draft', e);
         }
       }
-      text ??= draftNote(facts, style);
+      text ??= draftNote(facts, 'customer');
     }
     await rpc('ai_record_wording', { p_inspection: inspectionId, p_point: pointId, p_text: text }, 'service');
     return json({ text, style });
-  }),
-});
-
-// POST /api/ai-note { inspectionId, pointId } -> { text, source: 'ai' | 'rules', basis: { parts, photos } }
-// A draft technician note from the point's confirmed facts and confirmed photos. Nothing is stored: the draft
-// becomes the note only when the technician approves it (set_note), so it can never reach a customer unapproved.
-export const aiNote: Handler = route({
-  POST: withInspectionAi(async (req) => {
-    const jwt = bearer(req);
-    const { inspectionId, pointId } = await readJson<{ inspectionId: string; pointId: string }>(req);
-    const { inspection, vehicle, template } = await loadAsUser(jwt, inspectionId);
-    if (inspection.status !== 'in_progress') throw new HttpError(409, 'This inspection is no longer open');
-    const point = template.sections.flatMap((s) => s.points).find((p) => p.id === pointId);
-    if (!point) throw new HttpError(404, 'Unknown inspection point');
-    const facts = pointFacts(inspection, vehicle, point);
-    if (!facts.parts.some((p) => p.state !== 'unrated')) throw new HttpError(400, 'Rate a part or confirm a photo on this point first');
-    const basis = { parts: facts.parts.filter((p) => p.state !== 'unrated').length, photos: facts.photoIds.length };
-    if (aiMode() === 'live') {
-      try {
-        const media = inspection.media.filter((m) => facts.photoIds.includes(m.id)).slice(0, 3);
-        const photos = (await Promise.all(media.map((m) => downloadObject(m.url).catch(() => null)))).filter((x): x is { bytes: Uint8Array; type: string } => !!x);
-        const text = await writePointNote(facts, photos);
-        if (text) return json({ text, source: 'ai', basis });
-      } catch (e) {
-        console.error('ai-note', e);
-      }
-    }
-    return json({ text: draftNote(facts), source: 'rules', basis });
   }),
 });
 
@@ -247,6 +221,9 @@ export const sendReport: Handler = route({
     const { inspectionId, channel, to } = await readJson<{ inspectionId: string; channel: 'sms' | 'email' | 'link'; to?: string }>(req);
     const { inspection, vehicle } = await loadAsUser(jwt, inspectionId);
     if (inspection.status !== 'submitted' && inspection.status !== 'sent') throw new HttpError(409, 'Send to advisor first');
+    // Every report note approved before anything leaves the shop (mark_sent refuses too; this stops the text going out).
+    const waiting = await rpc<number>('notes_waiting', { p_inspection: inspectionId }, 'service');
+    if (waiting > 0) throw new HttpError(409, `Approve the report notes first (${waiting} waiting)`);
     const link = `${appRoot(req)}#/r/${inspection.reportToken}`;
     const who = `${vehicle.year ?? ''} ${vehicle.make} ${vehicle.model}`.trim();
     let status: 'sent' | 'failed' | 'skipped' = 'skipped';
@@ -581,7 +558,7 @@ export const trainingExport: Handler = route({
 });
 
 export const ROUTES: Record<string, Handler> = {
-  'app-config': appConfig, transcribe, status, pilot, 'ai-note': aiNote, 'template-read': templateRead, 'template-map': templateMap, 'ai-sort': aiSort, 'ai-wording': aiWording, vin, report, 'send-report': sendReport,
+  'app-config': appConfig, transcribe, status, pilot, 'template-read': templateRead, 'template-map': templateMap, 'ai-sort': aiSort, 'ai-wording': aiWording, vin, report, 'send-report': sendReport,
   'ai-key': aiKey, 'admin-pilot-approve': adminPilotApprove, training, 'training-suggest': trainingSuggest, 'training-export': trainingExport, 'tekmetric-webhook': tekmetricWebhook, 'tekmetric-import': tekmetricImport, 'tekmetric-export': tekmetricExport,
 };
 

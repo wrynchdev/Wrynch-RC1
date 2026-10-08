@@ -12,7 +12,7 @@ import { exitFullScreen } from './wizard';
 import { Icon, Wordmark } from './kit';
 import { Dashboard } from './dashboard';
 import { Admin } from './admin';
-import { Capture, ComponentView, Finish, History, Jobs, Missing, Overview, PointView, Setup, Sort, Wording } from './tech';
+import { Capture, ComponentView, Finish, History, Jobs, Missing, Overview, PointView, Setup, Sort } from './tech';
 
 function route(p: string[], home: 'dashboard' | 'jobs') {
   const [a, b, c, d, e] = p;
@@ -27,7 +27,6 @@ function route(p: string[], home: 'dashboard' | 'jobs') {
     if (c === 'sort' && d) return <Sort id={b} sectionId={d} />;
     if (c === 'point' && d) return <PointView id={b} pointId={d} />;
     if (c === 'c' && d) return <ComponentView id={b} compKeyEnc={d} pointId={e} />;
-    if (c === 'wording' && d) return <Wording id={b} pointId={d} />;
     if (c === 'finish') return <Finish id={b} />;
   }
   if (a === 'history' && b && c) return <History vehicleId={b} compKeyEnc={c} />;

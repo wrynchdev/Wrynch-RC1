@@ -46,7 +46,8 @@ export function componentState(insp: Inspection, key: CompKey): ComponentState {
   let r: Rating | null = null;
   for (const res of insp.results) if (res.compKey === key) r = worst(r, res.rating);
   const { classId } = parseKey(key);
-  for (const f of insp.findings) if (f.compKey === key && countsFinding(f)) r = worst(r, findingRating(classId, f.key, f.severity));
+  // A finding filed under a check explains that check's rating; only part-level findings rate the part themselves.
+  for (const f of insp.findings) if (f.compKey === key && !f.checkKey && countsFinding(f)) r = worst(r, findingRating(classId, f.key, f.severity));
   if (r) return r;
   if (status?.notInspected) return status.notInspected.kind;
   return 'unrated';
@@ -75,14 +76,17 @@ export const mediaConfirmed = (m: Media) => !m.excluded && m.links.length > 0 &&
 export const mediaPending = (m: Media) => !m.excluded && (m.links.length === 0 || m.links.some((l) => l.status === 'ai_proposed'));
 export const photosOf = (insp: Inspection, key: CompKey) => insp.media.filter((m) => !m.excluded && m.links.some((l) => l.compKey === key));
 
-export interface GateItem { kind: 'ai_finding' | 'photo' | 'wording' | 'required'; id: string; label: string }
+export interface GateItem { kind: 'ai_finding' | 'photo' | 'required'; id: string; label: string }
 
-/** R12: everything that blocks completion. Empty list = the inspection can be submitted. */
+/** Findings recorded under one check of a part (technician picks and confirmed AI findings). */
+export const checkFindings = (insp: Inspection, key: CompKey, checkKey: string) =>
+  insp.findings.filter((f) => f.compKey === key && f.checkKey === checkKey && countsFinding(f));
+
+/** R12: everything that blocks the technician's submit (report notes are the advisor's, see notesToApprove). Empty list = the inspection can be submitted. */
 export function completionGate(insp: Inspection, vehicle: Vehicle): GateItem[] {
   const items: GateItem[] = [];
   for (const f of insp.findings) if (isPendingAi(f)) items.push({ kind: 'ai_finding', id: f.id, label: f.compKey });
   for (const m of insp.media) if (mediaPending(m)) items.push({ kind: 'photo', id: m.id, label: m.label });
-  for (const n of insp.notes) if (n.status === 'ai_suggested') items.push({ kind: 'wording', id: n.pointId, label: n.pointId });
   const { required } = vehicleComponents(vehicle.config, insp.extraComponents);
   for (const k of required) if (componentState(insp, k) === 'unrated') items.push({ kind: 'required', id: k, label: k });
   return items;
@@ -118,6 +122,6 @@ export function customerView(insp: Inspection, vehicle: Vehicle) {
     photos: insp.media.filter((m) => linkConfirmed(m, key) && m.customerVisible),
     reason: insp.statuses.find((s) => s.compKey === key)?.notInspected ?? null,
   }));
-  const notes = insp.notes.filter((n) => n.customerText && n.status !== 'ai_suggested');
+  const notes = insp.notes.filter((n) => n.approved && n.customerText?.trim());
   return { items, notes };
 }

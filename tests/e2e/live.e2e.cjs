@@ -185,7 +185,10 @@ const B = `${ROOT}/app/`;
       // Inspection mode: full screen (no app menu), straight into the first point, wizard Back / Jump / Next.
       await p.waitForSelector('text=/Point 1 of \\d+/');
       if (await p.locator('.side').count()) errs.push('the app menu is still shown during the inspection');
-      if (!(await p.locator('button.mic').count())) errs.push('no voice note button on the point');
+      if (await p.locator('button.mic').count()) errs.push('note box (and its mic) shown before tapping add note');
+      await p.click('button.note-add');
+      if (!(await p.locator('button.mic').count())) errs.push('no voice note button in the note box');
+      await p.click('.tech-note button:has-text("Done")');
       const big = await p.locator('.footer.wizard .wiz-next').boundingBox();
       if (!big || big.height < 64) errs.push('Next button is not glove-sized: ' + JSON.stringify(big));
       await shot('L06a-wizard-point');
@@ -311,49 +314,61 @@ const B = `${ROOT}/app/`;
         await ai.click(); await p.waitForSelector('.ai-card'); await p.locator('.ai-card button:has-text("Confirm")').first().click(); await p.waitForTimeout(700);
         await p.goto(B + `#/insp/${inspId}/finish`); await p.waitForTimeout(500);
       }
-      // Something to report on a point with no note: the reservoir couldn't be checked.
-      await p.goto(B + `#/insp/${inspId}/c/` + encodeURIComponent('38@') + '/S14'); await p.click('button:has-text("Couldn\'t check this part")');
+      // Something to report on a point with no note: the reservoir couldn't be inspected (the button sits under the ratings).
+      await p.goto(B + `#/insp/${inspId}/c/` + encodeURIComponent('38@') + '/S14'); await p.click('button.skip-part');
       await p.locator('.sheet label.item').first().click(); await p.click('.sheet button:has-text("Save")'); await p.waitForTimeout(600);
+      if (!(await p.locator('button.skip-part:has-text("Couldn’t inspect:")').count())) errs.push('skip reason not shown under the ratings');
+      // Findings belong to a check and appear only once it is rated Monitor or Immediate.
+      await p.goto(B + `#/insp/${inspId}/c/` + encodeURIComponent('72@left_front') + '/S24'); await p.waitForSelector('.check-card[data-check="brake_caliper.visual"]');
+      const cal = p.locator('.check-card[data-check="brake_caliper.visual"]');
+      if (await cal.locator('.check-findings').count()) errs.push('findings shown before Monitor/Immediate');
+      await cal.locator('button.monitor').click(); await cal.locator('.check-findings').waitFor({ timeout: 10000 });
+      await cal.locator('.check-findings button.pill:has-text("Leak")').first().click(); await p.waitForTimeout(900);
+      await shot('L09b-check-findings');
+      await p.goto(B + `#/insp/${inspId}/c/` + encodeURIComponent('72@left_front') + '/S24'); await p.waitForTimeout(800);
+      if (!(await cal.locator('.check-findings button.pill[aria-pressed="true"]:has-text("Leak")').count())) errs.push('check finding not saved');
       for (const pid of ['S01','S02','S03','S04','S05','S06','S07','S08','S09','S10','S11','S12','S13','S14','S15','S16','S17','S18','S19','S20','S21','S22','S23','S24','S25','S26','S27','S28','S29','S30','S31','S32','S33','S34']) {
         await p.goto(B + `#/insp/${inspId}/point/${pid}`); await p.waitForTimeout(250);
         const btn = p.locator('button:has-text("Nothing found")');
         if (await btn.count()) { await btn.click(); await p.waitForTimeout(500); }
       }
-      await p.goto(B + `#/insp/${inspId}/point/S24`); await p.waitForTimeout(300);
-      // AI note draft: built from confirmed ratings, shown for approval, saved only when approved.
-      await p.click('button.ai-draft'); await p.waitForSelector('.ai-card textarea');
-      const draft = await p.inputValue('.ai-card textarea');
-      if (!draft.includes('1.5')) errs.push('note draft missing the confirmed measurement: ' + draft);
-      if ((await p.inputValue('#note')) !== '') errs.push('draft was saved before approval');
-      await p.locator('.ai-card').screenshot({ path: S + 'L09b-note-draft.png' });
-      await p.click('.ai-card button.primary');
-      await p.waitForFunction(() => (document.querySelector('#note')?.value ?? '').includes('1.5'), null, { timeout: 10000 })
-        .catch(() => errs.push('approved draft did not become the note'));
-      await p.waitForTimeout(800); // let the save reach the server before the note is overwritten below
-      await p.fill('#note', 'fronts 5mm/rotors major grooving. rears 6mm'); await p.locator('#note').blur(); await p.waitForTimeout(600);
-      // Automatic notes: once everything is rated, Finish rewords written notes and drafts blank ones in the shop's style.
+      await p.goto(B + `#/insp/${inspId}/point/S24`); await p.waitForTimeout(500);
+      const summary = await p.textContent('.point-findings').catch(() => '');
+      if (!/leak/i.test(summary)) errs.push('point summary misses the check finding: ' + summary);
+      // The note box opens only from the add-note icon.
+      if (await p.locator('#note').count()) errs.push('note box shown before tapping add note');
+      await p.click('button.note-add'); await p.waitForSelector('#note');
+      await p.fill('#note', 'fronts 5mm/rotors major grooving. rears 6mm'); await p.click('.tech-note button:has-text("Done")'); await p.waitForTimeout(800);
+      if (!(await p.locator('.tech-note >> text=fronts 5mm').count())) errs.push('note not shown after Done');
+      // Rewording follows the shop's style; summaries of blank points are always customer-friendly.
       await p.goto(B + '#/settings'); await p.click('[aria-label="Automatic note style"] button:has-text("Technical")');
       await p.waitForFunction(() => document.querySelector('[aria-label="Automatic note style"] button[aria-pressed="true"]')?.textContent === 'Technical');
       await p.waitForTimeout(600);
-      await p.goto(B + `#/insp/${inspId}/finish`);
-      await p.waitForSelector('.note-review[data-point="S24"]', { timeout: 20000 }).catch(() => errs.push('no automatic note for the written S24 note'));
-      await p.waitForFunction(() => !/Writing notes/.test(document.querySelector('.auto-notes')?.textContent ?? ''), null, { timeout: 30000 });
-      if (!(await p.locator('.auto-notes >> text=Technical').count())) errs.push('finish screen does not show the note style');
-      if (!(await p.locator('.note-review:has-text("Drafted")').count())) errs.push('no blank point got a drafted note');
-      if (await p.locator('button:has-text("Send to advisor")').isEnabled()) errs.push('send allowed with notes waiting for approval');
-      const s24 = await p.inputValue('.note-review[data-point="S24"] textarea').catch(() => '');
-      if (!s24.includes('5') || !s24.includes('6')) errs.push('reworded note lost a measurement: ' + s24);
-      await shot('L10-finish-notes');
-      await p.fill('.note-review[data-point="S24"] textarea', s24 + ' Recheck at next service.');
-      await p.click('.note-review[data-point="S24"] button:has-text("Approve edit")'); await p.waitForTimeout(700);
-      await p.locator('.note-review button:has-text("Approve")').first().click(); await p.waitForTimeout(500);
-      const all = p.locator('button:has-text("as written")');
-      if (await all.count()) { await all.click(); await p.waitForTimeout(1500); } else errs.push('no Approve all button');
-      for (let k = 0; k < 40 && await p.locator('.note-review').count(); k++) { await p.locator('.note-review button:has-text("Approve")').first().click(); await p.waitForTimeout(500); }
-      await p.goto(B + `#/insp/${inspId}/finish`); await p.waitForTimeout(1200); await shot('L10-finish');
-      if (await p.locator('.note-review').count()) errs.push('automatic notes were written again after approval');
+      await p.goto(B + `#/insp/${inspId}/finish`); await p.waitForSelector('text=Report notes');
+      if (await p.locator('.note-review').count()) errs.push('the technician is still asked to approve notes');
+      await shot('L10-finish');
       await p.click('button:has-text("Send to advisor")'); await p.waitForSelector('text=Inspection results', { timeout: 10000 });
-      await p.setViewportSize({ width: 1300, height: 900 }); await p.waitForTimeout(500); await shot('L11-advisor');
+      await p.setViewportSize({ width: 1300, height: 900 }); await p.waitForTimeout(500);
+      // The advisor gets a note for every point (AI summaries for the blank ones) and approves each before sending.
+      await p.waitForSelector('.report-notes-review .note-row[data-point="S24"]', { timeout: 20000 });
+      await p.waitForFunction(() => !/Writing summaries/.test(document.querySelector('.report-notes-review')?.textContent ?? ''), null, { timeout: 60000 });
+      await p.waitForTimeout(1500);
+      if (!(await p.locator('button:has-text("Send to customer")').isDisabled())) errs.push('send allowed with notes waiting for approval');
+      const blankRows = await p.$$eval('.report-notes-review .note-row textarea', (els) => els.filter((e) => !e.value.trim()).length);
+      if (blankRows) errs.push(`${blankRows} points have no proposed note`);
+      const s24 = await p.inputValue('.note-row[data-point="S24"] textarea').catch(() => '');
+      if (!s24.includes('5') || !s24.includes('6')) errs.push('reworded note lost a measurement: ' + s24);
+      await shot('L11-advisor-notes');
+      await p.fill('.note-row[data-point="S24"] textarea', s24 + ' Recheck at next service.');
+      await p.click('.note-row[data-point="S24"] button:has-text("Approve edit")'); await p.waitForTimeout(800);
+      const all = p.locator('.report-notes-review button:has-text("as written")');
+      if (await all.count()) { await all.click(); await p.waitForTimeout(2500); } else errs.push('no Approve all button');
+      for (let k = 0; k < 40 && await p.locator('.note-row:not(.approved) button:has-text("Approve")').count(); k++) {
+        await p.locator('.note-row:not(.approved) button:has-text("Approve")').first().click(); await p.waitForTimeout(500);
+      }
+      await p.waitForFunction(() => /all approved/.test(document.querySelector('.report-notes-review h2')?.textContent ?? ''), null, { timeout: 15000 })
+        .catch(() => errs.push('notes not all approved'));
+      await shot('L11-advisor');
     });
     await step('profile', async () => {
       // The finished inspection counts on the person's profile, with timing from the database.
@@ -383,7 +398,10 @@ const B = `${ROOT}/app/`;
       await c.locator('label:has-text("Approve this repair") input').first().check(); await c.waitForTimeout(800);
       const body = await c.textContent('body');
       if (!body.includes('Recheck at next service.')) errs.push('approved automatic note missing for customer');
-      if (!body.includes('Notes from your technician')) errs.push('notes for OK points missing from the customer report');
+      if (!body.includes('Everything we inspected')) errs.push('the customer report does not list every point');
+      const pts = await c.locator('.report-points .item').count();
+      if (pts < 30) errs.push(`only ${pts} inspection points on the customer report`);
+      if (body.includes('waiting for the service advisor')) errs.push('a point on the customer report has no approved note');
       if (body.includes('fronts 5mm/rotors')) errs.push('customer sees the raw tech note instead of the approved one');
       if (body.includes('Uneven wear (minor)')) errs.push('severity jargon shown to customer');
       await c.close();

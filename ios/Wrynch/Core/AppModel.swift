@@ -222,9 +222,11 @@ final class AppModel {
     func clearCheck(_ id: String, key: String, check: String) {
         change(id) { _ = try await self.api.rpc("clear_check", ["p_inspection": .string(id), "p_key": .string(key), "p_check": .string(check)]) }
     }
-    func addFinding(_ id: String, key: String, finding: String, severity: String) {
+    /// The findings that explain a check's Monitor or Immediate rating (replaces the technician's earlier picks).
+    func setCheckFindings(_ id: String, key: String, check: String, findings: [String]) {
         change(id) {
-            _ = try await self.api.rpc("add_finding", ["p_inspection": .string(id), "p_key": .string(key), "p_finding": .string(finding), "p_severity": .string(severity)])
+            _ = try await self.api.rpc("set_check_findings", ["p_inspection": .string(id), "p_key": .string(key), "p_check": .string(check),
+                                                             "p_findings": .array(findings.map { .string($0) })])
         }
     }
     func removeFinding(_ id: String, findingId: String) {
@@ -258,35 +260,6 @@ final class AppModel {
     func setNote(_ id: String, pointId: String, text: String) {
         change(id) { _ = try await self.api.rpc("set_note", ["p_inspection": .string(id), "p_point": .string(pointId), "p_text": .string(text)]) }
     }
-    /// A draft note from the confirmed ratings and photos. Not saved until the technician uses it.
-    func draftNote(_ id: String, pointId: String) async throws -> String {
-        await settle(id)
-        let r = try await self.api.fn("ai-note", body: ["inspectionId": .string(id), "pointId": .string(pointId)])
-        return r["text"]?.string ?? ""
-    }
-    /// Automatic notes on the Finish screen: reworded or drafted, each waiting for the technician's approval.
-    func autoNotes(_ id: String, pointIds: [String]) async -> Int {
-        await settle(id)
-        var failed = 0
-        for start in stride(from: 0, to: pointIds.count, by: 3) {
-            let chunk = Array(pointIds[start..<min(start + 3, pointIds.count)])
-            await withTaskGroup(of: Bool.self) { group in
-                for p in chunk { group.addTask { await self.wording(id, p) } }
-                for await ok in group where !ok { failed += 1 }
-            }
-        }
-        await loadInspection(id)
-        return failed
-    }
-    private func wording(_ id: String, _ pointId: String) async -> Bool {
-        do { _ = try await self.api.fn("ai-wording", body: ["inspectionId": .string(id), "pointId": .string(pointId)]); return true } catch { return false }
-    }
-    func resolveWording(_ id: String, pointId: String, action: String, text: String? = nil) {
-        var args: [String: JSONValue] = ["p_inspection": .string(id), "p_point": .string(pointId), "p_action": .string(action)]
-        if action == "edit" { args["p_text"] = .opt(text) }
-        change(id) { _ = try await self.api.rpc("resolve_wording", args) }
-    }
-
     // MARK: photos
 
     func confirmPlacements(_ id: String, stageId: String) {

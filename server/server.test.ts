@@ -2,7 +2,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildMappedPoint, candidatesFor, explainAiError, resetAiState, validateAnalysis } from './ai';
 import { mapVpic } from './vin';
-import { adminPilotApprove, aiNote, aiSort, aiWording, appRoot, pilot, report, sendReport, status, tekmetricExport, tekmetricImport, tekmetricWebhook, templateMap, templateRead } from './routes';
+import { adminPilotApprove, aiSort, aiWording, appRoot, pilot, report, sendReport, status, tekmetricExport, tekmetricImport, tekmetricWebhook, templateMap, templateRead } from './routes';
 import { resetTekmetricToken, roIdFromWebhook, toImport } from './tekmetric';
 import { aiKey, apiRouter, ROUTES, transcribe, training, trainingExport, trainingSuggest } from './routes';
 import { readFileSync } from 'node:fs';
@@ -266,8 +266,17 @@ test('customer report signs only the photos the database returned', async () => 
   assert.equal(calls.find((c) => c.url.endsWith('/customer_report'))!.auth, 'Bearer service');
 });
 
+test('send-report waits until the service advisor has approved every report note', async () => {
+  respond = (url) => (url.endsWith('/get_inspection') ? bundle((i) => { i.status = 'submitted'; }) : url.endsWith('/notes_waiting') ? 3 : null);
+  const r = await sendReport(post('send-report', { inspectionId: 'i-4r-now', channel: 'sms', to: '555-0100' }));
+  assert.equal(r.status, 409);
+  assert.match((await r.json()).error, /3 waiting/);
+  assert.equal(calls.find((c) => c.url.endsWith('/notes_waiting'))!.auth, 'Bearer service');
+  assert.ok(!calls.some((c) => c.url.endsWith('/mark_sent')), 'nothing sent or recorded');
+});
+
 test('send-report: without a text provider it records the link and says texting is not set up', async () => {
-  respond = (url) => (url.endsWith('/get_inspection') ? bundle((i) => { i.status = 'submitted'; }) : null);
+  respond = (url) => (url.endsWith('/get_inspection') ? bundle((i) => { i.status = 'submitted'; }) : url.endsWith('/notes_waiting') ? 0 : null);
   const r = await sendReport(post('send-report', { inspectionId: 'i-4r-now', channel: 'sms', to: '555-0100' }));
   const out = await r.json();
   assert.equal(out.status, 'skipped');
@@ -434,12 +443,13 @@ test('template-map calls the model and returns mapped points', async () => {
   assert.deepEqual([out[1].count, out[1].note], [0, 'Not a part']);
 });
 
-// ---------------------------------------------------------------- AI note drafts
-test('ai-note drafts from confirmed facts, sends confirmed photos, and is never stored', async () => {
+// ---------------------------------------------------------------- AI report notes
+test('a point summary is written from confirmed facts and confirmed photos, and an invented number falls back', async () => {
   process.env.ANTHROPIC_API_KEY = 'k';
   let reply = 'Brake fluid copper content is 210 ppm and needs attention now; the reservoir checked OK.';
   respond = (url) => {
     if (url.endsWith('/get_inspection')) return bundle((i) => {
+      i.notes = [];
       i.media = [{ id: 'm1', sectionId: 'under_hood', url: 's/i/m1.jpg', label: 'a.jpg', excluded: false, customerVisible: true, analyzed: true,
         links: [{ compKey: compKey(clsByName('brake_fluid').id, null), status: 'confirmed', confidence: 0.9 }] }];
     });
@@ -447,32 +457,19 @@ test('ai-note drafts from confirmed facts, sends confirmed photos, and is never 
     if (url.startsWith('https://api.anthropic.com')) return { content: [{ type: 'tool_use', input: { text: reply } }] };
     return null;
   };
-  const r = await aiNote(post('ai-note', { inspectionId: 'i-4r-now', pointId: 'S14' }));
-  const body = await r.json();
-  assert.deepEqual([body.source, body.text], ['ai', reply]);
-  assert.equal(body.basis.photos, 1);
+  const body = await (await aiWording(post('ai-wording', { inspectionId: 'i-4r-now', pointId: 'S14' }))).json();
+  assert.equal(body.text, reply);
   const ai = calls.find((c) => c.url.startsWith('https://api.anthropic.com'))!.body as { messages: { content: { type: string; text?: string }[] }[] };
   assert.equal(ai.messages[0].content[0].type, 'image', 'confirmed photo sent to the model');
   assert.match(ai.messages[0].content.at(-1)!.text!, /210 ppm/);
-  assert.ok(!calls.some((c) => /set_note|ai_record/.test(c.url)), 'draft is not saved');
 
   calls = []; reply = 'Brake fluid copper is 350 ppm, flush it.';
-  const r2 = await (await aiNote(post('ai-note', { inspectionId: 'i-4r-now', pointId: 'S14' }))).json();
-  assert.equal(r2.source, 'rules', 'an invented number falls back to the rules draft');
-  assert.match(r2.text, /210 ppm/);
+  const r2 = await (await aiWording(post('ai-wording', { inspectionId: 'i-4r-now', pointId: 'S14' }))).json();
+  assert.ok(!r2.text.includes('350'), r2.text);
+  assert.match(r2.text, /210 ppm/, 'the rules summary keeps the real measurement');
 });
 
-test('ai-note needs something rated on the point and an open inspection', async () => {
-  respond = (url) => (url.endsWith('/get_inspection') ? bundle((i) => { i.results = []; i.findings = []; i.statuses = []; i.media = []; }) : null);
-  assert.equal((await aiNote(post('ai-note', { inspectionId: 'i-4r-now', pointId: 'S14' }))).status, 400);
-  respond = (url) => (url.endsWith('/get_inspection') ? bundle((i) => { i.status = 'submitted'; }) : null);
-  assert.equal((await aiNote(post('ai-note', { inspectionId: 'i-4r-now', pointId: 'S14' }))).status, 409);
-  respond = (url) => (url.endsWith('/get_inspection') ? bundle() : null);
-  const r = await (await aiNote(post('ai-note', { inspectionId: 'i-4r-now', pointId: 'S14' }))).json();
-  assert.equal(r.source, 'rules', 'without an AI key the rules draft is used');
-});
-
-test('ai-wording drafts a blank note from confirmed facts in the shop\'s style and stores it as a suggestion', async () => {
+test('ai-wording summarizes a blank note in customer-friendly words and stores it as a suggestion', async () => {
   process.env.ANTHROPIC_API_KEY = 'k';
   let style = 'technical';
   respond = (url) => {
@@ -482,9 +479,8 @@ test('ai-wording drafts a blank note from confirmed facts in the shop\'s style a
     return null;
   };
   const out = await (await aiWording(post('ai-wording', { inspectionId: 'i-4r-now', pointId: 'S14' }))).json();
-  assert.equal(out.style, 'technical');
   const ai = calls.find((c) => c.url.startsWith('https://api.anthropic.com'))!.body as { system: string; messages: { content: { text?: string }[] }[] };
-  assert.match(ai.system, /shop terminology/);
+  assert.match(ai.system, /not a mechanic/, 'a summary for a blank note is customer-friendly even when the shop rewords in technical style');
   assert.match(ai.messages[0].content.at(-1)!.text!, /Confirmed facts/);
   const rec = calls.find((c) => c.url.endsWith('/ai_record_wording'))!;
   assert.equal(rec.auth, 'Bearer service');
@@ -505,7 +501,7 @@ test('ai-wording drafts a blank note from confirmed facts in the shop\'s style a
   assert.ok(calls.some((c) => c.url.endsWith('/ai_record_wording')));
 });
 
-test('ai-wording rewords a written note in the shop\'s style; a blank point with nothing confirmed is refused', async () => {
+test('ai-wording rewords a written note in the shop\'s style; a point with nothing rated still gets a plain note', async () => {
   process.env.ANTHROPIC_API_KEY = 'k';
   respond = (url) => {
     if (url.endsWith('/get_inspection')) return bundle((i) => { i.notes = [{ pointId: 'S24', techText: 'fronts 5mm rotors grooved', aiText: null, status: 'technician_original', customerText: null }]; });
@@ -517,8 +513,21 @@ test('ai-wording rewords a written note in the shop\'s style; a blank point with
   assert.equal(out.text, 'Front brake pads measure 5 mm; front rotors are grooved.');
   assert.match((calls.find((c) => c.url.startsWith('https://api.anthropic.com'))!.body as { system: string }).system, /professional technical note/);
 
+  calls = [];
   respond = (url) => (url.endsWith('/get_inspection') ? bundle((i) => { i.notes = []; i.results = []; i.findings = []; i.statuses = []; i.media = []; }) : null);
-  assert.equal((await aiWording(post('ai-wording', { inspectionId: 'i-4r-now', pointId: 'S14' }))).status, 400);
+  const blank = await (await aiWording(post('ai-wording', { inspectionId: 'i-4r-now', pointId: 'S14' }))).json();
+  assert.equal(blank.text, 'We didn\'t check this on this visit.');
+  assert.ok(!calls.some((c) => c.url.startsWith('https://api.anthropic.com')), 'nothing for the AI to summarize');
+  assert.ok(calls.some((c) => c.url.endsWith('/ai_record_wording')));
+});
+
+test('ai-wording works after the technician submits, but never over a note the advisor approved', async () => {
+  respond = (url) => (url.endsWith('/get_inspection') ? bundle((i) => { i.status = 'submitted'; i.notes = []; }) : null);
+  assert.equal((await aiWording(post('ai-wording', { inspectionId: 'i-4r-now', pointId: 'S14' }))).status, 200);
+  respond = (url) => (url.endsWith('/get_inspection') ? bundle((i) => { i.status = 'submitted'; i.notes = [{ pointId: 'S14', techText: '', aiText: null, status: 'technician_original', customerText: 'Fine.', approved: true }]; }) : null);
+  assert.equal((await aiWording(post('ai-wording', { inspectionId: 'i-4r-now', pointId: 'S14' }))).status, 409);
+  respond = (url) => (url.endsWith('/get_inspection') ? bundle((i) => { i.status = 'sent'; }) : null);
+  assert.equal((await aiWording(post('ai-wording', { inspectionId: 'i-4r-now', pointId: 'S14' }))).status, 409);
 });
 
 test('links we send point at the shop\'s own address on wrynch.app, and at /app/ elsewhere', () => {

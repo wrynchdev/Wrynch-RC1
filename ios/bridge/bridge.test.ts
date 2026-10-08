@@ -88,7 +88,7 @@ test('point, part, sort, place and finish give each screen what it shows', () =>
   const f = call('finish', inspection, vehicle);
   assert.equal(f.gateCount, completionGate(inspection, vehicle).length);
   assert.ok(f.items.some((i: { kind: string }) => i.kind === 'photo'));
-  assert.deepEqual(call('summary', inspection, vehicle), summarize(inspection, vehicle));
+  assert.deepEqual(call('summary', inspection, vehicle), { ...summarize(inspection, vehicle), points: inspectionSteps(vehicle).map((x) => x.pointId) });
 });
 
 test('shop settings reach the rules: turned-off checks are hidden on the part screen', () => {

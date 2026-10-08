@@ -3,12 +3,12 @@
 // shows, already worked out (states, labels, counts), so the phone and the web can never rate a part differently.
 // Nothing here talks to the network or keeps state beyond the shop's template, rating rules and turned-off checks.
 import {
-  checkOff, cls, compLabel, findingLabel, ONTOLOGY, parseKey, point as getPoint, pointComponents, positionLabel, sectionOfPoint,
+  checkFindingOptions, checkOff, cls, compLabel, findingLabel, ONTOLOGY, parseKey, point as getPoint, pointComponents, positionLabel, sectionOfPoint,
   sections, setDisabledChecks, setTemplate, setThresholds, vehicleComponents, DEFAULT_TEMPLATE, type Threshold,
 } from '../../src/domain/ontology';
-import { completionGate, componentState, findingRating, isPendingAi, mediaPending, photosOf, summarize } from '../../src/domain/rating';
+import { checkFindings, completionGate, componentState, findingRating, isPendingAi, mediaPending, photosOf, summarize } from '../../src/domain/rating';
 import { inspectionSteps, nextUnfinished, pointStatus, visibleSections } from '../../src/domain/progress';
-import { autoNotePoints } from '../../src/domain/noteDraft';
+import { pointFindingLines } from '../../src/domain/noteDraft';
 import { BLANK_CONFIG, quickCheck } from '../../src/domain/seed';
 import { SEVERITIES, SIDE_UNSURE_CONFIDENCE } from '../../src/domain/types';
 import type { CompKey, ComponentState, Inspection, Media, Rating, Severity, Template, Vehicle, VehicleConfig } from '../../src/domain/types';
@@ -153,6 +153,7 @@ export function point(insp: Inspection, vehicle: Vehicle, pointId: string) {
       pending: m.links.some((l) => st.keys.includes(l.compKey) && l.status === 'ai_proposed'),
       firstPart: m.links.find((l) => st.keys.includes(l.compKey))?.compKey ?? null,
     })),
+    findingLines: pointFindingLines(insp, vehicle, p).map((x) => ({ id: x.key, text: x.text, rating: x.rating })),
     noteText: n?.techText ?? '', noteStatus: n?.status ?? null,
     nextPoint: next ? { id: next.pointId, name: next.pointName } : null,
     prevPoint: prev ? { id: prev.pointId, name: prev.pointName } : null,
@@ -186,9 +187,18 @@ export function part(insp: Inspection, _vehicle: Vehicle, key: CompKey) {
         bands: { ok: ch.bands.ok, monitor: ch.bands.monitor, immediate: ch.bands.immediate },
         ratings: (['ok', 'monitor', 'immediate'] as Rating[]).filter((r) => r === 'ok' || ch.bands[r as 'monitor' | 'immediate']),
         result: res ? { rating: res.rating as string, value: res.value } : null,
+        // Rated Monitor or Immediate: the findings that can explain it, with the ones picked (AI ones the tech confirmed can't be unpicked here).
+        findingChoices: res && res.rating !== 'ok' ? (() => {
+          const here = checkFindings(insp, key, k);
+          return [...new Set([...checkFindingOptions(k), ...here.map((f) => f.key)])].map((fk) => {
+            const ai = here.some((f) => f.key === fk && f.source === 'ai');
+            return { key: fk, label: findingLabel(fk), on: ai || here.some((f) => f.key === fk), ai };
+          });
+        })() : [],
       };
     }),
-    findings: insp.findings.filter((f) => f.compKey === key && !isPendingAi(f) && f.status !== 'denied').map((f) => ({
+    // Part-level findings (older inspections, or an AI finding with no visual check to go under).
+    findings: insp.findings.filter((f) => f.compKey === key && !f.checkKey && !isPendingAi(f) && f.status !== 'denied').map((f) => ({
       id: f.id, label: findingLabel(f.key), severity: f.severity, rating: findingRating(c.id, f.key, f.severity) as string,
       source: f.source, status: f.status, removable: f.source === 'technician',
     })),
@@ -258,7 +268,7 @@ export function place(insp: Inspection, vehicle: Vehicle, mediaId: string) {
 export function finish(insp: Inspection, vehicle: Vehicle) {
   const gate = completionGate(insp, vehicle);
   const ready = insp.status === 'in_progress' && !gate.some((g) => g.kind === 'required');
-  const items = gate.filter((g) => g.kind !== 'wording').map((g) => {
+  const items = gate.map((g) => {
     if (g.kind === 'ai_finding') {
       const f = insp.findings.find((x) => x.id === g.id)!;
       return { kind: g.kind, id: g.id, title: 'AI finding', detail: `${compLabel(f.compKey, true)} · ${findingLabel(f.key).toLowerCase()}`, partKey: f.compKey, stageId: null as string | null };
@@ -269,19 +279,18 @@ export function finish(insp: Inspection, vehicle: Vehicle) {
     }
     return { kind: g.kind, id: g.id, title: 'Required part not rated', detail: compLabel(g.id, true), partKey: g.id, stageId: null };
   });
-  const ai = gate.filter((g) => g.kind !== 'required' && g.kind !== 'wording').length;
-  const notes = insp.notes.filter((n) => n.status === 'ai_suggested' && n.aiText).map((n) => ({
-    pointId: n.pointId, point: getPoint(n.pointId).name, techText: n.techText, aiText: n.aiText!,
-  }));
+  const steps = inspectionSteps(vehicle);
   return {
-    gateCount: gate.length, items, summary: summarize(insp, vehicle), aiToReview: ai + notes.length, notes, ready,
-    autoNoteTodo: ready ? autoNotePoints(insp, vehicle, sections().flatMap((s) => s.points)).map((x) => x.pointId) : [],
+    gateCount: gate.length, items, summary: summarize(insp, vehicle), aiToReview: gate.filter((g) => g.kind !== 'required').length, ready,
+    pointCount: steps.length,
+    pointsWithNote: steps.filter((x) => insp.notes.find((n) => n.pointId === x.pointId)?.techText.trim()).length,
     status: insp.status,
   };
 }
 
 /** What "Send to advisor" stores with the inspection. */
-export const summary = (insp: Inspection, vehicle: Vehicle) => summarize(insp, vehicle);
+// The points listed are the ones the service advisor must approve a report note for before sending.
+export const summary = (insp: Inspection, vehicle: Vehicle) => ({ ...summarize(insp, vehicle), points: inspectionSteps(vehicle).map((x) => x.pointId) });
 
 /** Parts of a point nobody has rated, flagged or skipped, with the check a "nothing found" OK goes on. */
 export function untouched(insp: Inspection, vehicle: Vehicle, pointId: string) {

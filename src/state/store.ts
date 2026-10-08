@@ -6,15 +6,16 @@
 //    function that enforces the rules, then the inspection is reloaded from the server (the source of truth).
 import { useSyncExternalStore } from 'react';
 import {
-  cls, DEFAULT_TEMPLATE, ONTOLOGY, parseKey, partsLeftWithoutChecks, point as getPoint, pointComponents, setDisabledChecks, setTemplate, setThresholds, withTemplate,
+  aiFilingCheck, cls, DEFAULT_TEMPLATE, ONTOLOGY, parseKey, partsLeftWithoutChecks, point as getPoint, pointComponents, setDisabledChecks, setTemplate, setThresholds, withTemplate,
   type Threshold,
 } from '../domain/ontology';
-import { completionGate, rateValue, summarize, type Summary } from '../domain/rating';
+import { completionGate, findingRating, rateValue, summarize, type Summary } from '../domain/rating';
+import { inspectionSteps } from '../domain/progress';
 import { applyUnderCarExample, DEMO_TEMPLATE_ID, quickCheck, seedInspections, VEHICLES } from '../domain/seed';
 import { declinedWork, type DeclinedItem, type Followup, type FollowupStatus } from '../domain/declined';
 import { analyzePhotos, applyAnalysis, suggestWording, wordingKeepsFacts } from '../domain/aiStub';
 import type {
-  CompKey, EstimateLine, Inspection, NotInspectedReason, Rating, Severity, Template, Vehicle, VehicleConfig,
+  CompKey, EstimateLine, Finding, Inspection, NotInspectedReason, Rating, Severity, Template, Vehicle, VehicleConfig,
 } from '../domain/types';
 import { ApiError, auth, fn, fnBlob, getSession, hostInfo, LIVE, onSession, rpc, rpcAnon, shared, shrinkPhoto, signPhotos, upload, type Session } from './remote';
 import { dashFromInspections, type DashData } from '../domain/dashboard';
@@ -208,7 +209,6 @@ export interface ShopAiInfo { configured: boolean; provider?: 'anthropic' | 'ope
 export interface TekmetricEvent { at: string; kind: 'import' | 'export' | 'webhook'; roId: number | null; inspectionId: string | null; status: 'ok' | 'error' | 'skipped'; detail: string }
 export interface TekmetricLink { linked: boolean; tekmetricShopId: number | null; enabled: boolean; webhookToken: string | null; events: TekmetricEvent[] }
 export interface TekmetricExportResult { written: boolean; reason?: string; text: string }
-export interface NoteDraft { text: string; source: 'ai' | 'rules'; basis: { parts: number; photos: number } }
 export interface PendingLink { kind: 'join' | 'pilot'; token: string }
 const PENDING_KEY = 'wrynch-pending-link';
 export function getPendingLink(): PendingLink | null {
@@ -322,9 +322,23 @@ const local = {
     const rating = value !== null ? rateValue(ONTOLOGY.checks[checkKey], value) ?? picked : picked;
     i.results = i.results.filter((r) => !(r.compKey === key && r.checkKey === checkKey));
     if (rating) i.results.push({ compKey: key, checkKey, value, rating, at: now() });
+    if (rating !== 'monitor' && rating !== 'immediate') dropCheckFindings(i, key, checkKey);
     i.statuses = i.statuses.filter((s) => !(s.compKey === key && s.notInspected));
   },
-  clearCheck: (key: CompKey, checkKey: string) => (i: Inspection) => { i.results = i.results.filter((r) => !(r.compKey === key && r.checkKey === checkKey)); },
+  clearCheck: (key: CompKey, checkKey: string) => (i: Inspection) => {
+    i.results = i.results.filter((r) => !(r.compKey === key && r.checkKey === checkKey));
+    dropCheckFindings(i, key, checkKey);
+  },
+  /** The findings that explain a check's Monitor or Immediate rating (replaces the technician's earlier picks). */
+  setCheckFindings: (key: CompKey, checkKey: string, findingKeys: string[]) => (i: Inspection) => {
+    const r = i.results.find((x) => x.compKey === key && x.checkKey === checkKey);
+    if (!r || r.rating === 'ok') return;
+    i.findings = i.findings.filter((f) => !(f.compKey === key && f.checkKey === checkKey && f.source === 'technician'));
+    for (const k of [...new Set(findingKeys)]) {
+      i.findings.push({ id: uid('f'), compKey: key, checkKey, key: k, severity: r.rating === 'immediate' ? 'severe' : 'moderate', source: 'technician',
+        status: 'confirmed', confidence: null, rationale: null, mediaId: null, reviewedAt: now(), aiOriginal: null });
+    }
+  },
   addFinding: (key: CompKey, findingKey: string, severity: Severity) => (i: Inspection) => {
     i.findings.push({ id: uid('f'), compKey: key, key: findingKey, severity, source: 'technician', status: 'confirmed',
       confidence: null, rationale: null, mediaId: null, reviewedAt: now(), aiOriginal: null });
@@ -337,23 +351,50 @@ const local = {
     if (action === 'confirm') f.status = 'confirmed';
     else if (action === 'reject') f.status = 'denied';
     else { f.status = 'modified'; f.key = action.key; f.severity = action.severity; }
+    if (f.status !== 'denied') fileAiFinding(i, f);
   },
   setNotInspected: (key: CompKey, kind: 'not_inspected' | 'unable_to_assess' | null, reason: NotInspectedReason | null) => (i: Inspection) => {
     i.statuses = i.statuses.filter((s) => s.compKey !== key);
-    if (kind && reason) { i.statuses.push({ compKey: key, notInspected: { kind, reason }, override: null }); i.results = i.results.filter((r) => r.compKey !== key); }
+    if (kind && reason) {
+      i.statuses.push({ compKey: key, notInspected: { kind, reason }, override: null });
+      for (const r of i.results.filter((x) => x.compKey === key)) dropCheckFindings(i, key, r.checkKey);
+      i.results = i.results.filter((r) => r.compKey !== key);
+    }
   },
   setNote: (pointId: string, text: string) => (i: Inspection) => {
     const n = i.notes.find((x) => x.pointId === pointId);
-    if (n) { n.techText = text; if (n.status === 'technician_original') n.customerText = text || null; }
-    else i.notes.push({ pointId, techText: text, aiText: null, status: 'technician_original', customerText: text || null });
+    if (n) { if (n.techText !== text) n.approved = false; n.techText = text; if (n.status === 'technician_original') n.customerText = text || null; }
+    else i.notes.push({ pointId, techText: text, aiText: null, status: 'technician_original', customerText: text || null, approved: false });
   },
-  resolveWording: (pointId: string, action: 'accept' | 'reject' | { text: string }) => (i: Inspection) => {
-    const n = i.notes.find((x) => x.pointId === pointId)!;
-    if (action === 'accept') { n.status = 'ai_accepted'; n.customerText = n.aiText; }
-    else if (action === 'reject') { n.status = 'ai_rejected'; n.customerText = n.techText; }
-    else { n.status = 'ai_edited'; n.customerText = action.text; }
+  /** The service advisor approves the note the customer reads for a point, as suggested or rewritten. */
+  approveNote: (pointId: string, text: string) => (i: Inspection) => {
+    const n = i.notes.find((x) => x.pointId === pointId);
+    if (!n) { i.notes.push({ pointId, techText: '', aiText: null, status: 'technician_original', customerText: text, approved: true }); return; }
+    if (n.status === 'ai_suggested') n.status = text === (n.aiText ?? '').trim() ? 'ai_accepted' : 'ai_edited';
+    n.customerText = text;
+    n.approved = true;
   },
 };
+
+/** A check rated OK, cleared or skipped keeps no findings (the database does the same). */
+function dropCheckFindings(i: Inspection, key: CompKey, checkKey: string) {
+  i.findings = i.findings.filter((f) => !(f.compKey === key && f.checkKey === checkKey && f.source === 'technician'));
+  for (const f of i.findings) if (f.compKey === key && f.checkKey === checkKey && f.source === 'ai' && f.status !== 'pending') { f.status = 'denied'; f.reviewedAt = now(); }
+}
+
+/** A confirmed AI finding goes under the part's visual check, which takes the finding's rating if that's worse. */
+function fileAiFinding(i: Inspection, f: Finding) {
+  if (f.checkKey) return;
+  const { classId } = parseKey(f.compKey);
+  const check = aiFilingCheck(classId);
+  const rating = findingRating(classId, f.key, f.severity);
+  if (!check || rating === 'ok') return;
+  f.checkKey = check;
+  const r = i.results.find((x) => x.compKey === f.compKey && x.checkKey === check);
+  if (r) { if (r.rating !== 'immediate') r.rating = rating; r.at = now(); }
+  else i.results.push({ compKey: f.compKey, checkKey: check, value: null, rating, at: now() });
+  i.statuses = i.statuses.filter((s) => !(s.compKey === f.compKey && s.notInspected));
+}
 
 /** Parts of a point that nobody has rated, flagged or skipped yet, with the check used for "nothing found". */
 function untouched(i: Inspection, v: Vehicle, pointId: string) {
@@ -413,17 +454,16 @@ export function noteStyle(): NoteStyle {
 const demoWording = (pointId: string) => (i: Inspection) => {
   const n = i.notes.find((x) => x.pointId === pointId);
   if (n?.techText.trim()) {
+    if (n.approved) return;
     const s = suggestWording(n);
     n.aiText = wordingKeepsFacts(n.techText, s) ? s : null;
     n.status = n.aiText ? 'ai_suggested' : 'technician_original';
     return;
   }
   const v = state.vehicles.find((x) => x.id === i.vehicleId)!;
-  const f = pointFacts(i, v, getPoint(pointId));
-  if (!f.parts.some((p) => p.state !== 'unrated')) return;
-  const text = draftNote(f, noteStyle());
-  if (n) { n.aiText = text; n.status = 'ai_suggested'; }
-  else i.notes.push({ pointId, techText: '', aiText: text, status: 'ai_suggested', customerText: null });
+  const text = draftNote(pointFacts(i, v, getPoint(pointId)), noteStyle());
+  if (n) { if (n.approved) return; n.aiText = text; n.status = 'ai_suggested'; }
+  else i.notes.push({ pointId, techText: '', aiText: text, status: 'ai_suggested', customerText: null, approved: false });
 };
 
 /** Live mode: AI can run when Wrynch has a key or the shop saved its own (unknown counts as available). */
@@ -802,6 +842,11 @@ export const actions = {
     if (state.mode === 'demo') return edit(inspId, local.clearCheck(key, checkKey));
     void liveEdit(inspId, local.clearCheck(key, checkKey), () => rpc('clear_check', { p_inspection: inspId, p_key: key, p_check: checkKey }));
   },
+  setCheckFindings(inspId: string, key: CompKey, checkKey: string, findingKeys: string[]) {
+    if (state.mode === 'demo') return edit(inspId, local.setCheckFindings(key, checkKey, findingKeys));
+    void liveEdit(inspId, local.setCheckFindings(key, checkKey, findingKeys),
+      () => rpc('set_check_findings', { p_inspection: inspId, p_key: key, p_check: checkKey, p_findings: findingKeys }));
+  },
   addFinding(inspId: string, key: CompKey, findingKey: string, severity: Severity) {
     if (state.mode === 'demo') return edit(inspId, local.addFinding(key, findingKey, severity));
     void liveEdit(inspId, local.addFinding(key, findingKey, severity),
@@ -841,27 +886,9 @@ export const actions = {
     if (state.mode === 'demo') return edit(inspId, local.setNote(pointId, text));
     void liveEdit(inspId, local.setNote(pointId, text), () => rpc('set_note', { p_inspection: inspId, p_point: pointId, p_text: text }));
   },
-  /** A draft note for a point from its confirmed facts (AI when available). Not saved: the tech approves it with setNote. */
-  async draftNote(inspId: string, pointId: string): Promise<NoteDraft> {
-    const i = state.inspections.find((x) => x.id === inspId)!;
-    if (state.mode === 'demo') {
-      const v = state.vehicles.find((x) => x.id === i.vehicleId)!;
-      const f = pointFacts(i, v, getPoint(pointId));
-      if (!f.parts.some((p) => p.state !== 'unrated')) throw new Error('Rate a part or confirm a photo on this point first');
-      return { text: draftNote(f), source: 'rules', basis: { parts: f.parts.filter((p) => p.state !== 'unrated').length, photos: f.photoIds.length } };
-    }
-    await queues.get(inspId)?.tail.catch(() => undefined); // save any ratings still on their way first
-    return fn<NoteDraft>('ai-note', { inspectionId: inspId, pointId });
-  },
-  async requestWording(inspId: string, pointId: string) {
-    if (state.mode === 'demo') return edit(inspId, demoWording(pointId));
-    set({ busy: noteStyle() === 'customer' ? 'Writing a customer version…' : 'Writing a technical version…' });
-    try { await fn('ai-wording', { inspectionId: inspId, pointId }); } catch (e) { toast(errText(e), 'error'); } finally { set({ busy: null }); }
-    await reload(inspId).catch(() => undefined);
-  },
   /**
-   * Finish screen: automatic notes for several points (reworded, or drafted where the note is blank), three at a time.
-   * Each one is stored as a suggestion the technician must approve. Returns how many couldn't be written.
+   * Report notes for several points (reworded, or summarized where the note is blank), three at a time. Each one is
+   * stored as a suggestion the service advisor approves. Returns how many couldn't be written.
    */
   async autoNotes(inspId: string, pointIds: string[], onProgress?: (done: number) => void): Promise<number> {
     let done = 0; let failed = 0;
@@ -888,10 +915,12 @@ export const actions = {
       set({ workspace: { ...state.workspace!, shop: { ...state.workspace!.shop!, noteStyle: prev } } });
     }
   },
-  resolveWording(inspId: string, pointId: string, action: 'accept' | 'reject' | { text: string }) {
-    if (state.mode === 'demo') return edit(inspId, local.resolveWording(pointId, action));
-    const args = typeof action === 'string' ? { p_action: action } : { p_action: 'edit', p_text: action.text };
-    void liveEdit(inspId, local.resolveWording(pointId, action), () => rpc('resolve_wording', { p_inspection: inspId, p_point: pointId, ...args }));
+  /** The service advisor approves a point's report note (as suggested or rewritten). */
+  approveNote(inspId: string, pointId: string, text: string) {
+    const t = text.trim();
+    if (!t) { toast('A report note can’t be blank', 'error'); return; }
+    if (state.mode === 'demo') return edit(inspId, local.approveNote(pointId, t));
+    void liveEdit(inspId, local.approveNote(pointId, t), () => rpc('approve_note', { p_inspection: inspId, p_point: pointId, p_text: t }));
   },
 
   // ---- Tekmetric
@@ -920,7 +949,8 @@ export const actions = {
     if (completionGate(i, v).length) return false;
     if (state.mode === 'demo') { edit(inspId, (x) => { x.status = 'submitted'; }); return true; }
     try {
-      await rpc('submit_inspection', { p_inspection: inspId, p_summary: summarize(i, v) });
+      // The points on this vehicle: each needs an approved report note before the advisor can send.
+      await rpc('submit_inspection', { p_inspection: inspId, p_summary: { ...summarize(i, v), points: inspectionSteps(v).map((x) => x.pointId) } });
       await Promise.all([reload(inspId), actions.loadWorkspace()]);
       return true;
     } catch (e) { toast(errText(e), 'error'); await reload(inspId).catch(() => undefined); return false; }

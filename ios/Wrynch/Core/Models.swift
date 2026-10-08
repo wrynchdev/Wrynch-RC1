@@ -57,6 +57,8 @@ struct PointVM: Decodable {
     let looksOk: LooksOk
     let unrated: Int
     let photos: [Photo]
+    struct FindingLine: Decodable, Identifiable { let id: String, text: String; let rating: String? }
+    let findingLines: [FindingLine]
     let noteText: String
     let noteStatus: String?
     let nextPoint: Next?
@@ -86,8 +88,11 @@ struct PartVM: Decodable {
         let bands: Bands
         let ratings: [String]
         let result: Result?
+        /// Rated Monitor or Immediate: the findings that can explain it (picked ones are on; AI ones can't be unpicked here).
+        let findingChoices: [Choice]
         var id: String { key }
     }
+    struct Choice: Decodable, Identifiable { let key: String, label: String; let on: Bool; let ai: Bool; var id: String { key } }
     struct Finding: Decodable, Identifiable {
         let id: String, label: String, severity: String, rating: String, source: String, status: String
         let removable: Bool
@@ -131,14 +136,13 @@ struct PlaceVM: Decodable {
 
 struct FinishVM: Decodable {
     struct Item: Decodable, Identifiable { let kind: String, id: String, title: String, detail: String; let partKey: String?; let stageId: String? }
-    struct Note: Decodable, Identifiable { let pointId: String, point: String, techText: String, aiText: String; var id: String { pointId } }
     let gateCount: Int
     let items: [Item]
     let summary: Summary
     let aiToReview: Int
-    let notes: [Note]
     let ready: Bool
-    let autoNoteTodo: [String]
+    let pointCount: Int
+    let pointsWithNote: Int
     let status: String
 }
 
