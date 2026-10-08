@@ -47,3 +47,26 @@ test('reasoning context explicitly separates current state from factory data', (
   assert.equal(ctx.rules.distinguishFactoryFromCurrentState, true);
   assert.equal(ctx.rules.neverTreatUnknownFitmentAsCompatible, true);
 });
+
+
+test('unknown-only fitment evidence remains safely unknown', () => {
+  const result = assessFitment(
+    { vehicleId: 'v1', configuration: {}, installedParts: [], modifications: [], mileage: null, asOf: '2026-10-08' },
+    [{ id: 'u', status: 'unknown', requirements: {}, exclusions: {}, effects: {}, confidence: 0.4 }],
+  );
+  assert.equal(result.status, 'unknown');
+  assert.equal(result.score, 0.25);
+  assert.equal(result.confidence, 0.4);
+});
+
+test('fitment confidence comes from the selected outcome', () => {
+  const result = assessFitment(
+    { vehicleId: 'v1', configuration: {}, installedParts: [], modifications: [], mileage: null, asOf: '2026-10-08' },
+    [
+      { id: 'direct-low', status: 'direct', requirements: {}, exclusions: {}, effects: {}, confidence: 0.55 },
+      { id: 'conditional-high', status: 'conditional', requirements: {}, exclusions: {}, effects: {}, confidence: 0.99 },
+    ],
+  );
+  assert.equal(result.status, 'direct');
+  assert.equal(result.confidence, 0.55);
+});
