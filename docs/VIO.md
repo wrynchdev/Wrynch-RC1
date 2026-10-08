@@ -82,3 +82,26 @@ AI can propose evidence, findings or relationships, but the ontology/database re
 6. maintenance/diagnostic graph UI
 7. usage/telematics ingestion
 8. evidence-backed AI graph queries
+
+
+## Ontology integrity audit — 2026-10-08
+
+The existing Wrynch inspection ontology was retained as the canonical component/check/finding taxonomy. The audit found its core model logically sound: permanent component IDs, class+position identity, conditional inspection applicability, versioned templates/rating rules, and append-only evidence/review concepts are compatible with VIO.
+
+VIO was hardened before the next layer:
+- vehicle/configuration/installed-part/modification/maintenance/usage records are checked against the owning vehicle and shop;
+- graph edges cannot join private nodes across shops;
+- only one factory snapshot and one open current state are allowed per vehicle;
+- current states cannot have an end timestamp;
+- graph node types and predicates are constrained to the VIO vocabulary;
+- trip end time cannot precede start time;
+- usage observations must contain a value and, when linked to a trip, the trip must belong to the same vehicle;
+- fitment assessment safely handles unknown-only evidence and keeps confidence attached to the selected outcome rather than an unrelated rule.
+
+### Important semantic boundary
+
+The existing VehicleConfig remains the inspection-template configuration model. It is intentionally not treated as a complete digital-twin ontology. VIO configuration states, installed parts, modifications and provenance are the authoritative extension for configuration-aware reasoning.
+
+Fitment status is evidence-driven at this stage: a stored rule may be direct, conditional, modification_required, incompatible, or unknown. The next API layer should evaluate structured requirements/exclusions against the digital twin before presenting a definitive fitment result.
+
+AI remains a proposer of evidence/findings/relationships; it does not become the ontology source of truth.
