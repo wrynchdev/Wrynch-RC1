@@ -18,7 +18,7 @@ LOOK_FOR = {
     # hood hardware
     "hood_latch": "Latch rusted or dry, bent or cracked latch, loose mounting bolts, secondary catch that doesn't spring back",
     "hood_striker": "Bent or cracked striker loop, worn groove, loose or misaligned striker so the hood doesn't latch flush",
-    "hood_release_cable": "Frayed or kinked cable, broken handle, cable sheath cracked, too much slack to pop the latch",
+    "hood_release_cable": "Frayed or kinked cable, broken handle, cracked sheath, cable that sticks or has too much slack",
     # engine oil
     "engine_oil_dipstick": "Bent or kinked stick, missing or broken handle, unreadable marks, tube loose or cracked",
     "engine_oil_fill_cap": "Missing cap, cracked cap, torn or flattened seal, oil residue around the filler neck, sludge under the cap",
@@ -39,7 +39,7 @@ LOOK_FOR = {
     "power_steering_pump": "Fluid seeping from the shaft seal or fittings, wet underside, pulley wobble, whine",
     "power_steering_hose": "Wet or oily crimp fittings, swelling, cracked cover, chafing, hardened hose",
     # brake hydraulics
-    "brake_fluid_reservoir": "Cracked or cloudy reservoir, fluid around the cap or grommets, damaged cap seal, missing level sensor",
+    "brake_fluid_reservoir": "Cracked reservoir, fluid around the cap or grommets, damaged cap seal, missing cap (level and fluid condition are on brake fluid)",
     "brake_master_cylinder": "Fluid seeping at the booster joint or line fittings, wet paint below the master cylinder, corroded fittings",
     # hoses and belts
     "vacuum_hose": "Cracked, hardened or collapsed hose, split ends, disconnected or loose fit, hissing",
@@ -88,7 +88,7 @@ LOOK_FOR = {
     "bump_stop": "Missing, split or crushed bump stop, signs it's bottoming (shiny contact marks)",
     # steering
     "outer_tie_rod_end": "Torn or missing boot, grease leaking out, missing cotter pin, bent shaft, rust at the stud",
-    "inner_tie_rod": "Torn rack boot, fluid or grease inside the boot, bent rod, loose jam nut",
+    "inner_tie_rod": "Bent rod, loose jam nut, rust at the joint, play felt through the boot (the rack boot is rated on its own part)",
     "tie_rod_adjusting_sleeve": "Rusted or seized sleeve, bent sleeve, loose or missing clamps",
     "steering_rack": "Fluid in or around the rack boots, torn boots, wet fittings, loose or broken mount bushings",
     "steering_gearbox": "Fluid seeping at the seals or fittings, wet underside, loose mounting bolts, cracked frame at the mount",
@@ -107,7 +107,7 @@ LOOK_FOR = {
     "axle_housing": "Fluid at the axle seals or tube welds, cracked or bent tubes, rust-through, damaged spring perches",
     # powertrain underbody
     "engine_oil_pan": "Wet gasket line or drips, dents from impact, cracked aluminum pan, rusted steel pan",
-    "engine_oil_filter": "Oil wet around the filter base, dented filter, double gasket, oil change sticker overdue",
+    "engine_oil_filter": "Oil wet around the filter base, dented filter, double gasket, loose filter",
     "engine_drain_plug": "Wet around the plug, rounded plug, stripped or oversized plug, missing washer",
     "valve_cover": "Oil seeping at the gasket or spark plug tubes, cracked plastic cover, oil running down the head",
     "engine_front_cover": "Oil seeping at the cover gasket or crank seal, oil sling around the balancer",
@@ -203,7 +203,7 @@ LOOK_FOR = {
     "antenna": "Bent or broken mast, cracked base, loose mount",
     "emblem": "Missing, peeling or cracked emblem",
     "nameplate_badge": "Missing, peeling or cracked badge",
-    "license_plate": "Missing or unreadable plate, expired registration sticker",
+    "license_plate": "Missing, bent or unreadable plate, loose mounting",
     "license_plate_bracket": "Cracked or broken bracket, missing screws, loose plate",
     "tow_hook": "Bent hook, cracked or rusted mount, loose bolts, missing hook",
     "trailer_electrical_connector": "Corroded or bent pins, cracked housing, missing cover, chafed wiring",
@@ -239,12 +239,12 @@ LOOK_FOR = {
     "windshield_washer_pump": "Fluid leaking at the pump grommet, corroded connector, pump that hums with no spray",
     # wheel end
     "wheel_lug_nut": "Missing or loose lug nuts, rounded or swollen-cap lugs, broken or stretched studs, rust trails from a loose wheel",
-    "wheel_speed_sensor": "Damaged or chafed wire, cracked or loose sensor, metal debris on the sensor tip, damaged tone ring",
+    "wheel_speed_sensor": "Damaged or chafed wire, cracked or loose sensor, corroded connector, metal debris on the sensor tip",
     # tires
-    "tpms_sensor": "Corroded valve stem or nut, missing cap, cracked sensor body",
-    "spare_tire": "Cracks or dry rot, flat or low, damaged wheel, missing jack or tools",
+    "tpms_sensor": "Corroded sensor nut or metal stem, cracked sensor body, missing sensor (the stem and cap are rated on the valve stem)",
+    "spare_tire": "Cracks or dry rot, bulges or cuts, low tread, flat or low (rate pressure and age on their checks)",
     # brake system
-    "brake_booster": "Cracked or loose vacuum hose or check valve grommet, brake fluid running down the booster shell, rust on the shell",
+    "brake_booster": "Cracked or loose vacuum hose or check valve grommet, hissing, rust on the shell (fluid on the shell is a master cylinder leak)",
     # cooling and charging
     "radiator_cooling_fan": "Cracked or missing blades, cracked shroud, chafed wiring, fan that wobbles",
     "alternator": "Cracked case or loose mounting, corroded or loose output terminal, oil or coolant soaking the alternator",

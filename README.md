@@ -29,7 +29,7 @@ the shop controls, and every part keeps its own history across visits.
 
 | Path | What |
 |---|---|
-| `ontology/` | Component ontology workbook (v1.3) and the Python that builds it, `src/data/ontology.json` and the catalog migration. **The workbook is the source of truth.** |
+| `ontology/` | Component ontology workbook (v1.4) and the Python that builds it, `src/data/ontology.json` and the catalog migration. **The workbook is the source of truth.** |
 | `src/domain/` | Pure TypeScript: types, template expansion by vehicle, rating rules, AI stand-in, seed data, tests. |
 | `src/state/` | `store.ts` (every action; demo or live), `remote.ts` (Supabase auth, database functions, storage over fetch). |
 | `src/ui/` | Screens: `tech.tsx`, `advisor.tsx` (advisor, history, rules, customer report), `account.tsx` (sign-in, shop, team, new inspection, template editor), `components.tsx` (component checks per template), `declined.tsx` (declined work), `dashboard.tsx`, `profile.tsx`, `tekmetric.tsx`, `aiKey.tsx`, `training.tsx`, `camera.tsx`. |

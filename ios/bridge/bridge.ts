@@ -3,7 +3,7 @@
 // shows, already worked out (states, labels, counts), so the phone and the web can never rate a part differently.
 // Nothing here talks to the network or keeps state beyond the shop's template, rating rules and turned-off checks.
 import {
-  checkFindingOptions, checkOff, cls, compLabel, findingLabel, ONTOLOGY, parseKey, point as getPoint, pointComponents, positionLabel, sectionOfPoint,
+  checkFindingOptions, checkOff, notedFindingOptions, cls, compLabel, findingLabel, ONTOLOGY, parseKey, point as getPoint, pointComponents, positionLabel, sectionOfPoint,
   sections, setDisabledChecks, setTemplate, setThresholds, vehicleComponents, DEFAULT_TEMPLATE, type Threshold,
 } from '../../src/domain/ontology';
 import { checkFindings, completionGate, componentState, findingRating, isPendingAi, mediaPending, photosOf, summarize } from '../../src/domain/rating';
@@ -188,9 +188,12 @@ export function part(insp: Inspection, _vehicle: Vehicle, key: CompKey) {
         ratings: (['ok', 'monitor', 'immediate'] as Rating[]).filter((r) => r === 'ok' || ch.bands[r as 'monitor' | 'immediate']),
         result: res ? { rating: res.rating as string, value: res.value } : null,
         // Rated Monitor or Immediate: the findings that can explain it, with the ones picked (AI ones the tech confirmed can't be unpicked here).
-        findingChoices: res && res.rating !== 'ok' ? (() => {
+        // A visual check rated OK: cosmetic findings that can be noted without changing the rating.
+        findingChoices: res ? (() => {
           const here = checkFindings(insp, key, k);
-          return [...new Set([...checkFindingOptions(k), ...here.map((f) => f.key)])].map((fk) => {
+          const offer = res.rating === 'ok' ? notedFindingOptions(k) : checkFindingOptions(k);
+          if (res.rating === 'ok' && !offer.length && !here.length) return [];
+          return [...new Set([...offer, ...here.map((f) => f.key)])].map((fk) => {
             const ai = here.some((f) => f.key === fk && f.source === 'ai');
             return { key: fk, label: findingLabel(fk), on: ai || here.some((f) => f.key === fk), ai };
           });
