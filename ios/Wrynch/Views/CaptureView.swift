@@ -43,7 +43,7 @@ struct CaptureView: View {
                     Label("Already took them? Pick from your photos", systemImage: "photo.on.rectangle").font(.headline)
                     Text("Pick every photo for this stage at once. Wrynch sorts them onto parts; nothing it suggests counts until you confirm.")
                         .font(.footnote).foregroundStyle(Theme.muted)
-                    PhotosPicker(selection: $picks, maxSelectionCount: 60, matching: .images) { Text("Choose photos").secondaryButton() }
+                    PhotosPicker(selection: $picks, maxSelectionCount: 60, matching: .images) { Text("Choose photos") }.secondaryButton()
                 }
             }
             .padding(16)

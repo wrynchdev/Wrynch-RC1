@@ -63,8 +63,9 @@ final class FlowUITests: XCTestCase {
         // "Nothing found" rates the point's untouched parts OK.
         let nothing = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Nothing found'")).firstMatch
         XCTAssertTrue(nothing.waitForExistence(timeout: 20), "point screen — " + screen(app))
-        let all = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Nothing found'"))
-        let where_ = "matches \(all.count), hittable \(nothing.isHittable), frame \(nothing.frame), window \(app.windows.firstMatch.frame)"
+        // On a small phone it can sit under the Back / Jump / Next footer: scroll it clear first.
+        for _ in 0..<4 where nothing.frame.maxY > next.frame.minY - 8 { app.swipeUp(); sleep(1) }
+        let where_ = "frame \(nothing.frame), footer top \(next.frame.minY), window \(app.windows.firstMatch.frame)"
         nothing.tap()
         let ok = app.staticTexts.matching(NSPredicate(format: "label == 'OK'")).firstMatch
         XCTAssertTrue(ok.waitForExistence(timeout: 20), "the point shows OK after saving (" + where_ + ") — " + screen(app))

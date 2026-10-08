@@ -129,17 +129,27 @@ struct PhotoThumb: View {
     }
 }
 
+/// Full-width filled button, sized for gloved or greasy hands. The style draws the shape around the label, so the
+/// whole shape is the tap target (a frame added outside a Button only looks bigger; just the label would respond).
+struct FillButtonStyle: ButtonStyle {
+    var primary: Bool
+    var enabled = true
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 12)
+        return configuration.label
+            .font(.headline)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, minHeight: primary ? 60 : 56)
+            .foregroundStyle(primary ? Color.white : Theme.ink)
+            .background(primary && enabled ? Theme.blue : Theme.card2, in: shape)
+            .contentShape(shape)
+            .opacity(configuration.isPressed ? 0.7 : 1)
+    }
+}
+
 extension View {
-    /// Primary, full-width button look.
-    func primaryButton(_ enabled: Bool = true) -> some View {
-        // Sized for gloved or greasy hands.
-        self.font(.headline).frame(maxWidth: .infinity, minHeight: 60)
-            .foregroundStyle(.white)
-            .background(enabled ? Theme.blue : Theme.card2, in: RoundedRectangle(cornerRadius: 12))
-    }
-    func secondaryButton() -> some View {
-        self.font(.headline).frame(maxWidth: .infinity, minHeight: 56)
-            .foregroundStyle(Theme.ink)
-            .background(Theme.card2, in: RoundedRectangle(cornerRadius: 12))
-    }
+    /// Primary, full-width button look (for a Button, NavigationLink or PhotosPicker).
+    func primaryButton(_ enabled: Bool = true) -> some View { buttonStyle(FillButtonStyle(primary: true, enabled: enabled)) }
+    func secondaryButton() -> some View { buttonStyle(FillButtonStyle(primary: false)) }
 }
