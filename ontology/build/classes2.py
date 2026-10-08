@@ -72,6 +72,30 @@ log("Classes", "New classes", "238 classes (IDs 0–237)", f"{len(CLASSES)} clas
     "Added fluids, wheel-end, charging/starting, HVAC, cabin/occupant safety, ADAS, EV high-voltage and warning-indicator classes a DVI needs. Existing IDs unchanged.",
     "Yes")
 
+# ------------------------------------------------------------ positions for parts that require one (1.4.0)
+# These required a position but allowed "any position value", which the app can't offer as a choice, so the part could
+# only be added with no position. Each now lists the positions it can have.
+POSITIONS_14 = {
+    "side_window_glass": "left_front | right_front | left_mid | right_mid | left_rear | right_rear",
+    "vent_window_glass": "left_front | right_front | left_rear | right_rear",
+    "beltline_molding": "left_front | right_front | left_rear | right_rear",
+    "window_molding": "left_front | right_front | left_mid | right_mid | left_rear | right_rear | front | rear",
+    "body_cladding": "left | right | front | rear",
+    "body_vent": "left | right | front | rear | roof",
+    "exterior_lock_cylinder": "left_front | right_front | rear",
+    "closure_hinge": "left_front | right_front | left_mid | right_mid | left_rear | right_rear | front | rear",
+    "tow_hook": "front | rear",
+    "bed_step": "left | right | rear",
+    "charge_port_door": "front | rear | left_front | right_front | left_rear | right_rear",
+    "exterior_access_hatch": "left | right | front | rear",
+    "utility_compartment_door": "left_front | left_mid | left_rear | right_front | right_mid | right_rear",
+    "luggage_compartment_door": "left_front | left_mid | left_rear | right_front | right_mid | right_rear",
+}
+for n, vals in POSITIONS_14.items():
+    log("Classes", f"{n}.allowed_positions", BY_NAME[n]["allowed_positions"], vals,
+        "A required position needs a list to pick from; 'any position value' left the part with no position.", "No", "1.4.0")
+    BY_NAME[n]["allowed_positions"] = vals
+
 # ------------------------------------------------------------ safety critical
 SAFETY_CATS = {"brakes", "brake_hydraulics", "steering", "suspension", "wheels_tires", "wheel_end",
                "fuel_system", "exhaust", "occupant_safety", "ev_high_voltage", "adas", "driveline"}
@@ -152,6 +176,7 @@ OVERRIDES = {
     "windshield": ("yes", "From outside and inside; coin/ruler next to damage; show where it sits relative to the driver's view."),
     "wheel_lug_nut": ("yes", "Close photo showing all nuts on the wheel."),
     "tire_placard": ("yes", "Door-jamb placard straight on."),
+    "vehicle_exterior": ("yes", "Walk-around photos at about 45° from each corner, then close-ups of any existing damage."),
     "cv_boot": ("yes", "Close-up around the full boot circumference; grease splatter nearby."),
     "shock_absorber": ("yes", "Close-up of the body showing any oil film or wetness."),
     "strut_assembly": ("yes", "Close-up of the body showing any oil film or wetness."),

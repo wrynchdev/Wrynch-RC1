@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  checkFindingOptions, checkOff, cls, compLabel, findingLabel, ONTOLOGY, parseKey, point as getPoint, pointComponents, positionLabel, sections,
+  checkFindingOptions, checkOff, notedFindingOptions, cls, compLabel, findingLabel, ONTOLOGY, parseKey, point as getPoint, pointComponents, positionLabel, sections,
   sectionOfPoint, vehicleComponents,
 } from '../domain/ontology';
 import { checkFindings, completionGate, componentState, findingRating, isPendingAi, mediaPending, photosOf, summarize } from '../domain/rating';
@@ -854,6 +854,7 @@ function CheckCard({ insp, compKey, checkKey, locked }: { insp: Inspection; comp
   const check = ONTOLOGY.checks[checkKey];
   const res = insp.results.find((r) => r.compKey === compKey && r.checkKey === checkKey);
   const [val, setVal] = useState(res?.value !== null && res?.value !== undefined ? String(res.value) : '');
+  const [noting, setNoting] = useState(false);
   const auto = !!check.auto;
   const save = () => { const v = parseFloat(val); if (!Number.isNaN(v)) actions.setCheck(insp.id, compKey, checkKey, v, null); };
   return (
@@ -881,6 +882,9 @@ function CheckCard({ insp, compKey, checkKey, locked }: { insp: Inspection; comp
         </div>
       )}
       {res && res.rating !== 'ok' && <CheckFindings insp={insp} compKey={compKey} checkKey={checkKey} rating={res.rating} locked={locked} />}
+      {res?.rating === 'ok' && notedFindingOptions(checkKey).length > 0 && (noting || checkFindings(insp, compKey, checkKey).length > 0
+        ? <CheckFindings insp={insp} compKey={compKey} checkKey={checkKey} rating="ok" locked={locked} />
+        : !locked && <button type="button" className="btn quiet sm note-cosmetic" onClick={() => setNoting(true)}>Note existing cosmetic damage</button>)}
       <details className="small">
         <summary className="muted" style={{ cursor: 'pointer' }}>What counts as OK / Monitor / Immediate</summary>
         <div className="stack" style={{ gap: 4, marginTop: 6 }}>
@@ -938,16 +942,20 @@ function AiFindingCard({ insp, f, locked }: { insp: Inspection; f: Finding; lock
   );
 }
 
-/** Under a check rated Monitor or Immediate: what was found. Tap to pick or unpick; AI findings the tech confirmed show too. */
+/**
+ * Under a check rated Monitor or Immediate: what was found. Under a visual check rated OK: cosmetic things worth noting
+ * (an existing dent or scratch) that don't change the rating. Tap to pick or unpick; AI findings the tech confirmed show too.
+ */
 function CheckFindings({ insp, compKey, checkKey, rating, locked }: { insp: Inspection; compKey: CompKey; checkKey: string; rating: Rating; locked: boolean }) {
   const here = checkFindings(insp, compKey, checkKey);
   const mine = here.filter((f) => f.source === 'technician').map((f) => f.key);
   const fromAi = new Set(here.filter((f) => f.source === 'ai').map((f) => f.key));
-  const options = [...new Set([...checkFindingOptions(checkKey), ...here.map((f) => f.key)])];
+  const ok = rating === 'ok';
+  const options = [...new Set([...(ok ? notedFindingOptions(checkKey) : checkFindingOptions(checkKey)), ...here.map((f) => f.key)])];
   const toggle = (k: string) => actions.setCheckFindings(insp.id, compKey, checkKey, mine.includes(k) ? mine.filter((x) => x !== k) : [...mine, k]);
   return (
-    <div className={`check-findings ${rating}`} role="group" aria-label={`What you found (${rating === 'immediate' ? 'Immediate' : 'Monitor'})`}>
-      <span className="label">What did you find?</span>
+    <div className={`check-findings ${rating}`} role="group" aria-label={ok ? 'Noted (no action needed)' : `What you found (${rating === 'immediate' ? 'Immediate' : 'Monitor'})`}>
+      <span className="label">{ok ? 'Anything to note? (stays OK)' : 'What did you find?'}</span>
       <div className="pills">
         {options.map((k) => {
           const ai = fromAi.has(k);
@@ -960,7 +968,7 @@ function CheckFindings({ insp, compKey, checkKey, rating, locked }: { insp: Insp
           );
         })}
       </div>
-      {!here.length && !locked && <span className="small muted">Pick what you saw. It goes in the point’s summary and the report.</span>}
+      {!here.length && !locked && <span className="small muted">{ok ? 'Optional: record existing cosmetic damage so it shows in the history and the report.' : 'Pick what you saw. It goes in the point’s summary and the report.'}</span>}
     </div>
   );
 }

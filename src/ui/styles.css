@@ -424,6 +424,7 @@ select.input { appearance: auto; }
 /* Findings under a check rated Monitor or Immediate */
 .check-findings { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--card2); border-left: 4px solid var(--mon); }
 .check-findings.immediate { border-left-color: var(--imm); }
+.check-findings.ok { border-left-color: var(--ok); }
 .pill.ai { border-style: dashed; border-color: var(--ai-line, var(--ai)); color: var(--ai); }
 .pill.ai[aria-pressed="true"] { background: rgba(139, 108, 240, 0.18); color: var(--ai); border-color: var(--ai); opacity: 1; }
 .pill.ai { display: inline-flex; align-items: center; gap: 4px; }

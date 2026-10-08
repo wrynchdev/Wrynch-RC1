@@ -40,20 +40,34 @@ export function canTurnOff(checkKey: string, scope: 'platform' | 'template' = 't
   return cls(c.classId).checks.some((k) => k !== checkKey && (scope === 'platform' ? !platformOff.has(k) : !checkOff(k, inTemplate)));
 }
 /**
- * Findings a technician can pick under a check rated Monitor or Immediate. A part's visual condition check can see
- * anything the part can have; any other check offers the findings that fail it.
+ * Findings a technician can pick under a check rated Monitor or Immediate: the ones the catalog lists for that check.
+ * Every finding a part can have is offered by at least one of its checks (the catalog build makes sure of it).
  */
 export function checkFindingOptions(checkKey: string): string[] {
   const c = ONTOLOGY.checks[checkKey];
   if (!c) return [];
-  const all = Object.keys(cls(c.classId).findings);
-  if (checkKey.endsWith('.visual')) return all;
-  const own = c.failFindings.filter((k) => all.includes(k));
-  return own.length ? own : all;
+  const all = cls(c.classId).findings;
+  return c.failFindings.filter((k) => k in all);
 }
-/** Where a confirmed AI finding is filed: the part's first visual check that is on, by key (the database picks the same). */
-export function aiFilingCheck(classId: number, inTemplate: readonly string[] = templateOff()): string | null {
-  return [...cls(classId).checks].filter((k) => ONTOLOGY.checks[k]?.valueType === 'visual' && !checkOff(k, inTemplate)).sort()[0] ?? null;
+/**
+ * Findings that can be noted under a visual check rated OK: cosmetic ones the part rates OK at minor severity
+ * (a small dent or scratch that was already there). They are kept for the record and don't change the rating.
+ */
+export function notedFindingOptions(checkKey: string): string[] {
+  const c = ONTOLOGY.checks[checkKey];
+  if (!c || c.valueType !== 'visual') return [];
+  const all = cls(c.classId).findings;
+  return c.failFindings.filter((k) => all[k]?.[0] === 'ok');
+}
+/** Whether a finding can stay under a check rated OK (see notedFindingOptions). */
+export const notedAtOk = (classId: number, findingKey: string, severity: string) =>
+  severity === 'minor' && cls(classId).findings[findingKey]?.[0] === 'ok';
+/**
+ * Where a confirmed AI finding is filed: the part's first check (catalog order) that is on and offers that finding.
+ * Null leaves it a part-level finding. The database picks the same check.
+ */
+export function aiFilingCheck(classId: number, findingKey: string, inTemplate: readonly string[] = templateOff()): string | null {
+  return cls(classId).checks.find((k) => !checkOff(k, inTemplate) && ONTOLOGY.checks[k]?.failFindings.includes(findingKey)) ?? null;
 }
 /** The part's checks that are on, in catalog order (all of them if every one is off). */
 export function enabledChecks(classId: number, inTemplate: readonly string[] = templateOff()): string[] {

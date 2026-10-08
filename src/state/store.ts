@@ -6,7 +6,7 @@
 //    function that enforces the rules, then the inspection is reloaded from the server (the source of truth).
 import { useSyncExternalStore } from 'react';
 import {
-  aiFilingCheck, cls, DEFAULT_TEMPLATE, ONTOLOGY, parseKey, partsLeftWithoutChecks, point as getPoint, pointComponents, setDisabledChecks, setTemplate, setThresholds, withTemplate,
+  aiFilingCheck, cls, DEFAULT_TEMPLATE, notedAtOk, notedFindingOptions, ONTOLOGY, parseKey, partsLeftWithoutChecks, point as getPoint, pointComponents, setDisabledChecks, setTemplate, setThresholds, withTemplate,
   type Threshold,
 } from '../domain/ontology';
 import { completionGate, findingRating, rateValue, summarize, type Summary } from '../domain/rating';
@@ -322,20 +322,24 @@ const local = {
     const rating = value !== null ? rateValue(ONTOLOGY.checks[checkKey], value) ?? picked : picked;
     i.results = i.results.filter((r) => !(r.compKey === key && r.checkKey === checkKey));
     if (rating) i.results.push({ compKey: key, checkKey, value, rating, at: now() });
-    if (rating !== 'monitor' && rating !== 'immediate') dropCheckFindings(i, key, checkKey);
+    if (rating !== 'monitor' && rating !== 'immediate') dropCheckFindings(i, key, checkKey, rating === 'ok');
     i.statuses = i.statuses.filter((s) => !(s.compKey === key && s.notInspected));
   },
   clearCheck: (key: CompKey, checkKey: string) => (i: Inspection) => {
     i.results = i.results.filter((r) => !(r.compKey === key && r.checkKey === checkKey));
     dropCheckFindings(i, key, checkKey);
   },
-  /** The findings that explain a check's Monitor or Immediate rating (replaces the technician's earlier picks). */
+  /**
+   * The findings that explain a check's Monitor or Immediate rating (replaces the technician's earlier picks). Under a
+   * visual check rated OK, only cosmetic findings can be noted (recorded at minor severity).
+   */
   setCheckFindings: (key: CompKey, checkKey: string, findingKeys: string[]) => (i: Inspection) => {
     const r = i.results.find((x) => x.compKey === key && x.checkKey === checkKey);
-    if (!r || r.rating === 'ok') return;
+    if (!r) return;
+    if (r.rating === 'ok') { const noted = notedFindingOptions(checkKey); findingKeys = findingKeys.filter((k) => noted.includes(k)); }
     i.findings = i.findings.filter((f) => !(f.compKey === key && f.checkKey === checkKey && f.source === 'technician'));
     for (const k of [...new Set(findingKeys)]) {
-      i.findings.push({ id: uid('f'), compKey: key, checkKey, key: k, severity: r.rating === 'immediate' ? 'severe' : 'moderate', source: 'technician',
+      i.findings.push({ id: uid('f'), compKey: key, checkKey, key: k, severity: r.rating === 'immediate' ? 'severe' : r.rating === 'monitor' ? 'moderate' : 'minor', source: 'technician',
         status: 'confirmed', confidence: null, rationale: null, mediaId: null, reviewedAt: now(), aiOriginal: null });
     }
   },
@@ -376,19 +380,34 @@ const local = {
   },
 };
 
-/** A check rated OK, cleared or skipped keeps no findings (the database does the same). */
-function dropCheckFindings(i: Inspection, key: CompKey, checkKey: string) {
-  i.findings = i.findings.filter((f) => !(f.compKey === key && f.checkKey === checkKey && f.source === 'technician'));
-  for (const f of i.findings) if (f.compKey === key && f.checkKey === checkKey && f.source === 'ai' && f.status !== 'pending') { f.status = 'denied'; f.reviewedAt = now(); }
+/**
+ * A check cleared or skipped keeps no findings; a check rated OK keeps only noted cosmetic findings at minor severity
+ * (the database does the same).
+ */
+function dropCheckFindings(i: Inspection, key: CompKey, checkKey: string, keepNoted = false) {
+  const { classId } = parseKey(key);
+  const keep = (f: Finding) => keepNoted && notedAtOk(classId, f.key, f.severity);
+  i.findings = i.findings.filter((f) => !(f.compKey === key && f.checkKey === checkKey && f.source === 'technician' && !keep(f)));
+  for (const f of i.findings) if (f.compKey === key && f.checkKey === checkKey && f.source === 'ai' && f.status !== 'pending' && !keep(f)) { f.status = 'denied'; f.reviewedAt = now(); }
 }
 
-/** A confirmed AI finding goes under the part's visual check, which takes the finding's rating if that's worse. */
+/**
+ * A confirmed AI finding goes under the first check that offers it, which takes the finding's rating if that's worse.
+ * A cosmetic finding the part rates OK is noted under its visual check, which is rated OK if nobody rated it yet.
+ */
 function fileAiFinding(i: Inspection, f: Finding) {
   if (f.checkKey) return;
   const { classId } = parseKey(f.compKey);
-  const check = aiFilingCheck(classId);
+  const check = aiFilingCheck(classId, f.key);
+  if (!check || !(f.key in cls(classId).findings)) return;
   const rating = findingRating(classId, f.key, f.severity);
-  if (!check || rating === 'ok') return;
+  if (rating === 'ok') {
+    if (ONTOLOGY.checks[check].valueType !== 'visual') return;
+    f.checkKey = check;
+    if (!i.results.some((x) => x.compKey === f.compKey && x.checkKey === check)) i.results.push({ compKey: f.compKey, checkKey: check, value: null, rating: 'ok', at: now() });
+    i.statuses = i.statuses.filter((s) => !(s.compKey === f.compKey && s.notInspected));
+    return;
+  }
   f.checkKey = check;
   const r = i.results.find((x) => x.compKey === f.compKey && x.checkKey === check);
   if (r) { if (r.rating !== 'immediate') r.rating = rating; r.at = now(); }

@@ -223,6 +223,158 @@ CLASS_SET.update({
  "brake_booster": "failed_test leak inoperative damaged", "brake_fluid_reservoir": "leak seepage crack damaged missing low_level",
  "high_voltage_battery_pack": "HV dent warning_indicator_on", "charge_port_inlet": "damaged burn_damage melted connector_damage debris_buildup corrosion",
 })
+
+# ---- 1.4.0: findings are recorded under checks, so every class lists only findings that part can actually have.
+# The shared groups above gave many parts findings from other kinds of part (belt findings on a timing cover, bearing
+# findings on a fluid reservoir, electrical findings on a tow hook). These lists replace the group lookup for those parts.
+LAMP_COND = "crack broken cloudy water_intrusion inoperative intermittent dim missing discolored loose damaged"
+CLASS_SET_14 = {
+ # context and tires
+ "vehicle_exterior": "dent scratch scuff chip crack broken missing paint_damage clearcoat_damage previous_repair rust damaged",
+ "tire": "low_tread uneven_wear bulge cut punctured dry_rot crack low_pressure over_pressure aged damaged exposed_cord abrasion",
+ "spare_tire": "low_tread uneven_wear bulge cut punctured dry_rot crack low_pressure over_pressure aged damaged exposed_cord abrasion",
+ "wheel": "bent crack broken corrosion scratch gouge damaged",
+ "tpms_sensor": "failed_test inoperative damaged missing corrosion",
+ "wheel_hub_bearing": "excessive_play abnormal_noise binding damaged",
+ # lamps (only headlamps and fog lamps are aimed)
+ **{n: LAMP_COND for n in ["tail_lamp", "turn_signal_lamp", "reverse_lamp", "high_mount_brake_lamp", "license_plate_lamp", "side_marker_lamp"]},
+ "headlamp": LAMP_COND + " misaimed", "fog_lamp": LAMP_COND + " misaimed",
+ "interior_lamp": "inoperative intermittent dim crack broken cloudy missing loose damaged",
+ # controls and hood hardware
+ "cabin_air_vent": "broken binding loose missing obstructed crack damaged poor_performance",
+ "hvac_control_panel": "inoperative intermittent binding unreadable crack missing damaged",
+ "horn": "inoperative intermittent damaged loose corrosion disconnected",
+ "warning_indicator": "warning_indicator_on inoperative",
+ "hood_latch": "bent crack broken rust corrosion damaged loose missing inoperative binding",
+ "hood_striker": "bent crack broken rust corrosion damaged loose misaligned worn",
+ "hood_release_cable": "frayed broken binding inoperative damaged missing",
+ # cooling
+ "coolant_reservoir": "leak seepage residue crack damaged missing contaminated",
+ "coolant_hose": "RUBBER",
+ "thermostat_housing": "leak seepage residue crack damaged corrosion loose",
+ "thermostat": "failed_test binding",
+ # power steering and brake hydraulics
+ "power_steering_reservoir": "leak seepage residue crack damaged loose missing contaminated",
+ "brake_fluid_reservoir": "leak seepage crack damaged missing damaged_seal",
+ "brake_master_cylinder": "leak seepage residue crack damaged corrosion loose",
+ "brake_booster": "failed_test leak inoperative damaged corrosion",
+ "brake_pedal": "failed_test excessive_play binding damaged worn",
+ "parking_brake_control": "failed_test excessive_play binding inoperative",
+ # belts and hoses
+ "belt_tensioner": "abnormal_noise excessive_play binding loose damaged worn misaligned",
+ "idler_pulley": "abnormal_noise excessive_play binding loose damaged crack misaligned",
+ "vacuum_hose": "crack torn cut dry_rot swollen collapsed chafed leak damaged missing loose disconnected aged",
+ "fuel_hose": "leak seepage crack cut dry_rot swollen chafed collapsed abrasion aged damaged loose",
+ # air intake and cabin filtration
+ "engine_air_filter": "contaminated debris_buildup obstructed damaged missing water_intrusion",
+ "engine_air_filter_housing": "crack broken damaged loose missing unsecured water_intrusion debris_buildup",
+ "engine_air_intake_duct": "crack torn collapsed loose damaged missing obstructed",
+ "cabin_air_filter": "contaminated debris_buildup obstructed damaged missing water_intrusion",
+ "cabin_air_filter_access_cover": "broken missing loose damaged crack",
+ # battery and ignition
+ "battery_terminal": "corrosion loose damaged melted burn_damage",
+ "spark_plug_wire": "corrosion loose disconnected exposed_conductor connector_damage melted burn_damage chafed cut damaged crack",
+ # timing
+ "timing_chain": "abnormal_noise worn excessive_play damaged",
+ "timing_cover": "leak seepage residue crack damaged loose missing",
+ "timing_tensioner": "leak seepage worn excessive_play damaged broken",
+ "timing_chain_guide": "worn crack broken damaged",
+ # fuel system (rubber findings only where there is rubber)
+ "fuel_tank": "leak seepage corrosion rust damaged deformation loose broken punctured",
+ "fuel_filler_neck": "leak seepage corrosion rust crack damaged loose chafed",
+ "fuel_line": "leak seepage corrosion rust chafed deformation damaged loose crack",
+ "fuel_filter": "leak seepage residue crack damaged corrosion loose",
+ "fuel_rail": "leak seepage residue crack damaged corrosion loose",
+ "fuel_injector": "leak seepage residue crack damaged connector_damage loose",
+ "fuel_pump": "leak seepage residue damaged corrosion connector_damage",
+ # brakes
+ "brake_hose": "RUBBER",
+ # suspension and steering
+ "shock_absorber": "leak seepage residue bent damaged_seal broken damaged loose abnormal_noise worn corrosion rust failed_test",
+ "strut_assembly": "leak seepage residue bent damaged_seal broken damaged loose abnormal_noise worn corrosion rust failed_test",
+ "coil_spring": "broken crack sagging rust corrosion damaged",
+ "leaf_spring": "broken crack sagging rust corrosion damaged loose misaligned",
+ "air_spring": "leak crack dry_rot chafed sagging damaged torn broken",
+ "control_arm": "bent crack broken rust corrosion damaged loose deformation excessive_play",
+ **{n: "crack torn cut dry_rot swollen collapsed deformation damaged missing aged excessive_play broken abnormal_noise"
+    for n in ["suspension_bushing", "sway_bar_bushing"]},
+ "strut_mount": "crack torn dry_rot collapsed deformation damaged missing aged excessive_play broken abnormal_noise binding loose",
+ "powertrain_mount": "crack torn dry_rot collapsed deformation damaged missing aged excessive_play broken abnormal_noise leak",
+ "steering_rack_boot": "crack torn cut dry_rot leak residue missing damaged aged abrasion",
+ "cv_boot": "crack torn cut dry_rot leak residue missing damaged aged abrasion chafed",
+ "steering_shaft": "excessive_play binding abnormal_noise damaged loose rust damaged_seal",
+ "steering_stabilizer": "leak seepage residue damaged loose missing bent worn",
+ "driveshaft_support_bearing": "JOINT torn crack",
+ # exhaust
+ **{n: "leak rust corrosion broken crack loose missing damaged heat_damage abnormal_noise punctured unsecured disconnected"
+    for n in ["exhaust_manifold", "exhaust_pipe", "exhaust_flex_joint", "catalytic_converter", "muffler", "exhaust_resonator"]},
+ "catalytic_converter": "leak rust corrosion broken crack loose missing damaged heat_damage abnormal_noise punctured unsecured disconnected failed_test",
+ "exhaust_hanger": "broken damaged missing loose torn rust corrosion",
+ "exhaust_heat_shield": "loose missing rust corrosion damaged broken abnormal_noise",
+ "exhaust_clamp": "loose missing broken rust corrosion leak damaged",
+ "exhaust_sensor": "damaged loose melted connector_damage chafed corrosion",
+ # glass, mirrors, body
+ "rear_window_glass": "GLASS inoperative",
+ "side_mirror_housing": "scratch scuff crack broken loose missing fading peeling discolored damaged unsecured inoperative",
+ "side_mirror_glass": "crack broken missing loose shattered pitting delamination inoperative damaged",
+ "convertible_soft_top": "torn water_intrusion damaged_seal cloudy fading discolored binding broken damaged missing abrasion",
+ "trunk_lid": "BODY inoperative intermittent binding water_intrusion damaged_seal sagging",
+ "liftgate": "BODY inoperative intermittent binding water_intrusion damaged_seal sagging",
+ "cowl_panel": "BODY obstructed debris_buildup",
+ "grille": "BODY obstructed debris_buildup",
+ "hood_scoop": "TRIM obstructed",
+ "active_grille_shutter": "BODY inoperative binding",
+ "closure_hinge": "worn rust corrosion loose binding abnormal_noise broken crack bent damaged",
+ "exterior_lock_cylinder": "binding inoperative corrosion broken damaged missing loose",
+ "exterior_door_handle": "broken loose missing inoperative binding damaged scratch scuff crack",
+ "washer_nozzle": "obstructed misaimed crack broken missing damaged loose",
+ "antenna": "bent broken crack loose missing damaged",
+ "license_plate": "missing unreadable bent loose damaged",
+ "license_plate_bracket": "crack broken missing loose damaged",
+ "body_vent": "crack broken loose missing obstructed damaged",
+ "bumper_step_pad": "worn torn crack loose missing damaged",
+ "tow_hook": "bent crack broken rust corrosion damaged loose missing",
+ "trailer_hitch_receiver": "bent crack broken rust corrosion damaged loose deformation",
+ "tonneau_cover": "TRIM torn damaged_seal",
+ "bed_step": "TRIM rust corrosion inoperative binding",
+ "side_step": "TRIM rust corrosion deformation inoperative binding",
+ "external_spare_tire_carrier": "rust corrosion frayed broken inoperative binding loose damaged bent",
+ "roof_vent": "BODY inoperative damaged_seal",
+ "luggage_compartment_door": "BODY damaged_seal",
+ # fluids (discolored is a cosmetic word and rates OK at minor; a fluid's colour is degraded_fluid)
+ "engine_oil": "low_level overfilled contaminated degraded_fluid service_due",
+ "engine_coolant": "low_level overfilled contaminated degraded_fluid failed_test",
+ "brake_fluid": "low_level overfilled contaminated degraded_fluid failed_test",
+ "automatic_transmission_fluid": "low_level overfilled contaminated degraded_fluid",
+ **{n: "low_level overfilled contaminated degraded_fluid service_due" for n in ["manual_transmission_fluid", "differential_fluid", "transfer_case_fluid"]},
+ "power_steering_fluid": "low_level overfilled contaminated degraded_fluid",
+ "windshield_washer_fluid": "low_level",
+ "diesel_exhaust_fluid": "low_level contaminated degraded_fluid failed_test",
+ # washer, wiper, HVAC, charging
+ "windshield_washer_reservoir": "leak seepage crack damaged loose missing",
+ "wiper_motor": "inoperative intermittent binding abnormal_noise poor_performance",
+ "ac_refrigerant_line": "leak seepage residue crack damaged corrosion loose missing chafed deformation",
+ "cabin_blower_motor": "inoperative intermittent abnormal_noise binding poor_performance",
+ "alternator": "corrosion loose disconnected exposed_conductor connector_damage melted burn_damage chafed damaged inoperative failed_test abnormal_noise excessive_play contaminated crack",
+ "starter_motor": "corrosion loose disconnected exposed_conductor connector_damage melted burn_damage chafed damaged inoperative intermittent abnormal_noise poor_performance contaminated crack",
+ "seat_belt": "BELTSAFE",
+ "adas_forward_camera": "ADAS", "adas_radar_sensor": "ADAS", "parking_sensor": "ADAS",
+ "backup_camera": "obstructed inoperative intermittent damaged crack misaimed loose",
+ # high voltage
+ "engine_assembly": "leak seepage residue abnormal_noise failed_test inoperative heat_damage crack",
+ "high_voltage_battery_pack": "damaged chafed exposed_conductor connector_damage leak corrosion heat_damage failed_test loose unsecured crack dent melted burn_damage deformation abrasion",
+ "high_voltage_cable": "damaged chafed cut exposed_conductor connector_damage corrosion heat_damage loose unsecured missing melted burn_damage crack",
+ "charge_port_inlet": "damaged burn_damage melted connector_damage debris_buildup corrosion damaged_seal",
+}
+CLASS_SET.update(CLASS_SET_14)
+FINDING_OVERRIDE.update({
+    ("tire_valve_stem", "missing"): (("monitor", "monitor", "monitor", "immediate_attention"), "A missing valve cap is Monitor; a missing or broken-off stem (critical) is Immediate."),
+    **{("exhaust_heat_shield", k): (("monitor", "monitor", "monitor", "immediate_attention"), "A loose or missing heat shield rattles or exposes nearby parts to heat; it does not fail a minimum standard unless critical.")
+       for k in ("broken", "missing", "loose")},
+    ("exhaust_clamp", "missing"): (("monitor", "monitor", "monitor", "immediate_attention"), "A missing clamp is Monitor; the leak it causes is rated as a leak."),
+    ("side_mirror_glass", "inoperative"): (("monitor", "monitor", "monitor", "immediate_attention"), "A power or manual adjuster that doesn't work is Monitor; the glass still gives a view."),
+    ("high_voltage_cable", "missing"): (("monitor", "monitor", "monitor", "immediate_attention"), "A missing cable clip is Monitor; a chafed or exposed cable is Immediate."),
+})
 CLASS_FINDINGS = []
 for c in CLASSES:
     toks = []

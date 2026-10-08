@@ -161,8 +161,8 @@ select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
 select t.expect_error($$ select public.submit_inspection((select v::uuid from t.ids where k = 'insp'), '{}') $$, '%Resolve 0 AI findings and 2 photos%');
 select t.eq(public.confirm_placements((select v::uuid from t.ids where k = 'insp'), 'under_car'), 1, 'one AI link confirmed');
 select public.exclude_photo('00000000-0000-0000-0000-0000000000f3');
--- Findings belong to a check, and only while it is rated Monitor or Immediate.
-select t.expect_error($$ select public.set_check_findings((select v::uuid from t.ids where k = 'insp'), '72@left_front', 'brake_caliper.visual', array['leak']) $$, '%Monitor or Immediate%');
+-- Findings belong to a check. The caliper's visual check is rated OK (the confirmed looks-OK), so it only takes cosmetic notes.
+select t.expect_error($$ select public.set_check_findings((select v::uuid from t.ids where k = 'insp'), '72@left_front', 'brake_caliper.visual', array['leak']) $$, '%Only cosmetic%');
 select public.set_check((select v::uuid from t.ids where k = 'insp'), '72@left_front', 'brake_caliper.visual', null, 'monitor');
 select t.expect_error($$ select public.set_check_findings((select v::uuid from t.ids where k = 'insp'), '72@left_front', 'brake_caliper.visual', array['dent']) $$, '%not used for this part%');
 select public.set_check_findings((select v::uuid from t.ids where k = 'insp'), '72@left_front', 'brake_caliper.visual', array['leak', 'seepage']);
@@ -171,6 +171,25 @@ select public.set_check_findings((select v::uuid from t.ids where k = 'insp'), '
 select t.eq((select string_agg(finding_key || ':' || severity, ',') from public.finding where check_key = 'brake_caliper.visual'), 'leak:moderate', 'picks replaced');
 select public.set_check((select v::uuid from t.ids where k = 'insp'), '72@left_front', 'brake_caliper.visual', null, 'ok');
 select t.eq((select count(*)::int from public.finding where check_key = 'brake_caliper.visual'), 0, 'rating the check OK removes its findings');
+-- A check only takes the findings it offers (binding is the release check's, not the caliper's visual check).
+select public.set_check((select v::uuid from t.ids where k = 'insp'), '72@left_front', 'brake_caliper.visual', null, 'monitor');
+select t.expect_error($$ select public.set_check_findings((select v::uuid from t.ids where k = 'insp'), '72@left_front', 'brake_caliper.visual', array['binding']) $$, '%doesn''t offer%');
+select public.set_check((select v::uuid from t.ids where k = 'insp'), '72@left_front', 'brake_caliper.function_leak', null, 'immediate');
+select public.set_check_findings((select v::uuid from t.ids where k = 'insp'), '72@left_front', 'brake_caliper.function_leak', array['binding']);
+select t.eq((select finding_key || ':' || severity from public.finding where check_key = 'brake_caliper.function_leak'), 'binding:severe', 'the release check takes binding');
+select public.clear_check((select v::uuid from t.ids where k = 'insp'), '72@left_front', 'brake_caliper.function_leak');
+select public.set_check((select v::uuid from t.ids where k = 'insp'), '72@left_front', 'brake_caliper.visual', null, 'ok');
+-- A visual check rated OK can note existing cosmetic damage, which stays when the check is OK and goes when it's cleared.
+select t.expect_error($$ select public.set_check_findings((select v::uuid from t.ids where k = 'insp'), '0@', 'vehicle_exterior.visual', array['scratch']) $$, '%Monitor or Immediate%');
+select public.set_check((select v::uuid from t.ids where k = 'insp'), '0@', 'vehicle_exterior.visual', null, 'ok');
+select t.expect_error($$ select public.set_check_findings((select v::uuid from t.ids where k = 'insp'), '0@', 'vehicle_exterior.visual', array['crack']) $$, '%Only cosmetic%');
+select public.set_check_findings((select v::uuid from t.ids where k = 'insp'), '0@', 'vehicle_exterior.visual', array['scratch', 'dent']);
+select t.eq((select string_agg(finding_key || ':' || severity, ',' order by finding_key) from public.finding where check_key = 'vehicle_exterior.visual'), 'dent:minor,scratch:minor', 'noted at minor severity');
+select public.set_check((select v::uuid from t.ids where k = 'insp'), '0@', 'vehicle_exterior.visual', null, 'ok');
+select t.eq((select count(*)::int from public.finding where check_key = 'vehicle_exterior.visual'), 2, 'rating it OK again keeps what was noted');
+select t.eq((select rating from public.check_result where check_key = 'vehicle_exterior.visual'), 'ok', 'noted findings leave the rating OK');
+select public.clear_check((select v::uuid from t.ids where k = 'insp'), '0@', 'vehicle_exterior.visual');
+select t.eq((select count(*)::int from public.finding where check_key = 'vehicle_exterior.visual'), 0, 'clearing the check removes them');
 select t.act('authenticated', '00000000-0000-0000-0000-00000000000c');
 select t.expect_error($$ select public.set_check_findings((select v::uuid from t.ids where k = 'insp'), '72@left_front', 'brake_caliper.visual', array['leak']) $$, '%permission%');
 select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');

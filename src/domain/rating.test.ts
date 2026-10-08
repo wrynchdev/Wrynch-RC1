@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ONTOLOGY, aiFilingCheck, checkFindingOptions, clsByName, compKey, vehicleComponents, pointComponents, point } from './ontology';
+import { ONTOLOGY, aiFilingCheck, checkFindingOptions, clsByName, compKey, notedFindingOptions, vehicleComponents, pointComponents, point } from './ontology';
 import { checkFindings, componentState, completionGate, customerView, findingRating, rateValue, summarize } from './rating';
 import { applyUnderCarExample, seedInspections, vehicle } from './seed';
 import { analyzePhotos, applyAnalysis, suggestWording, wordingKeepsFacts } from './aiStub';
@@ -152,12 +152,34 @@ test('findings under a check explain its rating and do not rate the part again',
   assert.deepEqual(checkFindings(i, caliper, 'brake_caliper.visual').map((f) => f.key), ['leak']);
 });
 
-test('which findings a check offers: everything on the visual check, the failing findings on the others', () => {
-  const pad = clsByName('brake_pad');
+test('which findings a check offers: the catalog lists them per check, and every finding a part can have is offered', () => {
+  for (const c of ONTOLOGY.classes) {
+    const offered = new Set(c.checks.flatMap((k) => checkFindingOptions(k)));
+    for (const k of c.checks) for (const f of ONTOLOGY.checks[k].failFindings) assert.ok(f in c.findings, `${k} offers ${f}, which ${c.name} can't have`);
+    for (const f of Object.keys(c.findings)) assert.ok(offered.has(f), `${c.name}: no check offers ${f}`);
+  }
   assert.deepEqual(checkFindingOptions('brake_pad.lining_thickness'), ONTOLOGY.checks['brake_pad.lining_thickness'].failFindings);
-  assert.deepEqual(checkFindingOptions('ball_joint.visual').sort(), Object.keys(clsByName('ball_joint').findings).sort());
   assert.ok(checkFindingOptions('horn.operation').includes('inoperative'));
-  assert.ok(pad.checks.length > 0);
-  assert.equal(aiFilingCheck(clsByName('brake_rotor').id), 'brake_rotor.surface', 'same check the database picks');
-  assert.equal(aiFilingCheck(clsByName('ball_joint').id), 'ball_joint.visual');
+  // The general condition check doesn't repeat what a measuring check owns.
+  assert.ok(!checkFindingOptions('tire.structure').includes('low_tread'), 'tread depth owns low tread');
+  assert.ok(!checkFindingOptions('windshield.visual').includes('chip'), 'the damage check sizes chips');
+  assert.ok(checkFindingOptions('wheel.condition').includes('scratch'), 'curb rash can be recorded');
+});
+
+test('a confirmed AI finding goes under the first check that offers it', () => {
+  const id = (n: string) => clsByName(n).id;
+  assert.equal(aiFilingCheck(id('brake_rotor'), 'grooved'), 'brake_rotor.surface', 'same check the database picks');
+  assert.equal(aiFilingCheck(id('tire'), 'low_tread'), 'tire.tread_depth');
+  assert.equal(aiFilingCheck(id('tire'), 'bulge'), 'tire.structure');
+  assert.equal(aiFilingCheck(id('brake_caliper'), 'leak'), 'brake_caliper.function_leak');
+  assert.equal(aiFilingCheck(id('brake_caliper'), 'corrosion'), 'brake_caliper.visual');
+  assert.equal(aiFilingCheck(id('brake_caliper'), 'dent'), null, 'not a caliper finding');
+  assert.equal(aiFilingCheck(id('tire'), 'low_tread', ['tire.tread_depth']), null, 'a check switched off in the template takes nothing');
+});
+
+test('a visual check rated OK can note existing cosmetic damage', () => {
+  assert.deepEqual(notedFindingOptions('brake_pad.lining_thickness'), [], 'only visual checks');
+  const noted = notedFindingOptions('vehicle_exterior.visual');
+  assert.ok(noted.includes('scratch') && noted.includes('dent'));
+  assert.ok(!noted.includes('crack'), 'a crack is never just noted');
 });

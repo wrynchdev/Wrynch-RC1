@@ -265,7 +265,7 @@
    },
    {
     "compKey": "22@",
-    "checkKey": "hood_release_cable.visual",
+    "checkKey": "hood_release_cable.release",
     "value": null,
     "rating": "ok",
     "at": "2026-09-26"
@@ -363,7 +363,7 @@
    },
    {
     "compKey": "57@",
-    "checkKey": "spark_plug.visual",
+    "checkKey": "spark_plug.interval",
     "value": null,
     "rating": "ok",
     "at": "2026-09-26"
