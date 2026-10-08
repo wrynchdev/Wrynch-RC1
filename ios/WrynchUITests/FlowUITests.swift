@@ -60,21 +60,21 @@ final class FlowUITests: XCTestCase {
         resume.tap()
         XCTAssertTrue(pointOne.waitForExistence(timeout: 20), "continue resumes at point 1 — " + screen(app))
 
+        // "Nothing found" rates the point's untouched parts OK.
+        let nothing = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Nothing found'")).firstMatch
+        XCTAssertTrue(nothing.waitForExistence(timeout: 20), "point screen — " + screen(app))
+        let all = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Nothing found'"))
+        let where_ = "matches \(all.count), hittable \(nothing.isHittable), frame \(nothing.frame), window \(app.windows.firstMatch.frame)"
+        nothing.tap()
+        let ok = app.staticTexts.matching(NSPredicate(format: "label == 'OK'")).firstMatch
+        XCTAssertTrue(ok.waitForExistence(timeout: 20), "the point shows OK after saving (" + where_ + ") — " + screen(app))
+        XCTAssertFalse(nothing.exists, "nothing left unrated on this point")
+
         // Next and Back move one point at a time.
         next.tap()
         XCTAssertTrue(pointTwo.waitForExistence(timeout: 20), "Next goes to point 2 — " + screen(app))
         app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Back'")).firstMatch.tap()
         XCTAssertTrue(pointOne.waitForExistence(timeout: 20), "Back returns to point 1 — " + screen(app))
-
-        // "Nothing found" rates the point's untouched parts OK.
-        let nothing = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Nothing found'")).firstMatch
-        XCTAssertTrue(nothing.waitForExistence(timeout: 20), "point screen — " + screen(app))
-        // Scroll it clear of the Back / Jump / Next footer before tapping.
-        app.scrollViews.firstMatch.swipeUp()
-        nothing.tap()
-        let ok = app.staticTexts.matching(NSPredicate(format: "label == 'OK'")).firstMatch
-        XCTAssertTrue(ok.waitForExistence(timeout: 20), "the point shows OK after saving — " + screen(app))
-        XCTAssertFalse(nothing.exists, "nothing left unrated on this point")
 
         // Jump straight to another point, then to the overview.
         app.buttons["Jump to a point"].tap()
