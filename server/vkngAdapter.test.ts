@@ -29,7 +29,7 @@ test('real adapter sends tenant-scoped RPC calls with server credentials and sta
   };
   const adapter = createVkngServerAdapter({
     url: 'https://vkng-project.supabase.co/',
-    serviceKey: 'server-only-service-key',
+    serviceKey: 'sb_secret_test-only-key',
     componentMap: { brake_pad: 'canonical-brake-pad-node' },
   }, fetcher);
 
@@ -49,7 +49,7 @@ test('real adapter sends tenant-scoped RPC calls with server credentials and sta
   assert.equal(history.length, 1);
   assert.equal(calls.length, 3);
   assert.ok(calls.every((call) => call.url.startsWith('https://vkng-project.supabase.co/rest/v1/rpc/')));
-  assert.ok(calls.every((call) => new Headers(call.init.headers).get('apikey') === 'server-only-service-key'));
+  assert.ok(calls.every((call) => new Headers(call.init.headers).get('apikey') === 'sb_secret_test-only-key'));
   assert.ok(calls.every((call) => !new Headers(call.init.headers).has('authorization')), 'new Supabase secret keys are not sent as bearer tokens');
   const resolveArgs = JSON.parse(String(calls[0].init.body)) as Record<string, unknown>;
   assert.equal(resolveArgs.p_tenant_id, 'shop-1');
