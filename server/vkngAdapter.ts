@@ -79,6 +79,9 @@ export function createVkngServerAdapter(config: VkngServerConfig, fetcher: Fetch
       });
     },
     async recordObservation(input: VkngObservation) {
+      if (!Object.values(config.componentMap).includes(input.component.canonicalComponentId)) {
+        throw new Error('Observation component is not present in the configured VKNG component map.');
+      }
       const result = await rpc<{ id: string; observationId: string }>('vkng_record_wrynch_observation', {
         p_tenant_id: input.tenantId,
         p_wrynch_observation_id: input.id,
@@ -94,6 +97,7 @@ export function createVkngServerAdapter(config: VkngServerConfig, fetcher: Fetch
       return { id: result.observationId || result.id };
     },
     async getComponentHistory(input) {
+      if (!Object.values(config.componentMap).includes(input.canonicalComponentId)) return [];
       return rpc('vkng_get_wrynch_component_history', {
         p_tenant_id: input.tenantId,
         p_vehicle_id: input.vehicleId,
