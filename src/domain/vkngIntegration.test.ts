@@ -14,6 +14,7 @@ const inspection = (status: Inspection['status'] = 'submitted'): Inspection => (
     { id: 'ai-rejected', compKey: key, key: 'crack', severity: 'severe', source: 'ai', status: 'denied', confidence: 0.8, rationale: null, mediaId: null, reviewedAt: null, aiOriginal: null },
     { id: 'ai-confirmed', compKey: key, key: 'worn', severity: 'severe', source: 'ai', status: 'confirmed', confidence: 0.9, rationale: 'visible wear', mediaId: 'photo-1', reviewedAt: '2026-10-08T10:01:00.000Z', aiOriginal: null },
     { id: 'tech-finding', compKey: key, key: 'wear', severity: 'moderate', source: 'technician', status: 'confirmed', confidence: null, rationale: null, mediaId: null, reviewedAt: '2026-10-08T10:02:00.000Z', aiOriginal: null },
+    { id: 'tech-pending', compKey: key, key: 'possible-wear', severity: 'moderate', source: 'technician', status: 'pending', confidence: null, rationale: null, mediaId: null, reviewedAt: null, aiOriginal: null },
   ],
   media: [{ id: 'photo-1', sectionId: 'brakes', url: 'https://example.invalid/brake.jpg', label: 'Brake pad', excluded: false, customerVisible: true, analyzed: true, links: [{ compKey: key, status: 'confirmed', confidence: 1 }] }],
   observations: [], statuses: [], notes: [], extraComponents: [], customerApprovals: [], estimate: [],
@@ -26,7 +27,7 @@ test('finalized inspection projects confirmed evidence and excludes pending/reje
   assert.ok(rows.every((row) => row.tenantId === 'shop-1' && row.vehicleId === vehicle.id));
   assert.ok(rows.every((row) => row.component.canonicalComponentId === 'vkng:component:brake_pad' && row.component.position === 'left_front'));
   assert.ok(rows.every((row) => row.reviewStatus === 'confirmed'));
-  assert.equal(rows.some((row) => row.id.includes('ai-pending') || row.id.includes('ai-rejected')), false);
+  assert.equal(rows.some((row) => row.id.includes('ai-pending') || row.id.includes('ai-rejected') || row.id.includes('tech-pending')), false);
   assert.ok(rows.find((row) => row.id.includes('ai-confirmed'))?.evidence.some((item) => item.kind === 'photo'));
 });
 
