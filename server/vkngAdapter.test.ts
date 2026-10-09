@@ -62,7 +62,7 @@ test('adapter hides database response bodies and reports missing migration clear
   const adapter = createVkngServerAdapter({
     url: 'https://vkng-project.supabase.co',
     serviceKey: 'server-key',
-    componentMap: {},
+    componentMap: { brake_pad: 'component-node' },
   }, async () => new Response('sensitive SQL detail', { status: 404 }));
   await assert.rejects(() => adapter.getComponentHistory({
     tenantId: 'shop-1', vehicleId: 'vehicle-uuid', canonicalComponentId: 'component-node',
