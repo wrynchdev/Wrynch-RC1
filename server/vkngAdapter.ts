@@ -79,22 +79,26 @@ export function createVkngServerAdapter(config: VkngServerConfig, fetcher: Fetch
       });
     },
     async recordObservation(input: VkngObservation) {
-      if (!Object.values(config.componentMap).includes(input.component.canonicalComponentId)) {
+      const saved = await this.recordObservations!([input]);
+      return { id: saved.ids[0] };
+    },
+    async recordObservations(inputs: VkngObservation[]) {
+      if (!inputs.length) return { ids: [] };
+      const tenantId = inputs[0].tenantId;
+      if (inputs.some((item) => item.tenantId !== tenantId)) {
+        throw new Error('A VKNG observation batch cannot cross tenant boundaries.');
+      }
+      if (inputs.some((item) => !Object.values(config.componentMap).includes(item.component.canonicalComponentId))) {
         throw new Error('Observation component is not present in the configured VKNG component map.');
       }
-      const result = await rpc<{ id: string; observationId: string }>('vkng_record_wrynch_observation', {
-        p_tenant_id: input.tenantId,
-        p_wrynch_observation_id: input.id,
-        p_vehicle_id: input.vehicleId,
-        p_component_external_id: input.component.canonicalComponentId,
-        p_position: input.component.position ?? null,
-        p_evidence: input.evidence,
-        p_observed_at: input.observedAt,
-        p_inspection_point_id: input.inspectionPointId ?? null,
-        p_rating: input.rating ?? null,
-        p_summary: input.summary,
+      const result = await rpc<{ observationIds: string[] }>('vkng_record_wrynch_observations', {
+        p_tenant_id: tenantId,
+        p_observations: inputs,
       });
-      return { id: result.observationId || result.id };
+      if (!Array.isArray(result.observationIds) || result.observationIds.length !== inputs.length) {
+        throw new Error('VKNG returned an incomplete observation batch result.');
+      }
+      return { ids: result.observationIds };
     },
     async getComponentHistory(input) {
       if (!Object.values(config.componentMap).includes(input.canonicalComponentId)) return [];
