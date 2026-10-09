@@ -19,8 +19,9 @@ test('real adapter sends tenant-scoped RPC calls with server credentials and sta
     if (url.endsWith('/vkng_resolve_wrynch_vehicle')) {
       return new Response(JSON.stringify({ canonicalVehicleId: 'vehicle-uuid', resolution: 'resolved' }), { status: 200 });
     }
-    if (url.endsWith('/vkng_record_wrynch_observation')) {
-      return new Response(JSON.stringify({ id: 'observation-uuid', observationId: payload.p_wrynch_observation_id }), { status: 200 });
+    if (url.endsWith('/vkng_record_wrynch_observations')) {
+      const observations = payload.p_observations as { id: string }[];
+      return new Response(JSON.stringify({ observationIds: observations.map((item) => item.id) }), { status: 200 });
     }
     if (url.endsWith('/vkng_get_wrynch_component_history')) {
       return new Response(JSON.stringify([{ id: 'observation-uuid', tenantId: payload.p_tenant_id }]), { status: 200 });
@@ -54,8 +55,8 @@ test('real adapter sends tenant-scoped RPC calls with server credentials and sta
   const resolveArgs = JSON.parse(String(calls[0].init.body)) as Record<string, unknown>;
   assert.equal(resolveArgs.p_tenant_id, 'shop-1');
   const writeArgs = JSON.parse(String(calls[1].init.body)) as Record<string, unknown>;
-  assert.equal(writeArgs.p_wrynch_observation_id, 'wrynch:insp-1:result:brake_pad:lining');
-  assert.equal(writeArgs.p_component_external_id, 'canonical-brake-pad-node');
+  assert.equal((writeArgs.p_observations as { id: string }[])[0].id, 'wrynch:insp-1:result:brake_pad:lining');
+  assert.equal(((writeArgs.p_observations as { component: { canonicalComponentId: string } }[])[0]).component.canonicalComponentId, 'canonical-brake-pad-node');
 });
 
 test('adapter hides database response bodies and reports missing migration clearly', async () => {
