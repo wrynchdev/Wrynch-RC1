@@ -8,7 +8,7 @@ Wrynch now has a server-only adapter for VKNG's Supabase RPC boundary. It does n
 2. Wrynch verifies shop access through its existing inspection/export RPCs and derives the tenant ID server-side.
 3. Only submitted/sent inspections are projected. Pending or rejected findings and draft inspections are excluded.
 4. VKNG resolves a vehicle only from a valid 17-character VIN that exactly matches one canonical VKNG vehicle node. Unknown or duplicate VINs stop the sync.
-5. Each observation is upserted under a stable Wrynch observation ID, attached to the VKNG vehicle and component graph, and stored with evidence/provenance. Repeating the request is safe for already-written observations.
+5. Observations are sent in a single bounded batch (up to 500 per RPC), upserted under stable Wrynch observation IDs, attached to the VKNG vehicle and component graph, and stored with evidence/provenance. Repeating the request is safe for already-written observations.
 6. The endpoint returns the resolution and saved observation IDs. If a partial sync fails, retry the same request; stable IDs make writes idempotent.
 
 ## Required deployment configuration
