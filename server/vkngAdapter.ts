@@ -68,8 +68,8 @@ export function createVkngServerAdapter(config: VkngServerConfig, fetcher: Fetch
 
   return {
     async resolveVehicle(input: VkngVehicleReference) {
-      return rpc('vkng_resolve_wrynch_vehicle', {
-        p_tenant_id: input.wrynchVehicleId ? (input as VkngVehicleReference & { tenantId?: string }).tenantId ?? '' : '',
+      return rpc<{ canonicalVehicleId: string | null; resolution: 'resolved' | 'insufficient_evidence' | 'conflicted' }>('vkng_resolve_wrynch_vehicle', {
+        p_tenant_id: input.tenantId,
         p_wrynch_vehicle_id: input.wrynchVehicleId,
         p_vin: input.vin,
         p_year: input.year,
