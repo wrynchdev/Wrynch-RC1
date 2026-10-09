@@ -30,6 +30,7 @@ export interface VkngObservation {
   summary: string;
 }
 export interface VkngVehicleReference {
+  tenantId: string;
   wrynchVehicleId: string;
   vin: string;
   year: number;
@@ -118,6 +119,7 @@ export async function syncWrynchInspection(
 ): Promise<{ canonicalVehicleId: string | null; resolution: 'resolved' | 'insufficient_evidence' | 'conflicted'; observationIds: string[] }> {
   const { vehicle } = context;
   const resolution = await vkng.resolveVehicle({
+    tenantId: context.tenantId,
     wrynchVehicleId: vehicle.id, vin: vehicle.vin, year: vehicle.year, make: vehicle.make, model: vehicle.model, trim: vehicle.trim,
   });
   if (resolution.resolution !== 'resolved' || !resolution.canonicalVehicleId) {
