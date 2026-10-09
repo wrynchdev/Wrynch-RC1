@@ -216,6 +216,28 @@ export const report: Handler = route({
   },
 });
 
+async function syncInspectionToVkng(jwt: string, inspectionId: string) {
+  const info = await rpc<{ shopId: string; status: string }>('tekmetric_export_info', { p_inspection: inspectionId }, jwt);
+  if (info.status !== 'submitted' && info.status !== 'sent') throw new HttpError(409, 'Submit the inspection and finish review before syncing to VKNG');
+  const { inspection, vehicle } = await loadAsUser(jwt, inspectionId);
+  if (!info.shopId) throw new HttpError(403, 'Could not verify this inspection’s shop');
+
+  const vkngUrl = env('VKNG_SUPABASE_URL');
+  const vkngKey = env('VKNG_SUPABASE_SERVICE_ROLE_KEY');
+  if (!vkngUrl || !vkngKey) throw new HttpError(503, 'VKNG server connection is not configured');
+  let componentMap: Record<string, string>;
+  try { componentMap = parseVkngComponentMap(env('VKNG_COMPONENT_MAP_JSON')); }
+  catch { throw new HttpError(500, 'VKNG component mapping configuration is invalid'); }
+  if (!Object.keys(componentMap).length) throw new HttpError(503, 'VKNG component mappings are not configured');
+
+  const adapter = createVkngServerAdapter({ url: vkngUrl, serviceKey: vkngKey, componentMap });
+  return syncWrynchInspection({
+    tenantId: info.shopId,
+    vehicle,
+    inspection,
+    canonicalComponentId: (className) => componentMap[className] ?? null,
+  }, adapter);
+}
 // POST /api/send-report { inspectionId, channel: 'sms' | 'email' | 'link', to? }
 export const sendReport: Handler = route({
   POST: async (req) => {
@@ -242,7 +264,19 @@ export const sendReport: Handler = route({
     }
     await rpc('mark_sent', { p_inspection: inspectionId, p_channel: channel, p_destination: dest, p_status: channel === 'link' ? 'sent' : status, p_detail: detail || null }, jwt);
     if (status === 'failed') throw new HttpError(502, `Couldn't send: ${detail}. Copy the link instead.`);
-    return json({ link, status: channel === 'link' ? 'sent' : status, detail });
+    // Sending a finalized customer report also attempts VKNG sync. A VKNG outage never blocks report delivery;
+    // the explicit /api/vkng-sync endpoint can be used to retry.
+    let vkngSync: { resolution: string; observationCount: number } | { status: 'pending' | 'failed' } | undefined;
+    if (env('VKNG_SUPABASE_URL') && env('VKNG_SUPABASE_SERVICE_ROLE_KEY') && env('VKNG_COMPONENT_MAP_JSON')) {
+      try {
+        const synced = await syncInspectionToVkng(jwt, inspectionId);
+        vkngSync = { resolution: synced.resolution, observationCount: synced.observationIds.length };
+      } catch (e) {
+        console.error('VKNG sync after report send failed', e instanceof Error ? e.message : 'unknown error');
+        vkngSync = { status: 'failed' };
+      }
+    }
+    return json({ link, status: channel === 'link' ? 'sent' : status, detail, ...(vkngSync ? { vkngSync } : {}) });
   },
 });
 
@@ -496,7 +530,7 @@ export const tekmetricExport: Handler = route({
   },
 });
 
-// POST /api/vkng-sync { inspectionId } -> sync finalized, reviewed inspection evidence to VKNG.
+// POST /api/vkng-sync { inspectionId } -> retry or manually sync finalized inspection evidence to VKNG.
 // Tenant scope is derived from the authorized inspection, never accepted from the client.
 export const vkngSync: Handler = route({
   POST: async (req) => {
@@ -504,27 +538,7 @@ export const vkngSync: Handler = route({
     rateLimit(req, 'vkng-sync', 20, 60_000);
     const { inspectionId } = await readJson<{ inspectionId: string }>(req);
     if (typeof inspectionId !== 'string' || !inspectionId.trim()) throw new HttpError(400, 'Send an inspection ID');
-
-    const info = await rpc<{ shopId: string; status: string }>('tekmetric_export_info', { p_inspection: inspectionId }, jwt);
-    if (info.status !== 'submitted' && info.status !== 'sent') throw new HttpError(409, 'Submit the inspection and finish review before syncing to VKNG');
-    const { inspection, vehicle } = await loadAsUser(jwt, inspectionId);
-    if (!info.shopId) throw new HttpError(403, 'Could not verify this inspection’s shop');
-
-    const vkngUrl = env('VKNG_SUPABASE_URL');
-    const vkngKey = env('VKNG_SUPABASE_SERVICE_ROLE_KEY');
-    if (!vkngUrl || !vkngKey) throw new HttpError(503, 'VKNG server connection is not configured');
-    let componentMap: Record<string, string>;
-    try { componentMap = parseVkngComponentMap(env('VKNG_COMPONENT_MAP_JSON')); }
-    catch { throw new HttpError(500, 'VKNG component mapping configuration is invalid'); }
-    if (!Object.keys(componentMap).length) throw new HttpError(503, 'VKNG component mappings are not configured');
-
-    const adapter = createVkngServerAdapter({ url: vkngUrl, serviceKey: vkngKey, componentMap });
-    const result = await syncWrynchInspection({
-      tenantId: info.shopId,
-      vehicle,
-      inspection,
-      canonicalComponentId: (className) => componentMap[className] ?? null,
-    }, adapter);
+    const result = await syncInspectionToVkng(jwt, inspectionId);
     if (result.resolution !== 'resolved') {
       return json({ ...result, observationCount: 0, message: 'VKNG could not safely resolve this vehicle. No observations were written.' }, 409);
     }
