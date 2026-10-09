@@ -131,8 +131,13 @@ export async function syncWrynchInspection(
     ...observation, vehicleId: resolution.canonicalVehicleId!,
   }));
   if (vkng.recordObservations) {
-    const saved = await vkng.recordObservations(projected);
-    return { canonicalVehicleId: resolution.canonicalVehicleId, resolution: resolution.resolution, observationIds: saved.ids };
+    const ids: string[] = [];
+    // VKNG bounds each atomic batch to 500 observations; chunk unusually large inspections.
+    for (let i = 0; i < projected.length; i += 500) {
+      const saved = await vkng.recordObservations(projected.slice(i, i + 500));
+      ids.push(...saved.ids);
+    }
+    return { canonicalVehicleId: resolution.canonicalVehicleId, resolution: resolution.resolution, observationIds: ids };
   }
   const ids: string[] = [];
   for (const observation of projected) {
