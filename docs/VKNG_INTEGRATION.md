@@ -41,5 +41,5 @@ A non-resolved vehicle returns HTTP 409 and writes no observations. Missing cred
 - The tenant is derived from the authorized Wrynch inspection, not accepted from request JSON.
 - VKNG's SQL functions enforce tenant-to-vehicle links and restrict their execution to `service_role`.
 - Observation writes are idempotent by tenant + Wrynch observation ID. A retry can safely finish a partially completed inspection sync.
-- This endpoint is an explicit sync operation; it is not yet an automatic background queue. Call it after inspection submission and retry on transient failure.
+- Sending a finalized customer report attempts VKNG sync automatically when all three settings are present. If that attempt fails, report delivery still succeeds and the response marks the VKNG sync as failed; call `POST /api/vkng-sync` to retry. This is not yet a background queue.
 - Production still requires applying the VKNG migration, setting real secrets, populating canonical vehicle/component data, configuring the component map, and testing against the actual VKNG Supabase project. The automated tests use a mocked HTTP transport and do not claim live production connectivity.
