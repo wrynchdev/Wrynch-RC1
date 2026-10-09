@@ -66,6 +66,24 @@ export function createVkngServerAdapter(config: VkngServerConfig, fetcher: Fetch
     }
   }
 
+  async function recordObservations(inputs: VkngObservation[]): Promise<{ ids: string[] }> {
+    if (!inputs.length) return { ids: [] };
+    const tenantId = inputs[0].tenantId;
+    if (inputs.some((item) => item.tenantId !== tenantId)) {
+      throw new Error('A VKNG observation batch cannot cross tenant boundaries.');
+    }
+    if (inputs.some((item) => !Object.values(config.componentMap).includes(item.component.canonicalComponentId))) {
+      throw new Error('Observation component is not present in the configured VKNG component map.');
+    }
+    const result = await rpc<{ observationIds: string[] }>('vkng_record_wrynch_observations', {
+      p_tenant_id: tenantId,
+      p_observations: inputs,
+    });
+    if (!Array.isArray(result.observationIds) || result.observationIds.length !== inputs.length) {
+      throw new Error('VKNG returned an incomplete observation batch result.');
+    }
+    return { ids: result.observationIds };
+  }
   return {
     async resolveVehicle(input: VkngVehicleReference) {
       return rpc<{ canonicalVehicleId: string | null; resolution: 'resolved' | 'insufficient_evidence' | 'conflicted' }>('vkng_resolve_wrynch_vehicle', {
@@ -79,26 +97,11 @@ export function createVkngServerAdapter(config: VkngServerConfig, fetcher: Fetch
       });
     },
     async recordObservation(input: VkngObservation) {
-      const saved = await this.recordObservations!([input]);
+      const saved = await recordObservations([input]);
       return { id: saved.ids[0] };
     },
     async recordObservations(inputs: VkngObservation[]) {
-      if (!inputs.length) return { ids: [] };
-      const tenantId = inputs[0].tenantId;
-      if (inputs.some((item) => item.tenantId !== tenantId)) {
-        throw new Error('A VKNG observation batch cannot cross tenant boundaries.');
-      }
-      if (inputs.some((item) => !Object.values(config.componentMap).includes(item.component.canonicalComponentId))) {
-        throw new Error('Observation component is not present in the configured VKNG component map.');
-      }
-      const result = await rpc<{ observationIds: string[] }>('vkng_record_wrynch_observations', {
-        p_tenant_id: tenantId,
-        p_observations: inputs,
-      });
-      if (!Array.isArray(result.observationIds) || result.observationIds.length !== inputs.length) {
-        throw new Error('VKNG returned an incomplete observation batch result.');
-      }
-      return { ids: result.observationIds };
+      return recordObservations(inputs);
     },
     async getComponentHistory(input) {
       if (!Object.values(config.componentMap).includes(input.canonicalComponentId)) return [];
