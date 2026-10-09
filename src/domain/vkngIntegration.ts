@@ -54,9 +54,9 @@ export interface WrynchVkngContext {
 }
 
 function approvedFinding(finding: Finding): boolean {
-  return finding.source === 'technician'
-    ? finding.status !== 'denied'
-    : finding.status === 'confirmed' || finding.status === 'modified';
+  // Export only reviewed findings from either source. A technician-originated
+  // finding can still be pending in imported or partially completed workflows.
+  return finding.status === 'confirmed' || finding.status === 'modified';
 }
 
 /**
