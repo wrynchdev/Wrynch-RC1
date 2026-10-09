@@ -41,6 +41,8 @@ export interface VkngVehicleReference {
 export interface VkngIntelligencePort {
   resolveVehicle(input: VkngVehicleReference): Promise<{ canonicalVehicleId: string | null; resolution: 'resolved' | 'insufficient_evidence' | 'conflicted' }>;
   recordObservation(input: VkngObservation): Promise<{ id: string }>;
+  /** Optional batch path keeps large inspections to one VKNG network round trip. */
+  recordObservations?(input: VkngObservation[]): Promise<{ ids: string[] }>;
   getComponentHistory(input: { tenantId: string; vehicleId: string; canonicalComponentId: string }): Promise<VkngObservation[]>;
 }
 
@@ -125,10 +127,16 @@ export async function syncWrynchInspection(
   if (resolution.resolution !== 'resolved' || !resolution.canonicalVehicleId) {
     return { canonicalVehicleId: resolution.canonicalVehicleId, resolution: resolution.resolution, observationIds: [] };
   }
-  const projected = projectWrynchInspection(context);
+  const projected = projectWrynchInspection(context).map((observation) => ({
+    ...observation, vehicleId: resolution.canonicalVehicleId!,
+  }));
+  if (vkng.recordObservations) {
+    const saved = await vkng.recordObservations(projected);
+    return { canonicalVehicleId: resolution.canonicalVehicleId, resolution: resolution.resolution, observationIds: saved.ids };
+  }
   const ids: string[] = [];
   for (const observation of projected) {
-    const saved = await vkng.recordObservation({ ...observation, vehicleId: resolution.canonicalVehicleId });
+    const saved = await vkng.recordObservation(observation);
     ids.push(saved.id);
   }
   return { canonicalVehicleId: resolution.canonicalVehicleId, resolution: resolution.resolution, observationIds: ids };
