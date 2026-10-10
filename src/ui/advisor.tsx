@@ -96,6 +96,8 @@ export function AdvisorResults({ id }: { id: string }) {
   const all = useStore((x) => x.inspections);
   const role = useStore((x) => x.workspace?.role ?? 'owner');
   const [sending, setSending] = useState(false);
+  const [vkngBusy, setVkngBusy] = useState(false);
+  const [vkngMessage, setVkngMessage] = useState<string | null>(null);
   const [editing, setEditing] = useState<Partial<EstimateLine> | null>(null);
   useVehicleHistory(data?.vehicle.id ?? '');
   if (!data) return <Missing />;
@@ -112,6 +114,22 @@ export function AdvisorResults({ id }: { id: string }) {
   const lineFor = (k: CompKey) => insp.estimate.filter((e) => e.compKey === k);
   const total = insp.estimate.reduce((a, e) => a + Number(e.parts) + Number(e.labor), 0);
   const approvedTotal = insp.estimate.filter((e) => e.compKey && insp.customerApprovals.includes(e.compKey)).reduce((a, e) => a + Number(e.parts) + Number(e.labor), 0);
+  const syncToVkng = async () => {
+    setVkngBusy(true);
+    setVkngMessage(null);
+    try {
+      const result = await fn<{ message?: string; observationCount?: number }>('vkng-sync', { inspectionId: id }, 'POST');
+      const message = result.message ?? `VKNG sync completed (${result.observationCount ?? 0} observations).`;
+      setVkngMessage(message);
+      toast(message);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'VKNG sync failed. Check the inspection and server configuration, then retry.';
+      setVkngMessage(message);
+      toast(message, 'error');
+    } finally {
+      setVkngBusy(false);
+    }
+  };
   const estimateOpen = canAdvise && insp.status !== 'not_started';
   return (
     <div className="wide" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: 24, alignItems: 'start' }}>
@@ -167,10 +185,16 @@ export function AdvisorResults({ id }: { id: string }) {
                 {waiting.length ? <><Icon name="lock" size={16} />{insp.status === 'sent' ? 'Send again' : 'Send to customer'}</> : insp.status === 'sent' ? 'Send again' : 'Send to customer'}
               </button>
             )}
+            {isLive() && canAdvise && (insp.status === 'submitted' || insp.status === 'sent') && (
+              <button className="btn secondary sm" disabled={vkngBusy} onClick={() => void syncToVkng()}>
+                <Icon name={vkngBusy ? 'loader' : 'refresh-cw'} size={16} />{vkngBusy ? 'Syncing VKNG…' : 'Sync to VKNG'}
+              </button>
+            )}
             {insp.status === 'sent' && <span className="chip ok"><Icon name="check" size={14} />Sent</span>}
           </div>
         </div>
         {insp.status === 'in_progress' && <div className="card pad small">The technician hasn't finished. These results aren't final and can't be sent yet.</div>}
+        {vkngMessage && <div className="card pad small" role="status">VKNG: {vkngMessage}</div>}
         <div className="tiles">
           <Tile kind="immediate" n={sum.immediate} label="Immediate attention" />
           <Tile kind="monitor" n={sum.monitor} label="Monitor" />
