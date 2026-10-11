@@ -40,9 +40,11 @@ export function pointFacts(insp: Inspection, vehicle: Vehicle, point: TemplatePo
     const measurements = results.filter((r) => r.value !== null).map((r) => `${ONTOLOGY.checks[r.checkKey]?.name ?? r.checkKey} ${unitText(r.checkKey, r.value!)}`);
     // Each check with its rating and, when it's Monitor or Immediate, the findings that explain it.
     const why = (checkKey: string) => checkFindings(insp, key, checkKey).map((f) => findingLabel(f.key).toLowerCase());
+    // A check rated OK can carry noted cosmetic findings (an existing scratch); they read as "noted".
     const checks = results.filter((r) => r.value === null).map((r) => {
-      const w = r.rating === 'ok' ? [] : why(r.checkKey);
-      return `${ONTOLOGY.checks[r.checkKey]?.name ?? r.checkKey}: ${RATING[r.rating] ?? r.rating}${w.length ? ` (${w.join(', ')})` : ''}`;
+      const w = why(r.checkKey);
+      const note = !w.length ? '' : r.rating === 'ok' ? ` (noted: ${w.join(', ')})` : ` (${w.join(', ')})`;
+      return `${ONTOLOGY.checks[r.checkKey]?.name ?? r.checkKey}: ${RATING[r.rating] ?? r.rating}${note}`;
     });
     const measuredWhy = results.filter((r) => r.value !== null && r.rating !== 'ok').flatMap((r) => why(r.checkKey));
     const findings = [

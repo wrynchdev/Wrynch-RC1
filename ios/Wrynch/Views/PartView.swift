@@ -90,6 +90,7 @@ private struct CheckCard: View {
     let locked: Bool
     @State private var value = ""
     @State private var showBands = false
+    @State private var noting = false
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -131,8 +132,14 @@ private struct CheckCard: View {
                     }
                 }
             }
-            if let r = check.result, r.rating != "ok", !check.findingChoices.isEmpty {
-                FindingPicker(id: id, part: part, check: check, rating: r.rating, locked: locked)
+            if let r = check.result, !check.findingChoices.isEmpty {
+                // Rated OK: noting cosmetic damage is optional, so it stays behind a button until used.
+                if r.rating != "ok" || noting || check.findingChoices.contains(where: { $0.on }) {
+                    FindingPicker(id: id, part: part, check: check, rating: r.rating, locked: locked)
+                } else if !locked {
+                    Button("Note existing cosmetic damage") { noting = true }
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.muted)
+                }
             }
             DisclosureGroup("What counts as OK / Monitor / Immediate", isExpanded: $showBands) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -217,7 +224,7 @@ private struct FindingPicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("What did you find?").font(.caption.weight(.bold)).foregroundStyle(Theme.muted)
+            Text(rating == "ok" ? "Anything to note? (stays OK)" : "What did you find?").font(.caption.weight(.bold)).foregroundStyle(Theme.muted)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 8)], alignment: .leading, spacing: 8) {
                 ForEach(check.findingChoices) { c in
                     Button { toggle(c) } label: {
@@ -238,7 +245,7 @@ private struct FindingPicker: View {
                 }
             }
             if !check.findingChoices.contains(where: { $0.on }) && !locked {
-                Text("Pick what you saw. It goes in the point's summary and the report.").font(.caption).foregroundStyle(Theme.muted)
+                Text(rating == "ok" ? "Optional: record existing cosmetic damage so it shows in the history and the report." : "Pick what you saw. It goes in the point's summary and the report.").font(.caption).foregroundStyle(Theme.muted)
             }
         }
         .padding(12)

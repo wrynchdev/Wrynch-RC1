@@ -11,7 +11,9 @@
   `supabase/migrations/` (`ai_record_sort` is server-only; `submit_inspection` refuses while anything is pending).
 - Every database write goes through a `security definer` function that checks the caller's shop role. Don't add
   table write policies or grants; add a function and grant it to `authenticated` explicitly.
-- Schema changes: add a new migration file; never edit one that may already be applied.
+- Schema changes: add a new migration file; never edit one that may already be applied. The one exception is the
+  generated `20260926000100_catalog.sql`, which `export_sql.py` rewrites so a new database loads the current catalog;
+  databases that already ran it get each release from its own generated `*_catalog_v<version>.sql` migration.
 - `src/domain/` stays free of React and browser APIs; tests sit next to it.
 - Server code in `server/` uses fetch only (no SDKs) and Web Request/Response handlers.
 - Before pushing: `npm test`, `npm run test:db`, `npm run typecheck`, `npm run build` (and `npm run e2e` for UI flow changes).

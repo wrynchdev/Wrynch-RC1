@@ -131,7 +131,7 @@ for pid, sec, name, n, note in SHOP_POINTS:
     seen[sec]["points"].append({"id": pid, "name": nice(name),
                                 "note": note, "components": comps})
 
-data = {"version": "1.3.0", "classes": classes, "checks": checks, "findings": findings,
+data = {"version": "1.4.0", "classes": classes, "checks": checks, "findings": findings,
         "template": {"id": "shop-mpi", "name": "Shop MPI", "sections": sections}}
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 with open(OUT, "w") as f:

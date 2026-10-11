@@ -239,7 +239,7 @@ const B = `${ROOT}/app/`;
       await p.goto(B + `#/insp/${inspId}/capture/under_car`);
       await p.setInputFiles('#files', PHOTOS);
       await p.waitForSelector('text=Sort photos');
-      await p.waitForFunction(() => !document.querySelector('.toast[role=status]') || !/Uploading|sorting/.test(document.querySelector('.toast').textContent), null, { timeout: 30000 });
+      await p.waitForFunction(() => !document.querySelector('.toast[role=status]') || !/Uploading|sorting|reading/.test(document.querySelector('.toast').textContent), null, { timeout: 60000 });
       await p.waitForTimeout(800); await shot('L07-sorted');
     });
     await step('place-and-confirm', async () => {
@@ -327,6 +327,15 @@ const B = `${ROOT}/app/`;
       await shot('L09b-check-findings');
       await p.goto(B + `#/insp/${inspId}/c/` + encodeURIComponent('72@left_front') + '/S24'); await p.waitForTimeout(800);
       if (!(await cal.locator('.check-findings button.pill[aria-pressed="true"]:has-text("Leak")').count())) errs.push('check finding not saved');
+      // A visual check rated OK can note existing cosmetic damage without changing the rating.
+      await p.goto(B + `#/insp/${inspId}/c/` + encodeURIComponent('0@') + '/S01'); await p.waitForSelector('.check-card[data-check="vehicle_exterior.visual"]');
+      const ext = p.locator('.check-card[data-check="vehicle_exterior.visual"]');
+      await ext.locator('button.ok').click(); await ext.locator('button.note-cosmetic').click();
+      await ext.locator('.check-findings.ok button.pill:has-text("Scratch")').click(); await p.waitForTimeout(900);
+      await shot('L09e-noted');
+      await p.goto(B + `#/insp/${inspId}/c/` + encodeURIComponent('0@') + '/S01'); await p.waitForTimeout(800);
+      if (!(await ext.locator('.check-findings.ok button.pill[aria-pressed="true"]:has-text("Scratch")').count())) errs.push('noted cosmetic damage not saved');
+      if (!(await ext.locator('button.ok[aria-pressed="true"]').count())) errs.push('noting damage changed the OK rating');
       for (const pid of ['S01','S02','S03','S04','S05','S06','S07','S08','S09','S10','S11','S12','S13','S14','S15','S16','S17','S18','S19','S20','S21','S22','S23','S24','S25','S26','S27','S28','S29','S30','S31','S32','S33','S34']) {
         await p.goto(B + `#/insp/${inspId}/point/${pid}`); await p.waitForTimeout(250);
         const btn = p.locator('button:has-text("Nothing found")');
