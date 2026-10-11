@@ -57,7 +57,12 @@ export function createVkngServerAdapter(config: VkngServerConfig, fetcher: Fetch
     const body = await response.text();
     if (!response.ok) {
       // Don't return response bodies: database errors may expose schema or data.
-      if (response.status === 401 || response.status === 403) throw new Error('VKNG rejected the server credentials or RPC permission.');
+      if (response.status === 401 || response.status === 403) {
+        const requestId = response.headers.get('sb-request-id') ?? response.headers.get('x-request-id');
+        // Safe metadata only: never log credentials, request arguments, or the response body.
+        console.error('VKNG RPC authorization failure', { rpc: name, status: response.status, requestId });
+        throw new Error(`VKNG RPC ${name} returned HTTP ${response.status}; server credentials or RPC execute permission were rejected.`);
+      }
       if (response.status === 404) throw new Error(`VKNG RPC ${name} is missing. Apply VKNG migration 0003_wrynch_integration.sql.`);
       throw new Error(`VKNG RPC ${name} failed with HTTP ${response.status}.`);
     }
