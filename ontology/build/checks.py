@@ -37,7 +37,7 @@ ck("tire", "structure", "Sidewall and tread structure", "visual", "Bulges, cuts,
    "Bulge, exposed cord, sidewall cut/puncture, puncture not repairable", evidence="Photo", ai="yes",
    fail="bulge | exposed_cord | cut | punctured | dry_rot")
 ck("spare_tire", "inflation_pressure", "Spare inflation pressure", "measurement", "Gauge reading vs placard (compact spares are often 60 psi)", "psi",
-   "numeric", "in_range", "Within 3 psi of placard", "More than 3 psi low (adjusted)", "Flat or will not hold air", spec="Vehicle placard", ai="no", fail="low_pressure")
+   "numeric", "in_range", "Within 3 psi of placard", "More than 3 psi off placard as found (adjusted)", "Flat or will not hold air", spec="Vehicle placard", ai="no", fail="low_pressure | over_pressure")
 ck("spare_tire", "age", "Spare tire age", "measurement", "Years since DOT code", "years", "numeric", "lower", "< 6 years", "6 years or older", "— (rate structure instead)", 6, None, fail="aged", basis="S4")
 ck("tire_valve_stem", "seal", "Valve stem condition", "visual", "Cracks, leaks (soap test), bent stem, missing cap", "—", "visual", "n/a", "Intact, cap present",
    "Cap missing; minor cracking", "Leaking, cracked through, bent", fail="crack | leak | missing | bent")
@@ -91,7 +91,7 @@ ck("brake_fluid", "condition", "Brake fluid condition", "visual", "Color and cla
    "Clear, light amber", "Dark or cloudy (test copper or moisture)", "Contaminated: debris, sludge, or swollen seals (wrong fluid)", evidence="Photo of reservoir",
    ai="partial", fail="degraded_fluid | contaminated")
 ck("brake_pedal", "feel", "Brake pedal feel and height", "functional", "Engine running: firm pedal, no sink under steady pressure", "—",
-   "categorical", "n/a", "Firm and high", "Slightly soft or low but holds", "Spongy, sinks, or near floor", ai="no", fail="failed_test | excessive_play")
+   "categorical", "n/a", "Firm and high, returns fully", "Slightly soft or low but holds, or slow to return", "Spongy, sinks, near floor, or sticks down", ai="no", fail="failed_test | excessive_play | binding")
 ck("brake_booster", "assist", "Booster assist test", "functional", "Pump pedal engine off, start engine: pedal should drop slightly", "—", "pass_fail", "n/a",
    "Assist present, no hiss", "—", "No assist, hissing, or hard pedal", ai="no", fail="failed_test | leak")
 ck("parking_brake_control", "hold", "Parking brake hold", "functional", "Applies within spec travel and holds vehicle", "clicks / travel", "pass_fail", "n/a",
@@ -233,11 +233,16 @@ ck("battery_terminal", "condition", "Terminals and cables", "visual", "Corrosion
 ck("battery_hold_down", "security", "Battery hold-down", "functional", "Battery cannot move", "—", "pass_fail", "n/a", "Secure", "—", "Loose or missing",
    ai="yes", fail="loose | missing")
 ck("alternator", "charging_voltage", "Charging voltage", "measurement", "Voltage at battery, engine running, loads off", "volts", "numeric", "in_range",
-   "13.5 – 14.8 V (or OEM range for smart-charging systems)", "13.0 – 13.49 V, or 14.81 – 15.0 V", "< 13.0 V or > 15.0 V", None, None, spec="OEM spec where available",
-   ai="no", fail="failed_test", basis="S10 (ranges vary on electronically controlled charging systems)")
+   "13.5 – 14.8 V (or OEM range for smart-charging systems)", "13.0 – 13.49 V, or 14.81 – 15.0 V", "< 13.0 V (not charging) or > 15.0 V", None, None, spec="OEM spec where available",
+   ai="no", fail="failed_test | inoperative", basis="S10 (ranges vary on electronically controlled charging systems)")
 ck("starter_motor", "crank", "Starter cranking", "functional", "Start test", "—", "categorical", "n/a", "Normal crank", "Slow crank (test battery first)",
    "No crank, grinding, or intermittent", ai="no", fail="inoperative | abnormal_noise | intermittent | poor_performance")
-ck("horn", "operation", "Horn operation", "functional", "Press horn", "—", "pass_fail", "n/a", "Operates", "Weak tone", "Inoperative", ai="no", fail="inoperative")
+ck("horn", "operation", "Horn operation", "functional", "Press horn", "—", "pass_fail", "n/a", "Operates", "Weak tone, or sounds only some of the time", "Inoperative", ai="no", fail="inoperative | intermittent")
+
+ck("wheel_speed_sensor", "signal", "Wheel speed signal", "scan_tool", "Scan tool: live wheel speeds on a short drive, and stored ABS/stability codes for this wheel", "—",
+   "categorical", "n/a", "Reads and matches the other wheels, no codes", "Stored intermittent code, or the signal drops out at low speed",
+   "No signal, or an active ABS/stability fault with the warning lamp on", ai="no", fail="inoperative | intermittent | failed_test",
+   basis="An ABS warning lamp that stays on is rated Immediate on warning_indicator; this check names the wheel")
 
 LAMP_NAMES = ["headlamp", "tail_lamp", "turn_signal_lamp", "fog_lamp", "reverse_lamp", "high_mount_brake_lamp", "license_plate_lamp", "side_marker_lamp"]
 LAMP_HOW = {
@@ -304,7 +309,7 @@ for cls, (how, mon, imm, fail) in FUEL_TEXT.items():
 ck("cabin_air_vent", "ac_performance", "A/C vent temperature", "measurement", "Measure at the center vent only: max A/C, recirculate, ambient 70–90°F (rate other vents on their visual condition)", "°F", "numeric", "lower",
    "≤ 45°F", "Above 45°F, including not cooling (comfort item)", "— (use compressor check for failure risk)", 45, None, ai="no", fail="poor_performance")
 ck("ac_compressor", "operation", "Compressor operation", "functional", "Clutch/compressor engages, no noise", "—", "pass_fail", "n/a", "Engages quietly",
-   "Noisy, does not engage, or clutch overheating/smoking (comfort item — recommend soon)", "Seized so it stops or shreds the drive belt (belt may also run water pump/alternator)", ai="no", fail="inoperative | abnormal_noise | heat_damage | binding")
+   "Noisy, does not engage, cools poorly, or clutch overheating/smoking (comfort item — recommend soon)", "Seized so it stops or shreds the drive belt (belt may also run water pump/alternator)", ai="no", fail="inoperative | abnormal_noise | heat_damage | binding | poor_performance | failed_test")
 ck("cabin_blower_motor", "operation", "Blower speeds", "functional", "All speeds", "—", "pass_fail", "n/a", "All speeds", "Some speeds missing, weak airflow, or noise", "Inoperative",
    ai="no", fail="inoperative | intermittent | abnormal_noise | binding | poor_performance")
 ck("high_voltage_battery_pack", "state_of_health", "HV battery state of health", "scan_tool", "Scan tool SOH / isolation test", "% SOH", "numeric", "higher",
@@ -318,6 +323,28 @@ ck("charge_port_inlet", "pins", "Charge port pins and seal", "visual", "Pins, se
    "Debris or corrosion (clean), worn seal", "Burned/melted or damaged pins", ai="yes", fail="burn_damage | melted | connector_damage | debris_buildup | corrosion | damaged_seal")
 ck("trailer_hitch_receiver", "integrity", "Hitch receiver", "visual", "Welds, cracks, mounting bolts", "—", "visual", "n/a", "Intact",
    "Surface rust", "Crack, bent, broken weld, loose mounting", fail="crack | bent | broken | loose | rust")
+
+# Opening, latching and support of doors, lids and gates. The visual check rates the panel; this one rates whether it
+# works. A passenger, back or cargo door that won't stay latched can open while driving (FMVSS 206 covers side and back
+# doors); a fuel or charge port door that won't stay shut is an inconvenience only.
+CLOSURE_OP = {
+    "trunk_lid": ("Open and close; check it latches and stays up on its own", "Stiff, weak struts or springs (won't stay up), slow or intermittent power function", "Won't latch closed, or opens on its own"),
+    "liftgate": ("Open and close (power and manual); check it latches and stays up on its own", "Stiff, weak struts (gate drifts down), slow or intermittent power function", "Won't latch closed, or opens on its own"),
+    "tailgate": ("Open and close; check both latches catch and the support cables hold it level", "Stiff latch or handle, worn support cables (gate sags)", "Won't latch closed, or opens on its own"),
+    "sliding_door": ("Open and close (power and manual); check it latches at both ends of its travel", "Drags or binds on the track, slow or intermittent power function", "Won't latch closed, or opens on its own"),
+    "rear_barn_door": ("Open both doors; check the door checks hold and both latch closed", "Stiff, door checks don't hold, latch needs several tries", "Won't latch closed, or opens on its own"),
+    "cargo_rollup_door": ("Raise and lower the door; check it locks down", "Binds in the track, needs force to raise or lower", "Won't lock down, or rises on its own"),
+    "utility_compartment_door": ("Open and close; check the latch and lock hold", "Stiff latch or lock, door needs several tries", "Won't latch closed, or opens on its own"),
+    "exterior_access_hatch": ("Open and close; check the latch holds", "Stiff latch, needs several tries", "Won't latch closed, or opens on its own"),
+    "luggage_compartment_door": ("Open and close; check the latch and lock hold", "Stiff latch or lock, door needs several tries", "Won't latch closed, or opens on its own"),
+    "fuel_filler_door": ("Open with the release or by pressing; check it stays shut", "Won't open, or won't stay shut", "—"),
+    "charge_port_door": ("Open and close; check it stays shut", "Won't open, or won't stay shut", "—"),
+}
+for cls, (how, mon, imm) in CLOSURE_OP.items():
+    keys = "inoperative | intermittent | binding" + (" | sagging" if cls in ("trunk_lid", "liftgate", "tailgate") else "") + \
+        (" | abnormal_noise" if cls not in ("trunk_lid", "liftgate", "luggage_compartment_door") else "") + (" | unsecured" if imm != "—" else "")
+    ck(cls, "operation", "Opening and latching", "functional", how, "—", "categorical", "n/a", "Opens, closes and latches normally",
+       mon, imm, ai="no", fail=keys, basis="FMVSS 206 (door locks and retention) for side and back doors; industry practice otherwise")
 
 # ---------------------------------------------------------------- visual check for every class without its own visual check
 # Each says what to look for on that part (lookfor.py). Parts in REMOVE get none: nothing useful to see, or their other
@@ -414,7 +441,8 @@ log("Condition Checks", "coolant_hose.pressure_test, coolant_reservoir.pressure_
     "One pressure test gave three results. Rate the leaking part on its own check.", "Yes", "1.4.0")
 log("Condition Checks", "Interval checks (timing belt, spark plugs, gear oils)", "numeric miles with word bands", "categorical: not due / due soon / past due",
     "The typed miles were never rated. Gear oil and spark plugs past interval are Monitor (still working); a timing belt past its OEM interval stays Immediate.", "Yes", "1.4.0")
-log("Condition Checks", "New checks", "—", "brake_fluid.condition, hood_release_cable.release", "Fluid condition was written into the level check; the hood release had nothing to rate its function.", "No", "1.4.0")
+log("Condition Checks", "New checks", "—", "brake_fluid.condition, hood_release_cable.release, wheel_speed_sensor.signal, operation on 11 doors, lids and gates",
+    "Fluid condition was written into the level check; the hood release, wheel speed sensor and closures had nothing to rate their function (their look-fors promised latch and signal faults no finding could hold).", "No", "1.4.0")
 log("Class Findings", "Per-part finding lists", "Findings came from shared category groups", "Parts list the findings they can actually have",
     "Removed findings from other kinds of part (belt findings on a timing cover, bearing findings on a reservoir, electrical findings on a tow hook, paint findings on a soft top).", "Yes", "1.4.0")
 
