@@ -185,7 +185,7 @@ export function AdvisorResults({ id }: { id: string }) {
                 {waiting.length ? <><Icon name="lock" size={16} />{insp.status === 'sent' ? 'Send again' : 'Send to customer'}</> : insp.status === 'sent' ? 'Send again' : 'Send to customer'}
               </button>
             )}
-            {isLive() && canAdvise && (insp.status === 'submitted' || insp.status === 'sent') && (
+            {isLive() && canAdvise && insp.status === 'sent' && (
               <button className="btn secondary sm" disabled={vkngBusy} onClick={() => void syncToVkng()}>
                 <Icon name={vkngBusy ? 'loader' : 'refresh-cw'} size={16} />{vkngBusy ? 'Syncing VKNG…' : 'Sync to VKNG'}
               </button>

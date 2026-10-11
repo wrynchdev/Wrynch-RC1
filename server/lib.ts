@@ -68,6 +68,18 @@ export function bearer(req: Request): string {
 
 // ------------------------------------------------------------------ Supabase REST
 
+/** How long to wait for Supabase before giving up (the function itself may run 60 seconds). */
+const TIMEOUT_MS = 20_000;
+
+/** Check a user's access token with Supabase Auth (bearer() alone only checks that one was sent). */
+export async function requireUser(jwt: string): Promise<void> {
+  const url = need('SUPABASE_URL');
+  const r = await fetch(`${url}/auth/v1/user`, {
+    headers: { apikey: need('SUPABASE_ANON_KEY'), authorization: `Bearer ${jwt}` }, signal: AbortSignal.timeout(TIMEOUT_MS),
+  }).catch(() => { throw new HttpError(504, 'Couldn’t check your sign-in in time. Try again.'); });
+  if (!r.ok) throw new HttpError(401, 'Sign in first');
+}
+
 /**
  * Headers for the server key. Supabase's newer secret keys (sb_secret_…) go only in the apikey header;
  * the older service_role key is a JWT and also goes in Authorization. Both work.
@@ -81,11 +93,15 @@ export function serviceHeaders(): Record<string, string> {
 export async function rpc<T>(name: string, args: Record<string, unknown>, as: string | 'service'): Promise<T> {
   const url = need('SUPABASE_URL');
   const auth = as === 'service' ? serviceHeaders() : { apikey: need('SUPABASE_ANON_KEY'), authorization: `Bearer ${as}` };
-  const r = await fetch(`${url}/rest/v1/rpc/${name}`, {
-    method: 'POST',
-    headers: { ...auth, 'content-type': 'application/json' },
-    body: JSON.stringify(args),
-  });
+  let r: Response;
+  try {
+    r = await fetch(`${url}/rest/v1/rpc/${name}`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: JSON.stringify(args),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch { throw new HttpError(504, 'The database didn’t answer in time. Try again.'); }
   const text = await r.text();
   if (!r.ok) {
     let msg = text;
@@ -99,8 +115,8 @@ export async function rpc<T>(name: string, args: Record<string, unknown>, as: st
 export async function downloadObject(path: string): Promise<{ bytes: Uint8Array; type: string }> {
   const url = need('SUPABASE_URL');
   const r = await fetch(`${url}/storage/v1/object/inspection-media/${path.split('/').map(encodeURIComponent).join('/')}`, {
-    headers: serviceHeaders(),
-  });
+    headers: serviceHeaders(), signal: AbortSignal.timeout(TIMEOUT_MS),
+  }).catch(() => { throw new HttpError(504, `Couldn't read photo ${path} in time`); });
   if (!r.ok) throw new HttpError(502, `Couldn't read photo ${path}`);
   return { bytes: new Uint8Array(await r.arrayBuffer()), type: r.headers.get('content-type') ?? 'image/jpeg' };
 }
@@ -113,7 +129,8 @@ export async function signUrls(paths: string[], seconds = 3600): Promise<Record<
     method: 'POST',
     headers: { ...serviceHeaders(), 'content-type': 'application/json' },
     body: JSON.stringify({ expiresIn: seconds, paths }),
-  });
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  }).catch(() => { throw new HttpError(504, "Couldn't prepare photo links in time"); });
   if (!r.ok) throw new HttpError(502, "Couldn't prepare photo links");
   const list = (await r.json()) as { path: string; signedURL: string | null }[];
   const out: Record<string, string> = {};

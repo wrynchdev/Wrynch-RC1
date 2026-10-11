@@ -76,9 +76,21 @@ async function buildFunctions() {
     });
     writeFileSync(`${dir}/.vc-config.json`, JSON.stringify({ runtime: 'nodejs22.x', handler: 'index.mjs', launcherType: 'Nodejs', maxDuration: 60 }, null, 2));
   }
+  const SECURITY_HEADERS = {
+    'content-security-policy': "frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
+    'x-frame-options': 'DENY',
+    'x-content-type-options': 'nosniff',
+    'referrer-policy': 'strict-origin-when-cross-origin',
+    'permissions-policy': 'camera=(self), microphone=(self), geolocation=()',
+    'strict-transport-security': 'max-age=31536000; includeSubDomains',
+  };
   writeFileSync(`${out}/config.json`, JSON.stringify({
     version: 3,
     routes: [
+      // Security headers on every response: no framing by other sites (the customer report has approve buttons), no
+      // MIME sniffing, no full URLs (report tokens are in the #, but keep paths private too) sent to other sites, and
+      // only the camera and microphone the inspection screens use.
+      { src: '/(.*)', headers: SECURITY_HEADERS, continue: true },
       { src: '/assets/(.*)', headers: { 'cache-control': 'public, max-age=31536000, immutable' }, continue: true },
       // getwrynch.com is the marketing site: its /app links go to the app's own domain (the #route is kept by the browser).
       { src: '/app(/.*)?', has: [{ type: 'host', value: SITE_HOST }], status: 308, headers: { location: `https://${APP_DOMAIN}/` } },

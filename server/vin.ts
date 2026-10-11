@@ -75,7 +75,8 @@ const titleCase = (x: string) => x.toLowerCase().replace(/\b[a-z]/g, (c) => c.to
 export async function decodeVin(vinRaw: string): Promise<Decoded> {
   const vin = vinRaw.trim().toUpperCase();
   if (!VIN_RE.test(vin)) throw new HttpError(400, 'A VIN is 17 letters and numbers (no I, O or Q)');
-  const r = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${vin}?format=json`);
+  const r = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${vin}?format=json`, { signal: AbortSignal.timeout(10_000) })
+    .catch(() => { throw new HttpError(502, 'The VIN lookup service is unavailable; enter the vehicle by hand'); });
   if (!r.ok) throw new HttpError(502, 'The VIN lookup service is unavailable; enter the vehicle by hand');
   const body = (await r.json()) as { Results?: Record<string, string>[] };
   const row = body.Results?.[0];
