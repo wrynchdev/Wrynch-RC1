@@ -4,7 +4,7 @@ import { buildMappedPoint, candidatesFor, explainAiError, resetAiState, validate
 import { mapVpic } from './vin';
 import { adminPilotApprove, aiSort, aiWording, appRoot, pilot, report, sendReport, status, tekmetricExport, tekmetricImport, tekmetricWebhook, templateMap, templateRead } from './routes';
 import { resetTekmetricToken, roIdFromWebhook, toImport } from './tekmetric';
-import { aiKey, apiRouter, ROUTES, transcribe, training, trainingExport, trainingSuggest } from './routes';
+import { aiKey, apiRouter, ROUTES, transcribe, training, trainingExport, trainingSuggest, vin, vkngSync } from './routes';
 import { readFileSync } from 'node:fs';
 import { imageSize } from './detector';
 import { openSecret, sealSecret } from './secrets';
@@ -299,6 +299,57 @@ test('new-style secret keys go only in the apikey header', async () => {
   assert.equal(r.status, 200);
   const c = calls.find((x) => x.url.endsWith('/customer_report'))!;
   assert.equal(c.auth, null, 'no Authorization header with a sb_secret_ key');
+});
+
+test('send-report: a technician is refused before any text goes out', async () => {
+  process.env.TWILIO_ACCOUNT_SID = 'sid'; process.env.TWILIO_AUTH_TOKEN = 'tok'; process.env.TWILIO_FROM = '+15550000';
+  respond = (url) => url.endsWith('/assert_report_sender')
+    ? new Response(JSON.stringify({ message: 'You don\'t have permission to do that in this shop' }), { status: 403 })
+    : url.endsWith('/get_inspection') ? bundle((i) => { i.status = 'submitted'; }) : url.endsWith('/notes_waiting') ? 0 : null;
+  const r = await sendReport(post('send-report', { inspectionId: 'i-4r-now', channel: 'sms', to: '555-0100' }));
+  assert.equal(r.status, 403);
+  assert.equal(calls.find((c) => c.url.endsWith('/assert_report_sender'))!.auth, 'Bearer user-jwt', 'checked as the user');
+  assert.ok(!calls.some((c) => c.url.includes('twilio.com')), 'no text sent');
+  assert.ok(!calls.some((c) => c.url.endsWith('/mark_sent')), 'nothing recorded');
+  delete process.env.TWILIO_AUTH_TOKEN; delete process.env.TWILIO_FROM;
+});
+
+test('send-report is rate limited per connection', async () => {
+  respond = (url) => (url.endsWith('/get_inspection') ? bundle((i) => { i.status = 'submitted'; }) : url.endsWith('/notes_waiting') ? 0 : null);
+  let last = 0;
+  for (let n = 0; n < 31; n++) last = (await sendReport(post('send-report', { inspectionId: 'i-4r-now', channel: 'link' }))).status;
+  assert.equal(last, 429);
+});
+
+test('VIN lookup checks the sign-in with Supabase, not just that a token was sent', async () => {
+  respond = (url) => (url.endsWith('/auth/v1/user') ? new Response('{}', { status: 401 }) : { Results: [{ Make: 'TOYOTA', Model: '4Runner', ModelYear: '2021' }] });
+  const bad = await vin(new Request('https://app.test/api/vin?vin=JTEBU5JR4B5012345', { headers: { authorization: 'Bearer made-up' } }));
+  assert.equal(bad.status, 401);
+  assert.ok(!calls.some((c) => c.url.includes('nhtsa')), 'no lookup for a made-up token');
+  calls = [];
+  respond = (url) => (url.endsWith('/auth/v1/user') ? { id: 'u' } : { Results: [{ Make: 'TOYOTA', Model: '4Runner', ModelYear: '2021' }] });
+  const ok = await vin(new Request('https://app.test/api/vin?vin=JTEBU5JR4B5012345', { headers: { authorization: 'Bearer user-jwt' } }));
+  assert.equal(ok.status, 200);
+});
+
+test('public template reading stops at the shared daily AI cap', async () => {
+  process.env.ANTHROPIC_API_KEY = 'k';
+  respond = (url) => (url.endsWith('/take_public_ai_call') ? false : null);
+  const r = await templateRead(new Request('https://app.test/api/template-read', { method: 'POST', headers: { 'content-type': 'application/pdf' }, body: new Uint8Array([37, 80, 68, 70]) }));
+  assert.equal(r.status, 429);
+  assert.equal(calls.find((c) => c.url.endsWith('/take_public_ai_call'))!.auth, 'Bearer service');
+  assert.ok(!calls.some((c) => c.url.startsWith('https://api.anthropic.com')), 'no AI call over the cap');
+  calls = [];
+  const m = await templateMap(post('template-map', { points: [{ stage: 'Brakes', name: 'Front pads' }] }));
+  assert.equal(m.status, 429);
+  assert.ok(!calls.some((c) => c.url.startsWith('https://api.anthropic.com')));
+});
+
+test('VKNG sync waits until the report has gone to the customer', async () => {
+  respond = (url) => (url.endsWith('/tekmetric_export_info') ? { shopId: 's', status: 'submitted' } : null);
+  const r = await vkngSync(post('vkng-sync', { inspectionId: 'i-4r-now' }));
+  assert.equal(r.status, 409);
+  assert.match((await r.json()).error, /Send the report/);
 });
 
 test('send-report refuses an inspection the tech has not finished', async () => {

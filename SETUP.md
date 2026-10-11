@@ -42,6 +42,7 @@ Nothing secret ever goes in the code or in chat: keys go only into Supabase's an
    | `OPENAI_MODEL` | defaults to `gpt-5`; must read photos | optional |
    | `AI_PROVIDER` | `openai` or `anthropic` | only if both keys are set (otherwise Anthropic is used) |
    | `PILOT_NOTIFY_EMAIL` | your email | where pilot applications are emailed (needs `RESEND_API_KEY` and `EMAIL_FROM`) |
+   | `PUBLIC_AI_DAILY_CAP` | a number (optional) | most AI calls per day for template reading on the marketing site, across all servers (default 400) |
 
    Without `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` the app does not guess: photos stay unsorted and techs place them by hand.
    To check, open `https://<your-app>/api/status`: `{"ai":true,…}` means real AI sorting is on.

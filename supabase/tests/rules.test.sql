@@ -222,8 +222,18 @@ select t.eq((select status from public.point_note where point_id = 'S15'), 'ai_a
 select t.expect_error($$ select public.mark_sent((select v::uuid from t.ids where k = 'insp'), 'link', null, 'sent', null) $$, '%(1 waiting)%');
 select public.approve_note((select v::uuid from t.ids where k = 'insp'), 'S16', 'All of this checked out fine.');
 select t.eq((select status || '|' || customer_text from public.point_note where point_id = 'S16'), 'ai_edited|All of this checked out fine.', 'advisor rewrite kept');
+-- A technician can't send the report; the server asks the database before any text or email goes out.
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000b');
+select t.expect_error($$ select public.assert_report_sender((select v::uuid from t.ids where k = 'insp')) $$, '%permission%');
+select t.act('authenticated', '00000000-0000-0000-0000-00000000000a');
+select public.assert_report_sender((select v::uuid from t.ids where k = 'insp'));
 select public.mark_sent((select v::uuid from t.ids where k = 'insp'), 'link', null, 'sent', null);
 select t.act('service_role', null);
+select t.eq((select bool_and(f -> 'rationale' = 'null'::jsonb and f -> 'confidence' = 'null'::jsonb and f -> 'aiOriginal' = 'null'::jsonb)
+  from jsonb_array_elements(public.customer_report((select report_token from public.inspection)) -> 'inspection' -> 'findings') f), true, 'no AI reasoning in the customer copy');
+select t.expect_error($$ select public.customer_set_approval((select report_token from public.inspection),
+  (select public.comp_key(c.component_id) from public.check_result c where c.rating = 'ok'
+     and not exists (select 1 from public.check_result x where x.component_id = c.component_id and x.rating <> 'ok') limit 1), true) $$, '%doesn''t recommend%');
 select t.eq(jsonb_array_length(public.customer_report((select report_token from public.inspection)) -> 'inspection' -> 'findings'), 1, 'report findings');
 select t.eq(public.customer_report((select report_token from public.inspection)) -> 'inspection' -> 'notes' -> 0 ->> 'techText', '', 'tech note text hidden from customer');
 select t.eq(public.customer_report((select report_token from public.inspection)) -> 'vehicle' ? 'customerPhone', false, 'no phone in report');
@@ -493,6 +503,25 @@ select t.expect_error($$ select public.admin_set_pilot_status((select v::uuid fr
 select t.expect_error($$ select public.admin_set_pilot_note((select v::uuid from t.ids where k = 'pilot2'), 'x') $$, '%Wrynch staff%');
 select t.act('anon', null);
 select t.expect_error($$ select public.admin_pilot_requests() $$, '%permission denied%');
+reset role;
+
+-- Privileges: the signed-out role can run only the pilot link check, nobody but the server writes tables directly,
+-- and internal helpers aren't callable by signed-in users. Catches a missed revoke in any future migration.
+select t.eq((select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and has_function_privilege('anon', p.oid, 'execute')), 'pilot_invite', 'anon can run only pilot_invite');
+select t.eq((select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r'
+  and (not c.relrowsecurity or has_table_privilege('anon', c.oid, 'select')
+       or has_table_privilege('authenticated', c.oid, 'insert') or has_table_privilege('authenticated', c.oid, 'update')
+       or has_table_privilege('authenticated', c.oid, 'delete'))), 0::bigint, 'every table has row security and no direct writes');
+select t.eq((select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and has_function_privilege('authenticated', p.oid, 'execute')
+    and p.proname in ('inspection_doc', 'vehicle_doc', 'template_check_off', 'usable_check_in', 'default_template', 'template_for', 'followup_doc',
+                      'pilot_request_doc', 'training_eligible', 'noted_at_ok', 'notes_waiting', 'ai_record_sort', 'ai_record_wording',
+                      'customer_report', 'customer_set_approval', 'take_public_ai_call', 'shop_ai_key_secret')), null, 'internal helpers are server-only');
+select t.act('service_role', null);
+select t.eq(public.take_public_ai_call('test', 2), true, 'first public AI call allowed');
+select t.eq(public.take_public_ai_call('test', 2), true, 'second allowed');
+select t.eq(public.take_public_ai_call('test', 2), false, 'daily cap reached');
 reset role;
 
 \echo ALL DATABASE TESTS PASSED

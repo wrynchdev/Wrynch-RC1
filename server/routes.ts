@@ -14,7 +14,7 @@ import { buildTekmetricExport } from '../src/domain/tekmetricExport';
 import { syncWrynchInspection } from '../src/domain/vkngIntegration';
 import { createVkngServerAdapter, parseVkngComponentMap } from './vkngAdapter';
 import { clampBox, labelParts, toYoloManifest, type TrainingBox } from '../src/domain/training';
-import { bearer, downloadObject, env, HttpError, json, rateLimit, readJson, route, rpc, signUrls, type Handler } from './lib';
+import { bearer, downloadObject, env, HttpError, json, rateLimit, readJson, requireUser, route, rpc, signUrls, type Handler } from './lib';
 
 interface InspectionBundle { inspection: Inspection; vehicle: Vehicle; template: Template }
 
@@ -191,7 +191,7 @@ export const aiWording: Handler = route({
 // GET /api/vin?vin=...
 export const vin: Handler = route({
   GET: async (req) => {
-    bearer(req); // only for signed-in users, so this isn't an open proxy
+    await requireUser(bearer(req)); // only for signed-in users, so this isn't an open proxy
     const v = new URL(req.url).searchParams.get('vin') ?? '';
     return json(await decodeVin(v));
   },
@@ -218,7 +218,8 @@ export const report: Handler = route({
 
 async function syncInspectionToVkng(jwt: string, inspectionId: string) {
   const info = await rpc<{ shopId: string; status: string }>('tekmetric_export_info', { p_inspection: inspectionId }, jwt);
-  if (info.status !== 'submitted' && info.status !== 'sent') throw new HttpError(409, 'Submit the inspection and finish review before syncing to VKNG');
+  // Only a report that has gone to the customer: a submitted inspection can still be reopened and changed.
+  if (info.status !== 'sent') throw new HttpError(409, 'Send the report to the customer before syncing to VKNG');
   const { inspection, vehicle } = await loadAsUser(jwt, inspectionId);
   if (!info.shopId) throw new HttpError(403, 'Could not verify this inspection’s shop');
 
@@ -242,7 +243,12 @@ async function syncInspectionToVkng(jwt: string, inspectionId: string) {
 export const sendReport: Handler = route({
   POST: async (req) => {
     const jwt = bearer(req);
+    rateLimit(req, 'send-report', 30, 10 * 60_000);
     const { inspectionId, channel, to } = await readJson<{ inspectionId: string; channel: 'sms' | 'email' | 'link'; to?: string }>(req);
+    if (typeof inspectionId !== 'string' || !inspectionId) throw new HttpError(400, 'Which inspection?');
+    if (!['sms', 'email', 'link'].includes(channel)) throw new HttpError(400, 'Send by text, email or link');
+    // Owners and advisors only, checked before anything leaves the shop (mark_sent checks again when it records).
+    await rpc('assert_report_sender', { p_inspection: inspectionId }, jwt);
     const { inspection, vehicle } = await loadAsUser(jwt, inspectionId);
     if (inspection.status !== 'submitted' && inspection.status !== 'sent') throw new HttpError(409, 'Send to advisor first');
     // Every report note approved before anything leaves the shop (mark_sent refuses too; this stops the text going out).
@@ -287,7 +293,9 @@ async function sendSms(to: string, body: string): Promise<{ status: 'sent' | 'fa
     method: 'POST',
     headers: { authorization: `Basic ${Buffer.from(`${sid}:${tok}`).toString('base64')}`, 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ To: to, From: from, Body: body }),
-  });
+    signal: AbortSignal.timeout(15_000),
+  }).catch(() => null);
+  if (!r) return { status: 'failed', detail: 'text service unreachable' };
   return r.ok ? { status: 'sent', detail: '' } : { status: 'failed', detail: `text service error ${r.status}` };
 }
 
@@ -298,7 +306,9 @@ async function sendEmail(to: string, subject: string, text: string): Promise<{ s
     method: 'POST',
     headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
     body: JSON.stringify({ from, to, subject, text }),
-  });
+    signal: AbortSignal.timeout(15_000),
+  }).catch(() => null);
+  if (!r) return { status: 'failed', detail: 'email service unreachable' };
   return r.ok ? { status: 'sent', detail: '' } : { status: 'failed', detail: `email service error ${r.status}` };
 }
 
@@ -388,6 +398,16 @@ export const adminPilotApprove: Handler = route({
   },
 });
 
+/**
+ * The signed-out AI features (reading a shop's inspection sheet on the marketing site) run on Wrynch's AI account.
+ * The per-visitor limit above is per server instance; this daily cap is shared by all of them, kept in the database.
+ */
+async function takePublicAiCall(bucket: string) {
+  const max = Math.max(1, Number(env('PUBLIC_AI_DAILY_CAP') ?? 400) || 400);
+  const allowed = await rpc<boolean | null>('take_public_ai_call', { p_bucket: bucket, p_max: max }, 'service');
+  if (allowed === false) throw new HttpError(429, 'Template reading is busy today. Apply without it, or try again tomorrow.');
+}
+
 // POST /api/template-read (body: the PDF or image) -> { name, points: [{ stage, name, detail }] }
 export const templateRead: Handler = route({
   POST: async (req) => {
@@ -402,6 +422,7 @@ export const templateRead: Handler = route({
       if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(type)) throw new HttpError(415, 'Upload a PDF or a photo (JPEG or PNG) of your inspection sheet.');
       return json({ name: 'Sample sheet (stand-in)', points: ['Brakes', 'Tires', 'Lights', 'Wipers', 'Battery', 'Customer concern'].map((name) => ({ stage: 'Inspection', name })) });
     }
+    await takePublicAiCall('template');
     const out = await readTemplate({ bytes, type });
     if (!out.points.length) throw new HttpError(422, 'We couldn’t find inspection items in that file. Try a clearer photo or the PDF of your sheet.');
     return json(out);
@@ -420,7 +441,9 @@ export const templateMap: Handler = route({
       return { stage: text(x.stage, 60) || 'Inspection', name: text(x.name, 120), detail: text(x.detail, 200) || undefined };
     }).filter((p) => p.name);
     if (!points.length) throw new HttpError(400, 'No inspection items to map.');
-    return json({ points: mode === 'stub' ? mapTemplatePointsStub(points) : await mapTemplatePoints(points) });
+    if (mode === 'stub') return json({ points: mapTemplatePointsStub(points) });
+    await takePublicAiCall('template');
+    return json({ points: await mapTemplatePoints(points) });
   },
 });
 
