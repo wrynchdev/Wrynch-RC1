@@ -37,6 +37,23 @@ export function createVkngServerAdapter(config: VkngServerConfig, fetcher: Fetch
   if (!/^https:\/\//i.test(base)) throw new Error('VKNG_SUPABASE_URL must be an HTTPS URL');
   if (!key) throw new Error('VKNG_SUPABASE_SERVICE_ROLE_KEY is required');
 
+  // Safe configuration fingerprint for diagnosing Production URL/key mismatches.
+  // Never retain, log, or derive any output from the credential contents beyond its format.
+  let urlHost = 'invalid';
+  let projectRef: string | null = null;
+  let isSupabaseHost = false;
+  try {
+    const parsed = new URL(base);
+    urlHost = parsed.hostname;
+    isSupabaseHost = parsed.protocol === 'https:' && parsed.hostname.endsWith('.supabase.co');
+    if (isSupabaseHost) projectRef = parsed.hostname.slice(0, -'.supabase.co'.length);
+  } catch { /* URL validation below reports malformed input through the normal request path. */ }
+  const credentialFormat = key.startsWith('sb_secret_') ? 'sb_secret'
+    : key.startsWith('sb_publishable_') ? 'sb_publishable'
+    : key.startsWith('sb_') ? 'other_sb_key'
+    : key.split('.').length === 3 ? 'legacy_jwt'
+    : 'unknown';
+
   async function rpc<T>(name: string, args: Record<string, unknown>): Promise<T> {
     let response: Response;
     try {
@@ -60,7 +77,16 @@ export function createVkngServerAdapter(config: VkngServerConfig, fetcher: Fetch
       if (response.status === 401 || response.status === 403) {
         const requestId = response.headers.get('sb-request-id') ?? response.headers.get('x-request-id');
         // Safe metadata only: never log credentials, request arguments, or the response body.
-        console.error('VKNG RPC authorization failure', { rpc: name, status: response.status, requestId });
+        console.error('VKNG RPC authorization failure', {
+          rpc: name,
+          status: response.status,
+          requestId,
+          urlHost,
+          projectRef,
+          isSupabaseHost,
+          credentialFormat,
+          authorizationMode: key.startsWith('sb_') ? 'apikey_only' : 'apikey_and_bearer',
+        });
         throw new Error(`VKNG RPC ${name} returned HTTP ${response.status}; server credentials or RPC execute permission were rejected.`);
       }
       if (response.status === 404) throw new Error(`VKNG RPC ${name} is missing. Apply VKNG migration 0003_wrynch_integration.sql.`);
