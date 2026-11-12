@@ -69,3 +69,36 @@ test('adapter hides database response bodies and reports missing migration clear
     tenantId: 'shop-1', vehicleId: 'vehicle-uuid', canonicalComponentId: 'component-node',
   }), /Apply VKNG migration 0003_wrynch_integration.sql/);
 });
+
+
+test('authorization diagnostics expose URL and credential metadata but never the credential', async () => {
+  const messages: unknown[][] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => { messages.push(args); };
+  try {
+    const secret = 'sb_secret_do-not-log-this-value';
+    const adapter = createVkngServerAdapter({
+      url: 'https://pdjjsbhjlydriqvcekhl.supabase.co',
+      serviceKey: secret,
+      componentMap: {},
+    }, async () => new Response('sensitive response body', {
+      status: 401,
+      headers: { 'sb-request-id': 'request-safe-123' },
+    }));
+    await assert.rejects(() => adapter.resolveVehicle({
+      tenantId: 'shop-1', wrynchVehicleId: 'vehicle-1', vin: '',
+      year: 2000, make: 'Honda', model: 'Accord', trim: '',
+    }), /HTTP 401/);
+  } finally {
+    console.error = original;
+  }
+  assert.equal(messages.length, 1);
+  const rendered = JSON.stringify(messages);
+  assert.match(rendered, /vkng_resolve_wrynch_vehicle/);
+  assert.match(rendered, /pdjjsbhjlydriqvcekhl/);
+  assert.match(rendered, /sb_secret/);
+  assert.match(rendered, /apikey_only/);
+  assert.match(rendered, /request-safe-123/);
+  assert.doesNotMatch(rendered, /do-not-log-this-value/);
+  assert.doesNotMatch(rendered, /sensitive response body/);
+});
