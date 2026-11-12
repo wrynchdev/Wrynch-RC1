@@ -86,8 +86,8 @@ test('authorization diagnostics expose URL and credential metadata but never the
       headers: { 'sb-request-id': 'request-safe-123' },
     }));
     await assert.rejects(() => adapter.resolveVehicle({
-      tenantId: 'shop-1', wrynchVehicleId: 'vehicle-1', vin: null,
-      year: null, make: null, model: null, trim: null,
+      tenantId: 'shop-1', wrynchVehicleId: 'vehicle-1', vin: '',
+      year: 2000, make: 'Honda', model: 'Accord', trim: '',
     }), /HTTP 401/);
   } finally {
     console.error = original;
